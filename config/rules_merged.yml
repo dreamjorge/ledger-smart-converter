@@ -1,0 +1,185 @@
+version: 1
+defaults:
+  currency: MXN
+  accounts:
+    credit_card: Liabilities:CC:Santander LikeU
+    payment_asset: Assets:Santander Débito
+  fallback_expense: Expenses:Other:Uncategorized
+merchant_aliases:
+- canon: amazon
+  any_regex:
+  - amazon
+  - amzn
+  - amazon mx
+  - amazon marketplace
+- canon: cfe
+  any_regex:
+  - cfe
+  - comision federal
+- canon: cinepolis_dulceria
+  any_regex:
+  - cinepolis\s+dulceria
+- canon: comercializadora_samsi
+  any_regex:
+  - comercializadora\s+samsi
+- canon: didi
+  any_regex:
+  - didi
+  - didi food
+- canon: el_girasol
+  any_regex:
+  - el\s+girasol
+- canon: f_ahorro
+  any_regex:
+  - f\s+ahorro
+- canon: farm_guad
+  any_regex:
+  - farm\s+guad
+- canon: farm_guadalajara
+  any_regex:
+  - farm\s+guadalajara
+- canon: farmacias_similares
+  any_regex:
+  - farmacias\s+similares
+- canon: mercadopago_*mvo
+  any_regex:
+  - mercadopago\s+\*mvo
+- canon: netflix
+  any_regex:
+  - netflix
+- canon: pay_pal*samsungelec
+  any_regex:
+  - pay\s+pal\*samsungelec
+- canon: paypal_*google
+  any_regex:
+  - paypal\s+\*google
+- canon: queretaro_constitu
+  any_regex:
+  - queretaro\s+constitu
+- canon: rest_alabim
+  any_regex:
+  - rest\s+alabim
+- canon: rest_carls
+  any_regex:
+  - rest\s+carls
+- canon: rest_la
+  any_regex:
+  - rest\s+la
+- canon: salads_constituyentes
+  any_regex:
+  - salads\s+constituyentes
+- canon: sn_pablo
+  any_regex:
+  - sn\s+pablo
+- canon: spotify
+  any_regex:
+  - spotify
+- canon: telcel
+  any_regex:
+  - telcel
+- canon: th_bernardo
+  any_regex:
+  - th\s+bernardo
+- canon: th_distrito
+  any_regex:
+  - th\s+distrito
+- canon: th_puerta
+  any_regex:
+  - th\s+puerta
+- canon: uber
+  any_regex:
+  - uber
+  - uber eats
+- canon: zaragoza
+  any_regex:
+  - zaragoza
+rules:
+- name: Auto:cinepolis
+  any_regex:
+  - cinepolis\s+dulceria
+  set:
+    expense: Expenses:Entertainment:Cinema
+    tags:
+    - bucket:entertainment
+- name: Auto:other
+  any_regex:
+  - comercializadora\s+samsi
+  - el\s+girasol
+  - f\s+ahorro
+  - farm\s+guad
+  - farm\s+guadalajara
+  - farmacias\s+similares
+  - pay\s+pal\*samsungelec
+  - pay\s+pal*samsungelec
+  - queretaro\s+constitu
+  - rest\s+alabim
+  - rest\s+carls
+  - rest\s+la
+  - salads\s+constituyentes
+  - sn\s+pablo
+  - th\s+bernardo
+  - th\s+distrito
+  - th\s+puerta
+  - zaragoza
+  set:
+    expense: Expenses:Other:Uncategorized
+    tags: []
+- name: Auto:mercadopago
+  any_regex:
+  - mercadopago\s+\*mvo
+  - mercadopago\s+*mvo
+  set:
+    expense: Expenses:Shopping:Online
+    tags:
+    - bucket:online
+- name: Auto:paypal
+  any_regex:
+  - paypal\s+\*google
+  - paypal\s+*google
+  set:
+    expense: Expenses:Shopping:Online
+    tags:
+    - bucket:online
+- name: Groceries
+  any_regex:
+  - (walmart|soriana|chedraui|heb|costco|superama|bodega aurrera)
+  set:
+    expense: Expenses:Food:Groceries
+    tags:
+    - bucket:groceries
+- name: Restaurants / Delivery
+  any_regex:
+  - (uber eats|rappi|didi food|dominos|pizza|starbucks|burger|kfc|subway)
+  set:
+    expense: Expenses:Food:Restaurants
+    tags:
+    - bucket:restaurants
+- name: RideShare
+  any_regex:
+  - (uber|didi|cabify)
+  set:
+    expense: Expenses:Transport:RideShare
+    tags:
+    - bucket:transport
+- name: Fuel
+  any_regex:
+  - (pemex|shell|bp|mobil|gasolin)
+  set:
+    expense: Expenses:Transport:Fuel
+    tags:
+    - bucket:fuel
+- name: Subscriptions
+  any_regex:
+  - (netflix|spotify|youtube|prime video|amazon prime|disney|hbo|max)
+  set:
+    expense: Expenses:Subscriptions
+    tags:
+    - bucket:subs
+    - recurring:true
+- name: Bank fees
+  any_regex:
+  - (comisi[oó]n|anualidad|inter[eé]s|iva)
+  set:
+    expense: Expenses:Fees:Bank
+    tags:
+    - bucket:fees

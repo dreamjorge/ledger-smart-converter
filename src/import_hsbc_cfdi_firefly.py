@@ -1,0 +1,403 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+"""
+HSBC CFDI 4.0 (XML) -> Firefly III CSV (STANDARD, igual que Santander)
+- Extrae movimientos desde cfdi:Addenda:
+    - MovimientosDelCliente
+    - MovimientoDelClienteFiscal (incluye RFCenajenante)
+- Categorización por rules.yml (YAML)
+- Aprendizaje asistido:
+    - unknown_merchants.csv (agregado)
+    - rules_suggestions.yml (para copiar/pegar)
+- Salida CSV con columnas estándar:
+    type,date,amount,currency_code,description,source_name,destination_name,category_name,tags
+"""
+
+import argparse
+import csv
+import re
+import xml.etree.ElementTree as ET
+from collections import defaultdict
+from dataclasses import dataclass
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
+
+import yaml
+
+# Local modules
+import common_utils as cu
+import pdf_utils as pu
+
+CFDI_NS = {"cfdi": "http://www.sat.gob.mx/cfd/4"}
+
+
+def parse_iso_date(s: str) -> str:
+    """
+    '2025-12-20T12:00:00' -> '2025-12-20'
+    """
+    s = (s or "").strip()
+    if not s:
+        return ""
+    try:
+        dt = datetime.fromisoformat(s)
+        return dt.date().isoformat()
+    except ValueError:
+        return s[:10]
+
+
+# ----------------------------
+# Modelo
+# ----------------------------
+
+@dataclass(frozen=True)
+class TxnRaw:
+    date: str
+    description: str
+    amount: float
+    rfc: str
+    account_hint: str  # numerodecuenta si viene
+
+
+# ----------------------------
+# Parse XML HSBC (Addenda)
+# ----------------------------
+
+def get_addenda(root: ET.Element) -> Optional[ET.Element]:
+    return root.find("cfdi:Addenda", CFDI_NS)
+
+
+def get_datos_generales(addenda: ET.Element) -> Dict[str, str]:
+    # HSBC suele traer DatosGenerales en Addenda
+    for child in list(addenda):
+        tag = child.tag.split("}")[-1]
+        if tag == "DatosGenerales":
+            return {k: (v or "") for k, v in child.attrib.items()}
+    return {}
+
+
+def extract_movimientos(addenda: ET.Element) -> List[TxnRaw]:
+    datos = get_datos_generales(addenda)
+    account_hint = (datos.get("numerodecuenta", "") or "").strip()
+
+    out: List[TxnRaw] = []
+
+    def iter_all(e: ET.Element):
+        yield e
+        for c in list(e):
+            yield from iter_all(c)
+
+    for e in iter_all(addenda):
+        tag = e.tag.split("}")[-1]
+
+        if tag == "MovimientosDelCliente":
+            date = parse_iso_date(e.attrib.get("fecha", ""))
+            desc = cu.strip_ws(e.attrib.get("descripcion", ""))
+            amt = cu.parse_money(e.attrib.get("importe", ""))
+            if date and desc and amt is not None:
+                out.append(TxnRaw(date=date, description=desc, amount=amt, rfc="", account_hint=account_hint))
+
+        elif tag == "MovimientoDelClienteFiscal":
+            date = parse_iso_date(e.attrib.get("fecha", ""))
+            desc = cu.strip_ws(e.attrib.get("descripcion", ""))
+            rfc = (e.attrib.get("RFCenajenante", "") or "").strip()
+            amt = cu.parse_money(e.attrib.get("importe", ""))
+            if date and desc and amt is not None:
+                out.append(TxnRaw(date=date, description=desc, amount=amt, rfc=rfc, account_hint=account_hint))
+
+    out.sort(key=lambda t: (t.date, t.description, t.amount, t.rfc))
+    return out
+
+
+# ----------------------------
+# Inferencia: cargo vs pago (CLAVE para HSBC)
+# ----------------------------
+
+PAYMENT_HINT = re.compile(r"\b(pago|abono|payment|pymt|pagos?)\b", re.IGNORECASE)
+PAYMENT_PROCESSOR_HINT = re.compile(r"\b(mercadopago|merpago|paypal|alipay|clip\s+mx|conekta)\b", re.IGNORECASE)
+CHARGE_SERVICE_HINT = re.compile(r"(netflix|spotify|nintendo|hbo|disney|openai|chatgpt|duolingo|google|youtube)", re.IGNORECASE)
+REFUND_HINT = re.compile(r"\b(reembolso|devoluci[oó]n|refund)\b", re.IGNORECASE)
+CASHBACK_HINT = re.compile(r"\b(cashback|bonificaci[oó]n)\b", re.IGNORECASE)
+
+def infer_kind(description: str, amount: float, rfc: str) -> str:
+    """
+    Retorna: 'charge' | 'payment' | 'refund' | 'cashback'
+    
+    Priority:
+    1. If it's a known service (Netflix, Nintendo, etc.) -> charge
+    2. If it's from a payment processor (MercadoPago, PayPal) -> check context
+    3. If it mentions PAGO but is clearly a charge -> charge
+    4. Traditional payment keywords -> payment
+    """
+    d = description or ""
+    
+    # Known subscription/service charges should always be charges
+    if CHARGE_SERVICE_HINT.search(d):
+        return "charge"
+    
+    # Cashback and refunds
+    if CASHBACK_HINT.search(d):
+        return "cashback"
+    if REFUND_HINT.search(d):
+        return "refund"
+    
+    # If it's through a payment processor, treat as charge unless it's clearly a payment
+    if PAYMENT_PROCESSOR_HINT.search(d):
+        # "SU PAGO GRACIAS" is a clear payment
+        if "SU PAGO GRACIAS" in d.upper() or "GRACIAS SPEI" in d.upper():
+            return "payment"
+        # Otherwise it's a charge processed through the platform
+        return "charge"
+    
+    # Clear payment keywords
+    if PAYMENT_HINT.search(d):
+        return "payment"
+    
+    # Have RFC? Likely a charge
+    if (rfc or "").strip():
+        return "charge"
+    
+    # Default based on amount sign
+    return "charge" if amount < 0 else "payment"
+
+
+# ----------------------------
+# MAIN
+# ----------------------------
+
+def main() -> int:
+    ap = argparse.ArgumentParser(
+        description="HSBC CFDI(XML) -> Firefly CSV (standard) + rules + assisted learning"
+    )
+    ap.add_argument("--xml", help="Ruta al CFDI XML (HSBC).")
+    ap.add_argument("--rules", required=True, help="Ruta a rules.yml (mismo estándar que Santander).")
+    ap.add_argument("--pdf", default="", help="(Opcional) PDF para extracción de fechas y montos.")
+    ap.add_argument("--pdf-source", action="store_true", help="Usar el PDF como fuente primaria de transacciones (OCR).")
+    ap.add_argument("--out", default="firefly_hsbc.csv", help="CSV salida para Firefly.")
+    ap.add_argument("--unknown-out", default="unknown_merchants.csv", help="CSV de desconocidos (asistido).")
+    ap.add_argument("--suggestions-out", default="rules_suggestions.yml", help="YAML con sugerencias.")
+    args = ap.parse_args()
+
+    xml_path = Path(args.xml) if args.xml else None
+    pdf_path = Path(args.pdf) if args.pdf else None
+    rules_path = Path(args.rules)
+
+    if not xml_path and not (args.pdf_source and pdf_path):
+        print("ERROR: Debe proporcionar --xml o --pdf (con --pdf-source)")
+        return 2
+
+    if not rules_path.exists():
+        print(f"ERROR: No existe rules.yml: {rules_path}")
+        return 2
+
+    # Metadata extraction (Always try PDF for metadata if available)
+    pdf_meta = {}
+    if pdf_path and pdf_path.exists():
+        print(f"--- Analizando PDF: {pdf_path.name} ---")
+        pdf_meta = pu.extract_pdf_metadata(pdf_path)
+        for k, v in pdf_meta.items():
+            print(f"  {k}: {v}")
+
+    # Parse Transactions
+    raw_txns = []
+    datos = {}
+    
+    if args.pdf_source and pdf_path:
+        print(f"--- Usando PDF (OCR) como fuente de transacciones ---")
+        pdf_txns = pu.extract_transactions_from_pdf(pdf_path)
+        # Convert pu format to TxnRaw
+        # We try to guess the year from cutoff_date in meta
+        year = datetime.now().year
+        if "cutoff_date" in pdf_meta:
+            m = re.search(r"(\d{4})", pdf_meta["cutoff_date"])
+            if m: year = int(m.group(1))
+            
+        for pt in pdf_txns:
+            iso_date = pu.parse_mx_date(pt["raw_date"], year=year)
+            raw_txns.append(TxnRaw(
+                date=iso_date,
+                description=pt["description"],
+                amount=pt["amount"],
+                rfc="",
+                account_hint=""
+            ))
+        datos = {"nombredelCliente": "PDF Extract", "periodo": pdf_meta.get("cutoff_date", "Unknown")}
+    else:
+        # Standard XML Parse
+        if not xml_path or not xml_path.exists():
+            print(f"ERROR: No existe XML: {xml_path}")
+            return 2
+        
+        try:
+            root = ET.fromstring(xml_path.read_text(encoding="utf-8", errors="strict"))
+        except UnicodeDecodeError:
+            root = ET.fromstring(xml_path.read_text(encoding="utf-8", errors="ignore"))
+
+        addenda = get_addenda(root)
+        if addenda is None:
+            print("ERROR: No encontré cfdi:Addenda en el XML. Este script espera movimientos dentro de la Addenda.")
+            return 3
+
+        datos = get_datos_generales(addenda)
+        raw_txns = extract_movimientos(addenda)
+
+    rules_yml = yaml.safe_load(rules_path.read_text(encoding="utf-8"))
+    defaults = rules_yml.get("defaults", {}) or {}
+    accounts = defaults.get("accounts", {}) or {}
+    fallback_expense = defaults.get("fallback_expense", "Expenses:Other:Uncategorized")
+    currency = defaults.get("currency", "MXN")
+
+    # Igual que Santander:
+    # Prefer HSBC-specific keys from rules.yml, fallback to built-in defaults
+    # We avoid using the generic 'credit_card' key as it usually points to Santander
+    cc_name, closing_day = cu.get_account_config(accounts, "hsbc_credit_card", "Liabilities:CC:HSBC")
+    payment_asset, _ = cu.get_account_config(accounts, "hsbc_payment_asset", "Assets:HSBC Débito")
+
+    merchant_aliases = rules_yml.get("merchant_aliases", []) or []
+    compiled = cu.compile_rules(rules_yml)
+
+    # Salida estándar + asistido
+    out_rows: List[Dict[str, str]] = []
+    unknown_agg = defaultdict(lambda: {"count": 0, "total": 0.0, "examples": set()})
+
+    sum_charges = 0.0
+    sum_payments = 0.0
+
+    for t in raw_txns:
+        expense, tags, merchant = cu.classify(t.description, compiled, merchant_aliases, fallback_expense)
+
+        # Tags estándar
+        tags = list(tags)
+        period = cu.get_statement_period(t.date, closing_day)
+        tags.append("card:hsbc")
+        if period:
+            tags.append(f"period:{period}")
+        if t.rfc:
+            tags.append(f"rfc:{t.rfc}")
+
+        kind = infer_kind(t.description, t.amount, t.rfc)
+        amt_abs = abs(t.amount)
+
+        # Derive category
+        category = ""
+        if expense and ":" in expense:
+            parts = expense.split(":")
+            if len(parts) > 1:
+                category = parts[1]
+
+        if kind == "charge":
+            sum_charges += amt_abs
+            out_rows.append({
+                "type": "withdrawal",
+                "date": t.date,
+                "amount": f"{amt_abs:.2f}",
+                "currency_code": currency,
+                "description": t.description,
+                "source_name": cc_name,
+                "destination_name": expense,
+                "category_name": category,
+                "tags": ",".join(sorted(set(tags))),
+            })
+
+            if expense == fallback_expense:
+                ua = unknown_agg[merchant]
+                ua["count"] += 1
+                ua["total"] += amt_abs
+                if len(ua["examples"]) < 5:
+                    ua["examples"].add(t.description)
+
+        elif kind == "payment":
+            sum_payments += amt_abs
+            out_rows.append({
+                "type": "transfer",
+                "date": t.date,
+                "amount": f"{amt_abs:.2f}",
+                "currency_code": currency,
+                "description": t.description,
+                "source_name": payment_asset,
+                "destination_name": cc_name,
+                "category_name": "",
+                "tags": f"pago,credit-card,card:hsbc,period:{period}" if period else "pago,credit-card,card:hsbc",
+            })
+
+        elif kind in ("refund", "cashback"):
+            # Estándar recomendado: que reduzca saldo de tarjeta (abono a CC)
+            # -> transfer desde Income hacia la tarjeta
+            income_src = "Income:Cashback" if kind == "cashback" else "Income:Other"
+            out_rows.append({
+                "type": "transfer",
+                "date": t.date,
+                "amount": f"{amt_abs:.2f}",
+                "currency_code": currency,
+                "description": t.description,
+                "source_name": income_src,
+                "destination_name": cc_name,
+                "category_name": "",
+                "tags": f"{kind},card:hsbc,period:{period}" if period else f"{kind},card:hsbc",
+            })
+
+    # CSV Firefly (ESTÁNDAR, igual que Santander)
+    out_path = Path(args.out)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    fieldnames = [
+        "type", "date", "amount", "currency_code",
+        "description", "source_name", "destination_name",
+        "category_name", "tags"
+    ]
+    with out_path.open("w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=fieldnames)
+        w.writeheader()
+        w.writerows(out_rows)
+
+    # Unknown merchants agregado (asistido)
+    unknown_path = Path(args.unknown_out)
+    unknown_path.parent.mkdir(parents=True, exist_ok=True)
+    with unknown_path.open("w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=["merchant", "count", "total", "examples"])
+        w.writeheader()
+        for merchant, data in sorted(unknown_agg.items(), key=lambda kv: (-kv[1]["total"], kv[0])):
+            w.writerow({
+                "merchant": merchant,
+                "count": data["count"],
+                "total": f"{data['total']:.2f}",
+                "examples": " | ".join(sorted(data["examples"])),
+            })
+
+    # Suggestions YAML
+    suggestions = {
+        "version": 1,
+        "suggested_rules": [cu.suggest_rule_from_merchant(m) for m in sorted(unknown_agg.keys())]
+    }
+    sugg_path = Path(args.suggestions_out)
+    sugg_path.parent.mkdir(parents=True, exist_ok=True)
+    sugg_path.write_text(yaml.safe_dump(suggestions, sort_keys=False, allow_unicode=True), encoding="utf-8")
+
+    # Resumen
+    cliente = datos.get("nombredelCliente", "")
+    periodo = datos.get("periodo", "")
+    cuenta_xml = datos.get("numerodecuenta", "")
+
+    # Validación PDF
+    pdf_path = Path(args.pdf)
+    if args.pdf and pdf_path.exists():
+        print(f"\n--- Analizando PDF: {pdf_path.name} ---")
+        meta = pu.extract_pdf_metadata(pdf_path)
+        for k, v in meta.items():
+            print(f"  {k}: {v}")
+
+    print("\n--- Resultados ---")
+    print(f"Cliente: {cliente}")
+    print(f"Periodo: {periodo}")
+    print(f"Cuenta (XML): {cuenta_xml}")
+    print(f"CSV Firefly: {out_path.resolve()}")
+    print(f"Movimientos exportados: {len(out_rows)}")
+    print(f"Suma cargos: {sum_charges:.2f}")
+    print(f"Suma pagos: {sum_payments:.2f}")
+
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
