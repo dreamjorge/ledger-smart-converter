@@ -1,0 +1,10 @@
+pandas>=2.0
+openpyxl>=3.1
+PyYAML>=6.0
+PyMuPDF>=1.23
+opencv-python>=4.8
+pytesseract>=0.3.10
+numpy>=1.24
+streamlit
+plotly
+watchdog

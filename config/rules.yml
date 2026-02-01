@@ -1,0 +1,344 @@
+version: 1
+defaults:
+  currency: MXN
+  accounts:
+    credit_card:
+      name: Liabilities:CC:Santander LikeU
+      closing_day: 15
+    payment_asset: Assets:Santander Débito
+    # HSBC Overrides
+    hsbc_credit_card:
+      name: Liabilities:CC:HSBC
+      closing_day: 20
+    hsbc_payment_asset: Assets:HSBC Débito
+  fallback_expense: Expenses:Other:Uncategorized
+merchant_aliases:
+- canon: amazon
+  any_regex:
+  - amazon
+  - amzn
+  - amazon mx
+  - amazon marketplace
+- canon: bbw_antea
+  any_regex:
+  - bbw\s+antea
+- canon: carburantes_la
+  any_regex:
+  - carburantes\s+la
+- canon: carniceria_fresnillo
+  any_regex:
+  - carniceria\s+fresnillo
+- canon: cfe
+  any_regex:
+  - cfe
+  - comision federal
+- canon: cinepolis_app
+  any_regex:
+  - cinepolis\s+app
+- canon: cinepolis_dulceria
+  any_regex:
+  - cinepolis\s+dulceria
+- canon: cinepolis_taquilla
+  any_regex:
+  - cinepolis\s+taquilla
+- canon: ciudad_marques
+  any_regex:
+  - ciudad\s+marques
+- canon: clip_mx
+  any_regex:
+  - clip\s+mx
+- canon: com_rap
+  any_regex:
+  - com\s+rap
+- canon: comercializadora_samsi
+  any_regex:
+  - comercializadora\s+samsi
+- canon: conekta_mibait
+  any_regex:
+  - conekta\s+mibait
+- canon: didi
+  any_regex:
+  - didi
+  - didi food
+- canon: dimit_ii
+  any_regex:
+  - dimit\s+ii
+- canon: el_girasol
+  any_regex:
+  - el\s+girasol
+- canon: f_ahorro
+  any_regex:
+  - f\s+ahorro
+- canon: farm_guad
+  any_regex:
+  - farm\s+guad
+- canon: farm_guadalajara
+  any_regex:
+  - farm\s+guadalajara
+- canon: farmacias_similares
+  any_regex:
+  - farmacias\s+similares
+- canon: g_gaso
+  any_regex:
+  - g\s+gaso
+- canon: gasol_cimatario
+  any_regex:
+  - gasol\s+cimatario
+- canon: gasol_litro
+  any_regex:
+  - gasol\s+litro
+- canon: mercadopago_*mvo
+  any_regex:
+  - mercadopago\s+\*mvo
+- canon: merpago_melimas
+  any_regex:
+  - merpago\s+melimas
+- canon: merpago_paramountplus
+  any_regex:
+  - merpago\s+paramountplus
+- canon: miniso_luna
+  any_regex:
+  - miniso\s+luna
+- canon: mpio_el
+  any_regex:
+  - mpio\s+el
+- canon: netflix
+  any_regex:
+  - netflix
+- canon: novogas_la
+  any_regex:
+  - novogas\s+la
+- canon: oxxo_luna
+  any_regex:
+  - oxxo\s+luna
+- canon: oxxo_rio
+  any_regex:
+  - oxxo\s+rio
+- canon: oxxo_uaq
+  any_regex:
+  - oxxo\s+uaq
+- canon: parador_cazadero
+  any_regex:
+  - parador\s+cazadero
+- canon: pay_pal*samsungelec
+  any_regex:
+  - pay\s+pal\*samsungelec
+- canon: paypal_*google
+  any_regex:
+  - paypal\s+\*google
+- canon: paypal_google
+  any_regex:
+  - paypal\s+google
+- canon: paypal_ppcinepolis
+  any_regex:
+  - paypal\s+ppcinepolis
+- canon: plaza_las
+  any_regex:
+  - plaza\s+las
+- canon: poder_ejecutivo
+  any_regex:
+  - poder\s+ejecutivo
+- canon: queretaro_constitu
+  any_regex:
+  - queretaro\s+constitu
+- canon: rest_alabim
+  any_regex:
+  - rest\s+alabim
+- canon: rest_carls
+  any_regex:
+  - rest\s+carls
+- canon: rest_la
+  any_regex:
+  - rest\s+la
+- canon: salads_constituyentes
+  any_regex:
+  - salads\s+constituyentes
+- canon: seg_atlas
+  any_regex:
+  - seg\s+atlas
+- canon: sn_pablo
+  any_regex:
+  - sn\s+pablo
+- canon: spotify
+  any_regex:
+  - spotify
+- canon: super_q
+  any_regex:
+  - super\s+q
+- canon: telcel
+  any_regex:
+  - telcel
+- canon: televia_recargas
+  any_regex:
+  - televia\s+recargas
+- canon: th_bernardo
+  any_regex:
+  - th\s+bernardo
+- canon: th_distrito
+  any_regex:
+  - th\s+distrito
+- canon: th_puerta
+  any_regex:
+  - th\s+puerta
+- canon: timhor_plazatoro
+  any_regex:
+  - timhor\s+plazatoro
+- canon: total_pass
+  any_regex:
+  - total\s+pass
+- canon: uber
+  any_regex:
+  - uber
+  - uber eats
+- canon: ventus_sport
+  any_regex:
+  - ventus\s+sport
+- canon: wal_mart
+  any_regex:
+  - wal\s+mart
+- canon: wm_express
+  any_regex:
+  - wm\s+express
+- canon: zaragoza
+  any_regex:
+  - zaragoza
+rules:
+- name: Government
+  any_regex:
+  - mpio
+  - poder\s*ejecutivo
+  - marques
+  - plaza\s*las
+  set:
+    expense: Expenses:Fees:Government
+    tags: [bucket:fees]
+
+- name: Fuel
+  any_regex:
+  - carburantes
+  - gaso
+  - novogas
+  - gasolin
+  - pemex
+  - shell
+  - bp
+  - mobil
+  set:
+    expense: Expenses:Transport:Fuel
+    tags: [bucket:fuel]
+
+- name: Groceries
+  any_regex:
+  - walmart
+  - wal\s*mart
+  - wm\s*express
+  - soriana
+  - chedraui
+  - heb
+  - costco
+  - aurrera
+  - super\s*q
+  - carniceria\s*fresnillo
+  - oxxo
+  set:
+    expense: Expenses:Food:Groceries
+    tags: [bucket:groceries]
+
+- name: Restaurants
+  any_regex:
+  - rest\s*
+  - buffalo\s*wild
+  - com\s*rap\s*buff
+  - parador\s*cazadero
+  - timhor
+  - dimit
+  - carls\s*jr
+  - burger\s*king
+  - starbucks
+  - kfc
+  - subway
+  - pizza
+  - rappi
+  - uber\s*eats
+  - didi\s*food
+  set:
+    expense: Expenses:Food:Restaurants
+    tags: [bucket:restaurants]
+
+- name: Shopping
+  any_regex:
+  - amazon
+  - amzn
+  - str\s*amazon
+  - clip\s*mx
+  - mercadopago
+  - merpago
+  - seg\s*atlas
+  - ventus\s*sport
+  - total\s*pass
+  - miniso
+  - sam\s*samsung
+  - bbw\s*antea
+  - conekta
+  - mibait
+  set:
+    expense: Expenses:Shopping:General
+    tags: [bucket:shopping]
+
+- name: Digital Services
+  any_regex:
+  - nintendo
+  - hbo
+  - disney
+  - spotify
+  - netflix
+  - youtube
+  - prime\s*video
+  - apple\.com
+  - google\s*\*svcs
+  - openai
+  - chatgpt
+  - paramount
+  - max
+  - hbomax
+  set:
+    expense: Expenses:Entertainment:DigitalServices
+    tags: [bucket:subs]
+
+- name: Cinema
+  any_regex:
+  - cinepolis
+  - ppcinepolis
+  set:
+    expense: Expenses:Entertainment:Cinema
+    tags: [bucket:entertainment]
+
+- name: Pharmacy
+  any_regex:
+  - f\s*ahorro
+  - farm\s*guad
+  - san\s*pablo
+  - farmacias\s*similares
+  set:
+    expense: Expenses:Health:Pharmacy
+    tags: [bucket:health]
+
+- name: Transport
+  any_regex:
+  - uber
+  - didi
+  - cabify
+  - televia\s*recargas
+  set:
+    expense: Expenses:Transport:RideShare
+    tags: [bucket:transport]
+
+- name: Bank Fees
+  any_regex:
+  - comisi[oó]n
+  - anualidad
+  - inter[eé]s
+  - iva
+  set:
+    expense: Expenses:Fees:Bank
+    tags: [bucket:fees]
