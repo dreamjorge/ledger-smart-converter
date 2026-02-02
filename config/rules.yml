@@ -265,6 +265,14 @@ rules:
     expense: Expenses:Food:Restaurants
     tags: [bucket:restaurants]
 
+- name: Auto Maintenance
+  any_regex:
+  - ventus
+  - ventus\s*sport
+  set:
+    expense: Expenses:Transport:Maintenance
+    tags: [bucket:maintenance]
+
 - name: Shopping
   any_regex:
   - amazon

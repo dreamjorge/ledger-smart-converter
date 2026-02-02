@@ -4,6 +4,7 @@ import subprocess
 import os
 import sys
 import shutil
+from datetime import datetime
 from pathlib import Path
 import pandas as pd
 import yaml
@@ -42,6 +43,13 @@ CONFIG_DIR = ROOT_DIR / "config"
 DATA_DIR = ROOT_DIR / "data"
 SRC_DIR = ROOT_DIR / "src"
 TEMP_DIR = ROOT_DIR / "temp_web_uploads"
+ANALYTICS_CSV_TARGETS = {
+    "Santander LikeU": ("santander", "firefly_likeu.csv"),
+    "HSBC Mexico": ("hsbc", "firefly_hsbc.csv"),
+}
+NAV_KEY = "nav_page"
+BANK_KEY = "bank_select"
+COPY_FEEDBACK_KEY = "copy_feedback"
 
 # Ensure temp dir exists
 TEMP_DIR.mkdir(exist_ok=True)
@@ -89,6 +97,34 @@ def load_yaml_if_exists(path):
         with open(path, "r", encoding="utf-8") as f:
             return yaml.safe_load(f)
     return None
+
+
+def get_csv_last_updated(path):
+    if not path:
+        return None
+    p = Path(path)
+    if not p.exists():
+        return None
+    ts = datetime.fromtimestamp(p.stat().st_mtime)
+    return ts.strftime("%Y-%m-%d %H:%M:%S")
+
+
+def copy_csv_to_analysis(bank_label, csv_path):
+    """Copy the processed CSV into the data/<bank> folder for analytics."""
+    target = ANALYTICS_CSV_TARGETS.get(bank_label)
+    if not target:
+        return False, "unknown_bank"
+    if not csv_path or not Path(csv_path).exists():
+        return False, "missing_src"
+
+    dest_dir, dest_name = target
+    dest_path = DATA_DIR / dest_dir / dest_name
+    dest_path.parent.mkdir(parents=True, exist_ok=True)
+    src_path = Path(csv_path).resolve()
+    dest_resolved = dest_path.resolve()
+    if src_path != dest_resolved:
+        shutil.copy(src_path, dest_resolved)
+    return True, str(dest_resolved)
 
 def calculate_categorization_stats(df):
     """Calculate Firefly-focused categorization statistics."""
@@ -150,6 +186,10 @@ def calculate_categorization_stats(df):
     }
 
 def render_analytics_dashboard():
+    feedback = st.session_state.pop(COPY_FEEDBACK_KEY, None)
+    if feedback:
+        st.success(feedback)
+
     st.header(t("analytics_title"))
     
     # Load existing CSVs
@@ -181,15 +221,15 @@ def render_analytics_dashboard():
         with selected_tabs[tab_idx]:
             st.subheader(t("bank_analytics_header", bank="Santander"))
             stats = calculate_categorization_stats(df_sant)
-            render_bank_analytics(df_sant, stats, "Santander")
+            render_bank_analytics(df_sant, stats, "Santander", santander_csv)
         tab_idx += 1
-    
+
     # HSBC Tab
     if df_hsbc is not None:
         with selected_tabs[tab_idx]:
             st.subheader(t("bank_analytics_header", bank="HSBC"))
             stats = calculate_categorization_stats(df_hsbc)
-            render_bank_analytics(df_hsbc, stats, "HSBC")
+            render_bank_analytics(df_hsbc, stats, "HSBC", hsbc_csv)
         tab_idx += 1
     
     # Comparison Tab
@@ -198,11 +238,15 @@ def render_analytics_dashboard():
             st.subheader(t("bank_comparison"))
             render_comparison(df_sant, df_hsbc)
 
-def render_bank_analytics(df, stats, bank_name):
+def render_bank_analytics(df, stats, bank_name, csv_path):
     """Render analytics for a single bank."""
     if df is None or df.empty:
         st.error("No data available")
         return
+    
+    last_updated = get_csv_last_updated(csv_path)
+    if last_updated:
+        st.caption(t("last_data_update", timestamp=last_updated))
     
     # Extract periods from tags
     periods = set()
@@ -269,6 +313,18 @@ def render_bank_analytics(df, stats, bank_name):
                 color_discrete_sequence=px.colors.qualitative.Set2
             )
             st.plotly_chart(fig, width='stretch')
+
+    if stats['category_spending']:
+        st.subheader(t("chart_spending_share"))
+        spending_fig = px.pie(
+            names=list(stats['category_spending'].keys()),
+            values=list(stats['category_spending'].values()),
+            hole=0.3
+        )
+        spending_fig.update_traces(textposition='inside', textinfo='percent+label')
+        spending_fig.update_layout(showlegend=True)
+        st.caption(t("spending_share_caption"))
+        st.plotly_chart(spending_fig, width='stretch')
     
     # Category Breakdown
     if stats['categories'] or stats['category_spending']:
@@ -496,6 +552,9 @@ def main():
     new_lang = lang_options[selected_lang_label]
     if new_lang != st.session_state.lang:
         st.session_state.lang = new_lang
+        for key in (NAV_KEY, BANK_KEY, COPY_FEEDBACK_KEY):
+            if key in st.session_state:
+                del st.session_state[key]
         st.rerun()
 
     # Sidebar: Config
@@ -504,7 +563,10 @@ def main():
     st.sidebar.header(t("config"))
     
     # Page Navigation
-    page = st.sidebar.radio(t("navigate"), [t("nav_import"), t("nav_analytics")])
+    nav_options = [t("nav_import"), t("nav_analytics")]
+    if NAV_KEY not in st.session_state or st.session_state[NAV_KEY] not in nav_options:
+        st.session_state[NAV_KEY] = nav_options[0]
+    page = st.sidebar.radio(t("navigate"), nav_options, key=NAV_KEY)
     
     st.sidebar.markdown("---")
     
@@ -513,7 +575,10 @@ def main():
         t("bank_santander"): "Santander LikeU",
         t("bank_hsbc"): "HSBC Mexico"
     }
-    bank_label = st.sidebar.selectbox(t("select_bank"), options=list(bank_map.keys()))
+    bank_options = list(bank_map.keys())
+    if BANK_KEY not in st.session_state or st.session_state[BANK_KEY] not in bank_options:
+        st.session_state[BANK_KEY] = bank_options[0]
+    bank_label = st.sidebar.selectbox(t("select_bank"), options=bank_options, key=BANK_KEY)
     bank = bank_map[bank_label]
     
     # Rules File
@@ -581,8 +646,13 @@ def main():
                 # Output paths
                 output_base = TEMP_DIR / "output"
                 output_base.mkdir(parents=True, exist_ok=True)
-                
-                out_csv = output_base / "firefly_import.csv"
+                analytics_target = ANALYTICS_CSV_TARGETS.get(bank)
+                if analytics_target:
+                    dest_dir, dest_name = analytics_target
+                    out_csv = DATA_DIR / dest_dir / dest_name
+                    out_csv.parent.mkdir(parents=True, exist_ok=True)
+                else:
+                    out_csv = output_base / "firefly_import.csv"
                 out_unknown = output_base / "unknown_merchants.csv"
                 out_suggestions = output_base / "rules_suggestions.yml"
                 
@@ -621,6 +691,18 @@ def main():
                     {t('next_step_3')}
                     {t('next_step_4')}
                     """)
+                    
+                    if st.button(t("copy_to_analysis")):
+                        copied, result = copy_csv_to_analysis(bank, out_csv)
+                        if copied:
+                            st.session_state[COPY_FEEDBACK_KEY] = t("copy_success", path=result)
+                            st.session_state[NAV_KEY] = t("nav_analytics")
+                            st.session_state[BANK_KEY] = bank_label
+                            st.experimental_rerun()
+                        elif result == "missing_src":
+                            st.warning(t("copy_error_missing"))
+                        else:
+                            st.warning(t("copy_error_unknown_bank"))
                     
                     # Show logs
                     with st.expander(t("view_logs"), expanded=pdf_path is not None):
