@@ -6,13 +6,15 @@ It features an intelligent **Learning Cycle** that helps you progressively categ
 
 ## Features
 
--   **Santander LikeU**: Import from XLSX statements + PDF (for summary validation).
--   **HSBC Mexico**: Import from CFDI (XML) statements.
+-   **Santander LikeU**: Import from XLSX statements or directly from PDF using OCR.
+-   **HSBC Mexico**: Import from CFDI (XML) statements or PDF (OCR).
 -   **Analytics Dashboard**: Visualize spending metrics, category breakdowns, and bank comparisons.
--   **Interactive Rule Correction**: Fix miscategorizations directly from the web app and update rules instantly.
+-   **🧠 AI Smart Suggestions**: Integrated ML predictions suggest categories based on your history.
+-   **🛠️ Rule Correction Hub**: Fix miscategorizations and "teach" the AI with one click.
+-   **🔍 Fuzzy Merchant Search**: Find merchants effortlessly, even with typos or varying descriptions.
 -   **Statement Cycle Logic**: Automatic tagging of transactions with their statement period (`period:YYYY-MM`).
--   **Rule-based Categorization**: Regex rules compatible with standard Firefly III concepts.
--   **PDF Data Extraction (with OCR)**: Extracts Cutoff and Payment dates, with a Tesseract OCR fallback for scanned documents.
+-   **🌎 Bilingual Support**: Full Spanish/English support across the entire interface.
+-   **PDF Data Extraction (with OCR)**: Tesseract fallback for scanned documents.
 
 ## Folder Structure
 
@@ -31,39 +33,44 @@ It features an intelligent **Learning Cycle** that helps you progressively categ
     -   [Tesseract OCR](https://github.com/UB-Mannheim/tesseract/wiki) (Optional: for scanned PDF support)
 
 2.  **Setup**:
-    Run the setup script to create a virtual environment and install dependencies.
+    Run the setup script to create the environment and install dependencies (including `scikit-learn` and `rapidfuzz` for AI features).
     ```powershell
     .\scripts\setup_env.ps1
     ```
 
 ## Usage
 
-### 1. Web Interface & Analytics (Recommended)
-The web interface provides the most feature-rich experience.
-
+### 1. Launch the App
+Start the web interface using the dedicated script:
 ```powershell
 .\scripts\run_web.ps1
 ```
-This will open a browser at `http://localhost:8501` where you can:
--   **Import**: Upload XML/XLSX/PDF files and download Firefly-ready CSVs.
--   **Analyze**: View Total Spent, Categorization Coverage, and Category Spending charts.
--   **Drill-down**: Use the category filters to see exactly which transactions are in a category.
--   **Fix**: Use the **Rule Correction Hub** to fix a transaction and update `rules.yml` on the fly.
+Open your browser at `http://localhost:8501`.
 
-### 2. Manual & Learning Cycle
-You can still run imports manually or use the automated learning cycle.
+### 2. Importing Statements
+Go to the **"Import Files"** tab:
+- **Standard**: Upload your XML (HSBC) or XLSX (Santander) along with the PDF.
+- **OCR (No Data File)**: If you only have a PDF scan, upload it and check the box **"🔍 Use PDF as primary data source (OCR)"**.
+- Click **Process Files** to generate a Firefly-ready CSV.
 
-**Manual Import**:
-```powershell
-.\scripts\run_hsbc_example.ps1
-.\scripts\run_full_example.ps1
-```
+### 3. Analytics & Exploration
+Switch to the **"Analytics Dashboard"** tab to:
+- See **Total Spent** per bank and per period.
+- Explore **Category Deep Dives** with distribution charts.
+- Use the **Transaction Drill-down** to find specific expenses by category.
 
-**Learning Cycle**:
-```powershell
-.\scripts\run_learning_cycle.ps1 -Bank hsbc
-```
-*Processes data, suggests new rules, merges them into a temporary file for your review.*
+### 4. Smart Rule Correction (AI-Powered)
+Found a miscategorized transaction? Scroll to the bottom of the Dashboard:
+1. **Fuzzy Search**: Use the search box to find the merchant (e.g., "WAL" will find "WALMART CASHI").
+2. **AI Prediction**: The system will show: `🤖 ML Prediction: Suggested category is Groceries (95%)`.
+3. **Verify & Save**: The category is pre-filled for you. Just click **Save Rule & Regenerate**.
+4. **Instant Retraining**: The AI learns from your correction immediately for future statements!
+
+---
+
+## Security & Privacy
+- **100% Local**: All processing, OCR, and Machine Learning happen on your machine.
+- **Privacy First**: No data is sent to the cloud. Your `data/` folder and sensitive files are protected by `.gitignore`.
 
 ## Statement Cycles & Tagging
 

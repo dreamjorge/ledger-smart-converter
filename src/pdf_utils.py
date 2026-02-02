@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import re
+from datetime import datetime
 import shutil
 from pathlib import Path
 from typing import Dict, Optional, Any, List
@@ -88,45 +89,50 @@ def render_page(doc, page_index: int, zoom: float = 2.0):
 # Main Extraction Logic
 # ----------------------------
 
-def parse_mx_date(date_str: str, year: Optional[int] = None) -> str:
+def parse_mx_date(date_str: str, year: Optional[int] = None) -> Optional[str]:
     """
     Converts "12 ENE" or "12/01/24" or "12-01-2024" to "2024-01-12".
+    Returns None if invalid.
     """
     s = date_str.upper().strip()
     if not year:
         year = datetime.now().year
     
-    # Months mapping
+    # Months mapping (Standard and common OCR variations/abbreviations)
     months = {
         "ENE": "01", "FEB": "02", "MAR": "03", "ABR": "04", "MAY": "05", "JUN": "06",
-        "JUL": "07", "AGO": "08", "SEP": "09", "OCT": "10", "NOV": "11", "DIC": "12"
+        "JUL": "07", "AGO": "08", "SEP": "09", "OCT": "10", "NOV": "11", "DIC": "12",
+        "SET": "09", "AGOSTO": "08", "ENERO": "01", "MAYO": "05", "ABRIL": "04"
     }
     
     # Case: "12 ENE"
-    m = re.match(r"(\d{1,2})\s+([A-Z]{3})", s)
+    m = re.match(r"(\d{1,2})\s*([A-Z]{3})", s) # Allow \s*
     if m:
         day = int(m.group(1))
         month_str = m.group(2)
-        month = months.get(month_str, "01")
+        if day < 1 or day > 31: return None
+        month = months.get(month_str)
+        if not month: return None
         return f"{year}-{month}-{day:02d}"
     
     # Case: "12/01/24" or "12-01-2024"
-    m = re.match(r"(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})", s)
+    m = re.match(r"(\d{1,2})\s*[/-]\s*(\d{1,2})\s*[/-]\s*(\d{2,4})", s) # Allow spaces
     if m:
         day = int(m.group(1))
         month = int(m.group(2))
         yr = int(m.group(3))
+        if day < 1 or day > 31: return None
+        if month < 1 or month > 12: return None
         if yr < 100: yr += 2000
         return f"{yr}-{month:02d}-{day:02d}"
     
-    return date_str
+    return None
 
-def extract_transactions_from_pdf(pdf_path: Path) -> List[Dict[str, Any]]:
+def extract_transactions_from_pdf(pdf_path: Path, use_ocr: bool = False) -> List[Dict[str, Any]]:
     """
-    Experimental: Extracts transaction rows from PDF using OCR.
-    Useful when XML/XLSX is missing or for verification.
+    Extracts transaction rows from PDF using Text extraction or OCR.
     """
-    if not pdf_path.exists() or fitz is None or pytesseract is None:
+    if not pdf_path.exists() or fitz is None:
         return []
 
     doc = fitz.open(str(pdf_path))
@@ -134,34 +140,60 @@ def extract_transactions_from_pdf(pdf_path: Path) -> List[Dict[str, Any]]:
     
     # Regex for typical transaction rows:
     # 1. Date (DD MMM or DD/MM/YY)
-    # 2. Description (Text)
-    # 3. Amount (Number with commas/dots at the end)
-    # Example: "12 ENE AMAZON MEXICO 1,234.56"
-    row_rx = re.compile(r"^(\d{1,2}(?:\s+[A-Za-z]{3}|[/-]\d{1,2}[/-]\d{2,4}))\s+(.*?)\s+([\d,]+\.\d{2})$", re.MULTILINE)
+    # 2. Description (Anything until a number that looks like an amount)
+    # 3. Amount (Digits with optional thousands separator and mandatory .XX or ,XX)
+    # Loosened: description can contain almost anything, and we use a non-greedy .*?
+    row_rx = re.compile(r"(\d{1,2}(?:\s*[A-Z]{3}|[/-]\s*\d{1,2}\s*[/-]\s*\d{2,4}))\s+(.*?)\s+([-+]?[\d,\.\s]+[,\.]\d{2})", re.IGNORECASE)
 
     for page_idx in range(doc.page_count):
-        # We process the whole page as one image
-        img = render_page(doc, page_idx, zoom=2.0)
-        if img is None: continue
+        txt = ""
+        used_method = ""
         
-        # Preprocess and OCR
-        gray = preprocess_for_ocr(img)
-        txt = pytesseract.image_to_string(gray, lang="spa+eng", config="--psm 6")
+        # 1. Try Text Extraction first UNLESS OCR is forced
+        if not use_ocr:
+            page = doc[page_idx]
+            txt = page.get_text()
+            if len(txt.strip()) > 50:
+                used_method = "Text Layer"
         
-        # Clean text and find matches
-        for line in txt.splitlines():
-            line = line.strip()
-            # Basic cleanup for amount signs in OCR
-            line = line.replace(" - ", "-").replace(" $ ", "$")
-            
-            m = row_rx.search(line)
-            if m:
-                txns.append({
-                    "raw_date": m.group(1),
-                    "description": m.group(2),
-                    "amount": parse_amount_str(m.group(3)),
-                    "page": page_idx + 1
-                })
+        # 2. Fallback to OCR if forced or if Text Extraction failed to find rows
+        # We check rows found after attempt 1
+        sub_txns = []
+        if txt:
+            for line in txt.splitlines():
+                m = row_rx.search(line)
+                if m and parse_mx_date(m.group(1)):
+                    sub_txns.append({
+                        "raw_date": m.group(1),
+                        "description": m.group(2).strip(),
+                        "amount": parse_amount_str(m.group(3).replace(",", ".")),
+                        "page": page_idx + 1
+                    })
+        
+        if not sub_txns:
+            # Try OCR (either forced or as fallback)
+            if pytesseract:
+                img = render_page(doc, page_idx, zoom=3.0)
+                if img is not None:
+                    gray = preprocess_for_ocr(img)
+                    txt = pytesseract.image_to_string(gray, lang="spa+eng", config="--psm 6")
+                    used_method = "OCR (fallback/forced)"
+                    for line in txt.splitlines():
+                        line = line.replace(" - ", "-").replace(" $ ", "$").replace("$", "")
+                        m = row_rx.search(line)
+                        if m and parse_mx_date(m.group(1)):
+                            sub_txns.append({
+                                "raw_date": m.group(1),
+                                "description": m.group(2).strip(),
+                                "amount": parse_amount_str(m.group(3).replace(",", ".")),
+                                "page": page_idx + 1
+                            })
+
+        print(f"DEBUG: Page {page_idx+1}: Used {used_method}. Found {len(sub_txns)} rows.")
+        if page_idx == 0 and not sub_txns:
+            print(f"DEBUG: Page 1 Text Sample:\n{txt[:150]}...")
+
+        txns.extend(sub_txns)
     
     doc.close()
     return txns

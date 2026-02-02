@@ -10,10 +10,28 @@ import yaml
 import plotly.express as px
 import plotly.graph_objects as go
 import common_utils as cu
+import ml_categorizer as ml
+import smart_matching as sm
+from translations import TRANSLATIONS
+
+# Initialize Session State for Language
+if "lang" not in st.session_state:
+    st.session_state.lang = "en"
+
+def t(key, **kwargs):
+    """Helper to get translated string."""
+    lang = st.session_state.lang
+    text = TRANSLATIONS[lang].get(key, key)
+    if kwargs:
+        try:
+            return text.format(**kwargs)
+        except Exception:
+            return text
+    return text
 
 # Page Config
 st.set_page_config(
-    page_title="Bank Importer",
+    page_title=t("page_title"),
     page_icon="💳",
     layout="wide"
 )
@@ -27,6 +45,19 @@ TEMP_DIR = ROOT_DIR / "temp_web_uploads"
 
 # Ensure temp dir exists
 TEMP_DIR.mkdir(exist_ok=True)
+
+# Initialize ML Categorizer
+@st.cache_resource
+def get_ml_engine():
+    engine = ml.TransactionCategorizer()
+    if engine.load_model():
+        return engine
+    # If no model, try training one
+    ml.train_global_model()
+    engine.load_model()
+    return engine
+
+ML_ENGINE = get_ml_engine()
 
 # ----------------------------
 # Helper Functions
@@ -119,8 +150,7 @@ def calculate_categorization_stats(df):
     }
 
 def render_analytics_dashboard():
-    """Render the analytics dashboard page."""
-    st.header("📊 Analytics Dashboard")
+    st.header(t("analytics_title"))
     
     # Load existing CSVs
     santander_csv = DATA_DIR / "santander" / "firefly_likeu.csv"
@@ -130,7 +160,7 @@ def render_analytics_dashboard():
     df_hsbc = load_csv_if_exists(hsbc_csv)
     
     if df_sant is None and df_hsbc is None:
-        st.warning("No CSV files found. Please process files first using the Import tab.")
+        st.warning(t("no_csv_found"))
         return
     
     # Tab selection for comparison
@@ -140,7 +170,7 @@ def render_analytics_dashboard():
     if df_hsbc is not None:
         tabs.append("HSBC")
     if df_sant is not None and df_hsbc is not None:
-        tabs.append("Comparison")
+        tabs.append(t("tab_comparison"))
     
     selected_tabs = st.tabs(tabs)
     
@@ -149,7 +179,7 @@ def render_analytics_dashboard():
     # Santander Tab
     if df_sant is not None:
         with selected_tabs[tab_idx]:
-            st.subheader("Santander LikeU")
+            st.subheader(t("bank_analytics_header", bank="Santander"))
             stats = calculate_categorization_stats(df_sant)
             render_bank_analytics(df_sant, stats, "Santander")
         tab_idx += 1
@@ -157,7 +187,7 @@ def render_analytics_dashboard():
     # HSBC Tab
     if df_hsbc is not None:
         with selected_tabs[tab_idx]:
-            st.subheader("HSBC Mexico")
+            st.subheader(t("bank_analytics_header", bank="HSBC"))
             stats = calculate_categorization_stats(df_hsbc)
             render_bank_analytics(df_hsbc, stats, "HSBC")
         tab_idx += 1
@@ -165,7 +195,7 @@ def render_analytics_dashboard():
     # Comparison Tab
     if df_sant is not None and df_hsbc is not None:
         with selected_tabs[tab_idx]:
-            st.subheader("Bank Comparison")
+            st.subheader(t("bank_comparison"))
             render_comparison(df_sant, df_hsbc)
 
 def render_bank_analytics(df, stats, bank_name):
@@ -183,13 +213,13 @@ def render_bank_analytics(df, stats, bank_name):
                     periods.add(tag.split(':')[1])
     
     sorted_periods = sorted(list(periods), reverse=True)
-    selected_period = "All"
+    selected_period = t("all")
     
     if sorted_periods:
-        selected_period = st.selectbox(f"Filter by Statement Period ({bank_name})", ["All"] + sorted_periods, key=f"{bank_name}_period_filter")
+        selected_period = st.selectbox(t("filter_period", bank=bank_name), [t("all")] + sorted_periods, key=f"{bank_name}_period_filter")
     
     # Filter data if needed
-    if selected_period != "All":
+    if selected_period != t("all"):
         df_filtered = df[df['tags'].str.contains(f"period:{selected_period}", na=False)]
         stats = calculate_categorization_stats(df_filtered)
     else:
@@ -197,22 +227,22 @@ def render_bank_analytics(df, stats, bank_name):
         # stats is already passed from caller for "All"
 
     if stats is None:
-        st.error("No data available for this selection")
+        st.error(t("no_data_selection"))
         return
     
     # Metrics Row
     col1, col2, col3, col4, col5 = st.columns(5)
     with col1:
-        st.metric("Total Transactions", stats['total'])
+        st.metric(t("metric_total_txns"), stats['total'], help=t("help_total_txns"))
     with col2:
-        st.metric("Total Spent", f"${stats['total_spent']:,.2f}")
+        st.metric(t("metric_total_spent"), f"${stats['total_spent']:,.2f}", help=t("help_total_spent"))
     with col3:
-        st.metric("Categorized", f"{stats['categorized']} ({stats['coverage_pct']:.1f}%)")
+        st.metric(t("metric_categorized"), f"{stats['categorized']} ({stats['coverage_pct']:.1f}%)", help=t("help_coverage"))
     with col4:
-        st.metric("Category Field", f"{stats['category_populated']} ({stats['category_pct']:.1f}%)")
+        st.metric(t("metric_category_field"), f"{stats['category_populated']} ({stats['category_pct']:.1f}%)")
     with col5:
         withdrawals = stats['type_counts'].get('withdrawal', 0)
-        st.metric("Withdrawals", withdrawals)
+        st.metric(t("metric_withdrawals"), withdrawals)
     
     # Charts Row
     col1, col2 = st.columns(2)
@@ -220,9 +250,9 @@ def render_bank_analytics(df, stats, bank_name):
     with col1:
         # Categorization Coverage Pie
         fig = px.pie(
-            names=['Categorized', 'Uncategorized'],
+            names=[t("metric_categorized"), t("uncategorized")],
             values=[stats['categorized'], stats['uncategorized']],
-            title='Categorization Coverage',
+            title=t("chart_coverage_title"),
             color_discrete_sequence=['#00CC96', '#EF553B']
         )
         st.plotly_chart(fig, width='stretch')
@@ -233,8 +263,8 @@ def render_bank_analytics(df, stats, bank_name):
             fig = px.bar(
                 x=list(stats['type_counts'].keys()),
                 y=list(stats['type_counts'].values()),
-                title='Transaction Types',
-                labels={'x': 'Type', 'y': 'Count'},
+                title=t("chart_types_title"),
+                labels={'x': t("chart_types_x"), 'y': t("chart_types_y")},
                 color=list(stats['type_counts'].keys()),
                 color_discrete_sequence=px.colors.qualitative.Set2
             )
@@ -242,13 +272,13 @@ def render_bank_analytics(df, stats, bank_name):
     
     # Category Breakdown
     if stats['categories'] or stats['category_spending']:
-        st.subheader("Category Deep Dive")
+        st.subheader(t("category_deep_dive"))
         
         col1, col2 = st.columns(2)
         
         with col1:
             # Category Count Breakdown
-            st.markdown("##### Transactions by Category")
+            st.markdown(t("txns_by_category"))
             categories_sorted = dict(sorted(stats['categories'].items(), key=lambda x: x[1], reverse=True)[:10])
             
             fig_count = px.bar(
@@ -264,7 +294,7 @@ def render_bank_analytics(df, stats, bank_name):
             
         with col2:
             # Category Spending Breakdown
-            st.markdown("##### Money Spent by Category")
+            st.markdown(t("money_by_category"))
             spending_sorted = dict(sorted(stats['category_spending'].items(), key=lambda x: x[1], reverse=True)[:10])
             
             fig_spent = px.bar(
@@ -278,7 +308,7 @@ def render_bank_analytics(df, stats, bank_name):
             st.plotly_chart(fig_spent, width='stretch')
             
         # Summary Table (Prominent)
-        st.markdown("##### Category Summary")
+        st.markdown(t("category_summary"))
         cat_data = []
         for cat in sorted(stats['categories'].keys()):
             cat_data.append({
@@ -290,37 +320,29 @@ def render_bank_analytics(df, stats, bank_name):
             
         # Drill-down: Detailed Transactions by Category
         st.markdown("---")
-        st.subheader("🔍 Transaction Drill-down")
-        selected_cat = st.selectbox("Select a Category to view details", ["All"] + sorted(list(stats['categories'].keys())), key=f"{bank_name}_drilldown_cat")
+        st.subheader(t("drilldown_title"))
+        selected_cat = st.selectbox(t("drilldown_select"), [t("all")] + sorted(list(stats['categories'].keys())), key=f"{bank_name}_drilldown_cat")
         
         display_df = df_filtered.copy()
-        if selected_cat != "All":
+        if selected_cat != t("all"):
             # Filter by matching the category part of destination_name
             display_df = display_df[display_df['destination_name'].str.contains(f":{selected_cat}", na=False)]
         
         # Format for display
         if not display_df.empty:
-            st.markdown(f"**Showing {len(display_df)} transactions for: `{selected_cat}`**")
+            st.markdown(t("showing_txns", count=len(display_df), cat=selected_cat))
             # Select relevant columns
             view_cols = ['date', 'description', 'amount', 'destination_name', 'tags']
             st.dataframe(display_df[view_cols], width='stretch')
         else:
-            st.info("No transactions found for this category.")
+            st.info(t("no_txns_found"))
             
     # --- Rule Correction Hub ---
     st.markdown("---")
-    with st.expander("🛠️ Rule Correction Hub", expanded=False):
-        st.subheader("Progressive Rule Learning")
-        st.markdown("""
-        Use this tool to **permanently fix** miscategorized transactions found in the analytics above.
-        
-        **Workflow:**
-        1. **Identify**: Find a transaction in the *Drill-down* table that has the wrong Category or Destination.
-        2. **Configure**: Select that merchant below and provide the correct details.
-        3. **Save**: Click 'Save Rule'. This updates your global `config/rules.yml` file immediately.
-        4. **Refresh**: Go back to the **Import Files** tab and re-process your statement to apply the new rules.
-        """)
-        st.info("💡 **Note**: New rules are added to the top of the file to ensure they take priority over more general rules.")
+    with st.expander(t("rule_hub_title"), expanded=False):
+        st.subheader(t("rule_hub_subtitle"))
+        st.markdown(t("rule_hub_desc"))
+        st.info(t("rule_hub_tip"))
         
         # Get unique merchants from the current filtered dataframe
         if 'tags' in df_filtered.columns:
@@ -332,38 +354,91 @@ def render_bank_analytics(df, stats, bank_name):
             
             merchant_list = sorted(list(merchants))
             
+            # --- Smart Search & Suggestions ---
+            st.markdown(t("smart_lookup"))
+            c_search, c_suggest = st.columns([2, 3])
+            
+            with c_search:
+                search_term = st.text_input(t("fuzzy_search"), "", key=f"{bank_name}_fuzzy_search")
+                if search_term:
+                    matches = sm.find_similar_merchants(search_term, merchant_list, threshold=50)
+                    if matches:
+                        merchant_list = [m for m, score in matches]
+                    else:
+                        st.warning(t("no_similar_merchants"))
+
+            selected_merchant = st.selectbox(t("select_merchant"), merchant_list, key=f"{bank_name}_fix_merchant")
+            
+            # Get ML Prediction
+            ml_predictions = ML_ENGINE.predict(selected_merchant)
+            suggested_cat_hub = None
+            if ml_predictions:
+                top_cat, confidence = ml_predictions[0]
+                if confidence > 0.3:
+                    st.success(t("ml_prediction", cat=top_cat, conf=confidence))
+                    if ":" in top_cat:
+                        suggested_cat_hub = top_cat.split(":")[-1]
+
             col1, col2 = st.columns(2)
             with col1:
-                selected_merchant = st.selectbox("1. Select Merchant to fix", merchant_list, key=f"{bank_name}_fix_merchant")
-            
-            with col2:
-                # Common category suggestions
-                common_cats = ["Groceries", "Restaurants", "Shopping", "Transport", "Subscriptions", "Entertainment", "Health", "Fees", "Online"]
-                category = st.selectbox("2. Select Correct Category", common_cats, key=f"{bank_name}_fix_category")
+                # Common category suggestions (Internal IDs)
+                common_cats_internal = ["Groceries", "Restaurants", "Shopping", "Transport", "Subscriptions", "Entertainment", "Health", "Fees", "Online"]
+                
+                # Manual map to translations
+                cat_translations = {c: t(f"cat_{c.lower()}") for c in common_cats_internal}
+                
+                # If ML suggested a category that's not in common_cats, add it temporarily
+                if suggested_cat_hub and suggested_cat_hub not in common_cats_internal:
+                    common_cats_internal.insert(0, suggested_cat_hub)
+                    # Add translation if missing (fallback to itself)
+                    if suggested_cat_hub not in cat_translations:
+                        cat_translations[suggested_cat_hub] = suggested_cat_hub
+                
+                # Pre-select the ML suggested category if available
+                default_ix = common_cats_internal.index(suggested_cat_hub) if suggested_cat_hub in common_cats_internal else 0
+                
+                # Display localized but value is internal
+                selected_cat_display = st.selectbox(
+                    t("select_category"), 
+                    options=[cat_translations[c] for c in common_cats_internal],
+                    index=default_ix, 
+                    key=f"{bank_name}_fix_category"
+                )
+                # Map back to internal ID
+                category = [k for k, v in cat_translations.items() if v == selected_cat_display][0]
             
             # Auto-suggest expense based on category
-            suggested_expense = f"Expenses:Food:{category}" if category in ["Groceries", "Restaurants"] else \
-                                f"Expenses:Transport:{category}" if category in ["Transport"] else \
-                                f"Expenses:Entertainment:{category}" if category in ["Entertainment", "Subscriptions"] else \
-                                f"Expenses:Shopping:{category}" if category in ["Shopping", "Online"] else \
-                                f"Expenses:Fees:{category}" if category in ["Fees"] else \
-                                f"Expenses:{category}"
+            # If ML has a full path like Expenses:Food:Groceries, use it directly if it matches the selected leaf category
+            if ml_predictions and ml_predictions[0][0].endswith(f":{category}"):
+                suggested_expense = ml_predictions[0][0]
+            else:
+                suggested_expense = f"Expenses:Food:{category}" if category in ["Groceries", "Restaurants"] else \
+                                    f"Expenses:Transport:{category}" if category in ["Transport"] else \
+                                    f"Expenses:Entertainment:{category}" if category in ["Entertainment", "Subscriptions"] else \
+                                    f"Expenses:Shopping:{category}" if category in ["Shopping", "Online"] else \
+                                    f"Expenses:Fees:{category}" if category in ["Fees"] else \
+                                    f"Expenses:{category}"
             
-            expense_account = st.text_input("3. Confirm Destination Account", suggested_expense, key=f"{bank_name}_fix_expense")
+            expense_account = st.text_input(t("confirm_destination"), suggested_expense, key=f"{bank_name}_fix_expense")
             
             # Simple regex suggestion
             safe_pattern = re.escape(selected_merchant.replace("_", " "))
-            regex_pattern = st.text_input("4. Regex Pattern (broad to catch variants)", safe_pattern, key=f"{bank_name}_fix_regex")
+            regex_pattern = st.text_input(t("regex_pattern"), safe_pattern, key=f"{bank_name}_fix_regex")
             
-            if st.button("💾 Save Rule & Regenerate Data", type="primary", key=f"{bank_name}_save_rule"):
+            if st.button(t("save_rule"), type="primary", key=f"{bank_name}_save_rule"):
                 # Path to rules.yml
                 rules_path = CONFIG_DIR / "rules.yml"
                 
                 # Use cu helper to update YAML
                 cu.add_rule_to_yaml(rules_path, selected_merchant, regex_pattern, expense_account, category.lower())
                 
-                st.success(f"Rule for `{selected_merchant}` saved to `rules.yml`!")
-                st.info("Regenerating data... please wait.")
+                # Feedback loop: Retrain ML model with new data
+                with st.spinner(t("teaching_ai")):
+                    ml.train_global_model()
+                    st.cache_resource.clear() # Force reload of the model
+                
+                st.success(t("rule_saved", merchant=selected_merchant))
+                st.info(t("regenerating"))
                 
                 # Re-run the appropriate import script
                 script = "import_likeu_firefly.py" if bank_name == "Santander" else "import_hsbc_cfdi_firefly.py"
@@ -371,7 +446,7 @@ def render_bank_analytics(df, stats, bank_name):
                 # We need to know which file was used. 
                 # This is tricky because the files are in DATA_DIR.
                 # For now, we'll try to find the "latest" processed file or assume standard names.
-                st.warning("Please go back to the 'Import Files' tab and re-process your latest statement to see the changes reflected.")
+                st.warning(t("reprocess_warning"))
                 st.balloons()
 
 def render_comparison(df_sant, df_hsbc):
@@ -383,54 +458,77 @@ def render_comparison(df_sant, df_hsbc):
     col1, col2 = st.columns(2)
     
     with col1:
-        st.markdown("### Santander")
-        st.metric("Transactions", stats_sant['total'])
-        st.metric("Total Spent", f"${stats_sant['total_spent']:,.2f}")
-        st.metric("Coverage", f"{stats_sant['coverage_pct']:.1f}%")
+        st.markdown(f"### Santander")
+        st.metric(t("metric_total_txns"), stats_sant['total'], help=t("help_total_txns"))
+        st.metric(t("metric_total_spent"), f"${stats_sant['total_spent']:,.2f}", help=t("help_total_spent"))
+        st.metric(t("metric_categorized"), f"{stats_sant['coverage_pct']:.1f}%", help=t("help_coverage"))
     
     with col2:
-        st.markdown("### HSBC")
-        st.metric("Transactions", stats_hsbc['total'])
-        st.metric("Total Spent", f"${stats_hsbc['total_spent']:,.2f}")
-        st.metric("Coverage", f"{stats_hsbc['coverage_pct']:.1f}%")
+        st.markdown(f"### HSBC")
+        st.metric(t("metric_total_txns"), stats_hsbc['total'], help=t("help_total_txns"))
+        st.metric(t("metric_total_spent"), f"${stats_hsbc['total_spent']:,.2f}", help=t("help_total_spent"))
+        st.metric(t("metric_categorized"), f"{stats_hsbc['coverage_pct']:.1f}%", help=t("help_coverage"))
     
     # Side-by-side coverage chart
     fig = go.Figure(data=[
-        go.Bar(name='Categorized', x=['Santander', 'HSBC'], 
+        go.Bar(name=t("metric_categorized"), x=['Santander', 'HSBC'], 
                y=[stats_sant['categorized'], stats_hsbc['categorized']], marker_color='#00CC96'),
-        go.Bar(name='Uncategorized', x=['Santander', 'HSBC'], 
+        go.Bar(name=t("uncategorized"), x=['Santander', 'HSBC'], 
                y=[stats_sant['uncategorized'], stats_hsbc['uncategorized']], marker_color='#EF553B')
     ])
-    fig.update_layout(barmode='stack', title='Categorization Comparison')
+    fig.update_layout(barmode='stack', title=t("chart_coverage_title"))
     st.plotly_chart(fig, width='stretch')
 
 def main():
-    st.title("💳 Credit Card Importer")
+    st.title(t("app_title"))
     
+    # Sidebar: Language Selection
+    lang_options = {"🇺🇸 English": "en", "🇲🇽 Español": "es"}
+    
+    selected_lang_label = st.sidebar.selectbox(
+        t("language_select"), 
+        options=list(lang_options.keys()),
+        index=0 if st.session_state.lang == "en" else 1,
+        key="lang_selector"
+    )
+    
+    # Update lang if changed
+    new_lang = lang_options[selected_lang_label]
+    if new_lang != st.session_state.lang:
+        st.session_state.lang = new_lang
+        st.rerun()
+
     # Sidebar: Config
-    st.sidebar.header("Configuration")
+    st.sidebar.title(t("sidebar_welcome"))
+    st.sidebar.markdown(t("sidebar_desc"))
+    st.sidebar.header(t("config"))
     
     # Page Navigation
-    page = st.sidebar.radio("Navigate", ["Import Files", "Analytics Dashboard"])
+    page = st.sidebar.radio(t("navigate"), [t("nav_import"), t("nav_analytics")])
     
     st.sidebar.markdown("---")
     
     # Bank Selection
-    bank = st.sidebar.selectbox("Select Bank", ["Santander LikeU", "HSBC Mexico"])
+    bank_map = {
+        t("bank_santander"): "Santander LikeU",
+        t("bank_hsbc"): "HSBC Mexico"
+    }
+    bank_label = st.sidebar.selectbox(t("select_bank"), options=list(bank_map.keys()))
+    bank = bank_map[bank_label]
     
     # Rules File
     rules_path = CONFIG_DIR / "rules.yml"
     if rules_path.exists():
-        st.sidebar.success(f"Loaded rules: {rules_path.name}")
+        st.sidebar.success(f"{t('loaded_rules')}: {rules_path.name}")
     else:
-        st.sidebar.error("Rules file not found in config/rules.yml")
+        st.sidebar.error(t("no_rules"))
 
     # Mode
     st.sidebar.markdown("---")
-    st.sidebar.info("This tool runs the import scripts and lets you download the results.")
+    st.sidebar.info(t("sidebar_info"))
     
     # Route to pages
-    if page == "Analytics Dashboard":
+    if page == t("nav_analytics"):
         render_analytics_dashboard()
         return
 
@@ -438,7 +536,22 @@ def main():
     # Main Content
     # ----------------------------
     
-    st.header(f"Import: {bank}")
+    with st.expander(t("quick_start"), expanded=bank == "Santander LikeU"):
+        st.write(t("welcome_bank", bank=bank))
+        st.write(t("steps_desc"))
+        
+        file_type_label = "Excel" if bank == "Santander LikeU" else "XML"
+        st.markdown(t("step_1", file_type=file_type_label))
+        st.markdown(t("step_2"))
+        st.markdown(t("step_3"))
+        st.markdown(t("step_4"))
+        
+        if bank == "Santander LikeU":
+            st.info(t("tip_santander"))
+        else:
+            st.info(t("tip_hsbc"))
+
+    st.header(t("import_header", bank=bank))
     
     uploaded_main = None
     uploaded_pdf = None
@@ -447,20 +560,20 @@ def main():
     
     with col1:
         if bank == "Santander LikeU":
-            uploaded_main = st.file_uploader("Upload Excel Statement (XLSX)", type=["xlsx"])
+            uploaded_main = st.file_uploader(t("select_xlsx"), type=["xlsx"], help=t("help_xlsx"))
         else: # HSBC
-            uploaded_main = st.file_uploader("Upload XML Statement (XML)", type=["xml"])
+            uploaded_main = st.file_uploader(t("select_xml"), type=["xml", "csv", "xlsx"], help=t("help_xml"))
             
     with col2:
-        uploaded_pdf = st.file_uploader("Upload PDF Statement (Optional - for validation)", type=["pdf"])
+        uploaded_pdf = st.file_uploader(t("select_pdf"), type=["pdf"], help=t("help_pdf"))
     
     force_pdf_ocr = False
     if uploaded_pdf:
-        force_pdf_ocr = st.checkbox("🔍 Use PDF as primary data source (OCR)", value=False, help="Enable this if you want to extract transactions directly from the PDF using Tesseract OCR.")
+        force_pdf_ocr = st.checkbox(t("use_ocr"), value=False, help=t("help_ocr"))
 
     if uploaded_main or (force_pdf_ocr and uploaded_pdf):
-        if st.button("🚀 Process Files", type="primary"):
-            with st.spinner("Processing..."):
+        if st.button(t("process_files"), type="primary"):
+            with st.spinner(t("processing")):
                 # 1. Save files
                 main_path = save_uploaded_file(uploaded_main, "input")
                 pdf_path = save_uploaded_file(uploaded_pdf, "input")
@@ -499,47 +612,55 @@ def main():
                 
                 # 4. Display Results
                 if res.returncode == 0:
-                    st.success("Processing Complete!")
+                    st.success(t("process_complete"))
+                    
+                    st.info(f"""
+                    {t('next_steps_title')}
+                    {t('next_step_1')}
+                    {t('next_step_2')}
+                    {t('next_step_3')}
+                    {t('next_step_4')}
+                    """)
                     
                     # Show logs
-                    with st.expander("View Logs / PDF Extraction", expanded=pdf_path is not None):
+                    with st.expander(t("view_logs"), expanded=pdf_path is not None):
                         st.code(res.stdout, language="text")
                     
                     # Tabs for outputs
-                    tab1, tab2, tab3 = st.tabs(["Firefly CSV", "Unknown Merchants", "Suggestions"])
+                    tab1, tab2, tab3 = st.tabs([t("tab_csv"), t("tab_unknown"), t("tab_suggestions")])
                     
                     with tab1:
                         df_csv = load_csv_if_exists(out_csv)
                         if df_csv is not None:
                             st.dataframe(df_csv, width='stretch')
                             with open(out_csv, "rb") as f:
-                                st.download_button("Download CSV", f, "firefly_import.csv", "text/csv")
+                                st.download_button(t("download_csv"), f, "firefly_import.csv", "text/csv")
                         else:
-                            st.warning("No CSV generated (file empty?)")
+                            st.warning(t("no_csv"))
 
                     with tab2:
                         df_unk = load_csv_if_exists(out_unknown)
                         if df_unk is not None:
                             st.dataframe(df_unk, width='stretch')
                         else:
-                            st.info("No unknown merchants found.")
+                            st.info(t("no_unknown"))
                             
                     with tab3:
                         if out_suggestions.exists():
                             with open(out_suggestions, "r", encoding="utf-8") as f:
                                 sugg_content = f.read()
                             st.code(sugg_content, language="yaml")
-                            st.download_button("Download Suggestions YAML", sugg_content, "suggestions.yml", "text/yaml")
+                            st.download_button(t("download_suggestions"), sugg_content, "suggestions.yml", "text/yaml")
                         else:
-                            st.info("No suggestions generated.")
+                            st.info(t("no_suggestions"))
                             
                 else:
-                    st.error("Error Processing File")
+                    st.error(t("error_processing"))
                     st.error(res.stderr)
                     st.code(res.stdout, language="text")
 
     st.markdown("---")
-    st.caption(f"Working Directory: {ROOT_DIR}")
+    st.caption(f"{t('working_dir')}: {ROOT_DIR}")
 
 if __name__ == "__main__":
     main()

@@ -8,3 +8,5 @@ numpy>=1.24
 streamlit
 plotly
 watchdog
+scikit-learn
+rapidfuzz

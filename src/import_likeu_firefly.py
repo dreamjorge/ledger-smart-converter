@@ -16,6 +16,7 @@ import argparse
 import csv
 import re
 from collections import defaultdict
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -35,10 +36,15 @@ DATE_ES_RE = re.compile(r"^\s*(\d{1,2})/([A-Za-z]{3})/(\d{2,4})\s*$")
 
 
 def parse_es_date(s: str) -> Optional[str]:
-    """'30/ene/26' -> '2026-01-30'"""
+    """'30/ene/26' -> '2026-01-30'. También acepta '2026-01-30' ya en ISO."""
     if s is None:
         return None
     s = str(s).strip()
+    
+    # Si ya es ISO YYYY-MM-DD
+    if re.match(r"^\d{4}-\d{2}-\d{2}$", s):
+        return s
+
     m = DATE_ES_RE.match(s)
     if not m:
         return None
@@ -110,7 +116,7 @@ def main() -> int:
     
     if args.pdf_source and pdf_path:
         print(f"--- Usando PDF (OCR) como fuente de transacciones ---")
-        pdf_txns = pu.extract_transactions_from_pdf(pdf_path)
+        pdf_txns = pu.extract_transactions_from_pdf(pdf_path, use_ocr=True)
         year = datetime.now().year
         if "cutoff_date" in pdf_meta:
             m = re.search(r"(\d{4})", pdf_meta["cutoff_date"])
@@ -157,11 +163,16 @@ def main() -> int:
     for _, r in df.iterrows():
         date = parse_es_date(r["fecha"])
         if not date:
+            # Only print if we are in PDF OCR mode, to avoid clutter in standard Excel mode
+            if args.pdf_source:
+                print(f"DEBUG: Skipped row - Invalid Date: {r['fecha']}")
             continue
 
         desc = str(r["concepto"]).strip()
         amt = cu.parse_money(r["importe"])
         if amt is None or amt == 0:
+            if args.pdf_source:
+                print(f"DEBUG: Skipped row - Invalid Amount: {r['importe']} ({desc})")
             continue
 
         expense, tags, merchant = cu.classify(desc, compiled, merchant_aliases, fallback_expense)
