@@ -171,6 +171,7 @@ def main() -> int:
         description="HSBC CFDI(XML) -> Firefly CSV (standard) + rules + assisted learning"
     )
     ap.add_argument("--xml", help="Ruta al CFDI XML (HSBC).")
+    ap.add_argument("--csv", help="Ruta a un CSV (HSBC) opcional.")
     ap.add_argument("--rules", required=True, help="Ruta a rules.yml (mismo estándar que Santander).")
     ap.add_argument("--pdf", default="", help="(Opcional) PDF para extracción de fechas y montos.")
     ap.add_argument("--pdf-source", action="store_true", help="Usar el PDF como fuente primaria de transacciones (OCR).")
@@ -180,11 +181,12 @@ def main() -> int:
     args = ap.parse_args()
 
     xml_path = Path(args.xml) if args.xml else None
+    csv_path = Path(args.csv) if args.csv else None
     pdf_path = Path(args.pdf) if args.pdf else None
     rules_path = Path(args.rules)
 
-    if not xml_path and not (args.pdf_source and pdf_path):
-        print("ERROR: Debe proporcionar --xml o --pdf (con --pdf-source)")
+    if not xml_path and not csv_path and not (args.pdf_source and pdf_path):
+        print("ERROR: Debe proporcionar --xml, --csv o --pdf (con --pdf-source)")
         return 2
 
     if not rules_path.exists():
@@ -205,9 +207,7 @@ def main() -> int:
     
     if args.pdf_source and pdf_path:
         print(f"--- Usando PDF (OCR) como fuente de transacciones ---")
-        pdf_txns = pu.extract_transactions_from_pdf(pdf_path)
-        # Convert pu format to TxnRaw
-        # We try to guess the year from cutoff_date in meta
+        pdf_txns = pu.extract_transactions_from_pdf(pdf_path, use_ocr=True)
         year = datetime.now().year
         if "cutoff_date" in pdf_meta:
             m = re.search(r"(\d{4})", pdf_meta["cutoff_date"])
@@ -215,6 +215,9 @@ def main() -> int:
             
         for pt in pdf_txns:
             iso_date = pu.parse_mx_date(pt["raw_date"], year=year)
+            if not iso_date:
+                print(f"DEBUG: Skipping row - Invalid OCR Date: {pt['raw_date']}")
+                continue
             raw_txns.append(TxnRaw(
                 date=iso_date,
                 description=pt["description"],
@@ -223,6 +226,68 @@ def main() -> int:
                 account_hint=""
             ))
         datos = {"nombredelCliente": "PDF Extract", "periodo": pdf_meta.get("cutoff_date", "Unknown")}
+    elif (csv_path and csv_path.exists()) or (xml_path and xml_path.suffix.lower() in [".csv", ".xlsx", ".xls"]):
+        # Handle cases where user might have passed CSV/XLSX to --xml or used --csv
+        source = csv_path or xml_path
+        print(f"--- Leyendo Archivo (HSBC): {source.name} ---")
+        import pandas as pd
+        
+        if source.suffix.lower() in [".xlsx", ".xls"]:
+            df = pd.read_excel(source)
+        else:
+            df = pd.read_csv(source)
+            
+        df.columns = [c.strip().lower() for c in df.columns]
+        
+        # Map columns
+        col_map = {}
+        for c in df.columns:
+            if any(k in c for k in ["fecha", "date"]): col_map["date"] = c
+            if any(k in c for k in ["desc", "concepto", "movement", "descripcion"]): col_map["desc"] = c
+            if "cargo" in c: col_map["charges"] = c
+            if "abono" in c: col_map["payments"] = c
+            if "importe" in c: col_map["amount"] = c
+
+        if "date" not in col_map or "desc" not in col_map:
+            print(f"ERROR: No pude identificar columnas básicas en el archivo. Columnas: {list(df.columns)}")
+            return 3
+            
+        for _, row in df.iterrows():
+            d_val = row[col_map["date"]]
+            if pd.isna(d_val): continue
+            
+            iso_date = None
+            if isinstance(d_val, datetime):
+                iso_date = d_val.date().isoformat()
+            else:
+                d_str = str(d_val).strip()
+                # Try some common date formats
+                for fmt in ["%Y-%m-%d", "%d/%m/%Y", "%d/%m/%y", "%m/%d/%Y", "%d-%m-%Y"]:
+                    try:
+                        iso_date = datetime.strptime(d_str, fmt).date().isoformat()
+                        break
+                    except ValueError: continue
+                
+                if not iso_date:
+                    iso_date = pu.parse_mx_date(d_str)
+            
+            if not iso_date: continue
+            
+            desc = str(row[col_map["desc"]])
+            
+            # Amount logic
+            amt = None
+            if "amount" in col_map:
+                amt = cu.parse_money(row[col_map["amount"]])
+            elif "charges" in col_map and "payments" in col_map:
+                c = cu.parse_money(row[col_map["charges"]]) or 0.0
+                p = cu.parse_money(row[col_map["payments"]]) or 0.0
+                amt = p - c 
+            
+            if amt is not None and amt != 0:
+                raw_txns.append(TxnRaw(date=iso_date, description=desc, amount=amt, rfc="", account_hint=""))
+        
+        datos = {"nombredelCliente": "File Extract", "periodo": "See transactions"}
     else:
         # Standard XML Parse
         if not xml_path or not xml_path.exists():
