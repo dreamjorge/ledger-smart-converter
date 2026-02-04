@@ -30,12 +30,146 @@ def t(key, **kwargs):
             return text
     return text
 
+def tc(category):
+    """Helper to get translated category name."""
+    if not category: return category
+    key = f"cat_{category.lower()}"
+    return t(key)
+
 # Page Config
 st.set_page_config(
     page_title=t("page_title"),
     page_icon="💳",
     layout="wide"
 )
+
+# --- Premium Design System (CSS Injection) ---
+CUSTOM_CSS = """
+<style>
+    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap');
+
+    :root {
+        --primary: #6366f1;
+        --primary-hover: #4f46e5;
+        --bg-dark: #0f172a;
+        --card-bg: rgba(30, 41, 59, 0.7);
+        --text-main: #f8fafc;
+        --text-muted: #94a3b8;
+        --border: rgba(255, 255, 255, 0.1);
+    }
+
+    /* Main Container Styles */
+    .main {
+        background-color: var(--bg-dark);
+        font-family: 'Outfit', sans-serif;
+        color: var(--text-main);
+    }
+
+    /* Global Typography */
+    html, body, [class*="css"] {
+        font-family: 'Outfit', sans-serif !important;
+    }
+
+    h1, h2, h3 {
+        font-weight: 700 !important;
+        letter-spacing: -0.02em !important;
+        color: var(--text-main) !important;
+    }
+
+    /* Card-like Metric Styling */
+    [data-testid="stMetric"] {
+        background: var(--card-bg);
+        padding: 1.5rem !important;
+        border-radius: 16px !important;
+        border: 1px solid var(--border) !important;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06) !important;
+        backdrop-filter: blur(12px) !important;
+        transition: transform 0.2s ease, box-shadow 0.2s ease !important;
+    }
+
+    [data-testid="stMetric"]:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05) !important;
+        border-color: var(--primary) !important;
+    }
+
+    /* Sidebar Styling */
+    [data-testid="stSidebar"] {
+        background-color: #1e293b !important;
+        border-right: 1px solid var(--border) !important;
+    }
+
+    /* Buttons Styling */
+    .stButton > button {
+        background-color: var(--primary) !important;
+        color: white !important;
+        border-radius: 8px !important;
+        border: none !important;
+        padding: 0.5rem 1.5rem !important;
+        font-weight: 600 !important;
+        transition: all 0.2s ease !important;
+        width: 100% !important;
+    }
+
+    .stButton > button:hover {
+        background-color: var(--primary-hover) !important;
+        box-shadow: 0 0 15px rgba(99, 102, 241, 0.4) !important;
+        transform: scale(1.02);
+    }
+
+    /* Tabs Styling */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 8px;
+        background-color: transparent !important;
+    }
+
+    .stTabs [data-baseweb="tab"] {
+        background-color: var(--card-bg) !important;
+        border-radius: 8px 8px 0 0 !important;
+        border: 1px solid var(--border) !important;
+        color: var(--text-muted) !important;
+        padding: 8px 20px !important;
+    }
+
+    .stTabs [aria-selected="true"] {
+        background-color: var(--primary) !important;
+        color: white !important;
+        border-bottom: 2px solid white !important;
+    }
+
+    /* Input Fields */
+    .stTextInput > div > div > input, .stSelectbox > div > div > div {
+        background-color: #1e293b !important;
+        border-radius: 8px !important;
+        border: 1px solid var(--border) !important;
+        color: var(--text-main) !important;
+    }
+
+    /* Animate on Load */
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(15px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    .element-container, .stMarkdown, .stPlotlyChart {
+        animation: fadeIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+
+    /* Premium Header Styling */
+    .premium-header {
+        background: linear-gradient(90deg, #6366f1 0%, #a855f7 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        font-size: 3rem !important;
+        font-weight: 800 !important;
+        margin-bottom: 0.5rem !important;
+    }
+
+    /* Hide Streamlit Header/Footer */
+    header, footer { visibility: hidden; }
+</style>
+"""
+st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
 # Constants
 ROOT_DIR = Path(__file__).parent.parent
@@ -137,8 +271,21 @@ def copy_csv_to_analysis(bank_label, csv_path):
 
 def calculate_categorization_stats(df):
     """Calculate Firefly-focused categorization statistics."""
-    if df is None or df.empty:
+    if df is None:
         return None
+    if df.empty:
+        return {
+            'total': 0,
+            'categorized': 0,
+            'uncategorized': 0,
+            'coverage_pct': 0,
+            'category_populated': 0,
+            'category_pct': 0,
+            'total_spent': 0.0,
+            'type_counts': {},
+            'categories': {},
+            'category_spending': {}
+        }
     
     total = len(df)
     
@@ -298,6 +445,7 @@ def render_bank_analytics(df, stats, bank_name, bank_id, csv_path):
         st.metric(t("metric_withdrawals"), withdrawals)
     
     # Charts Row
+    st.markdown("---")
     col1, col2 = st.columns(2)
     
     with col1:
@@ -306,9 +454,16 @@ def render_bank_analytics(df, stats, bank_name, bank_id, csv_path):
             names=[t("metric_categorized"), t("uncategorized")],
             values=[stats['categorized'], stats['uncategorized']],
             title=t("chart_coverage_title"),
-            color_discrete_sequence=['#00CC96', '#EF553B']
+            color_discrete_sequence=['#6366f1', '#475569'],
+            hole=0.6,
+            template="plotly_dark"
         )
-        st.plotly_chart(fig, width='stretch')
+        fig.update_layout(
+            font_family="Outfit",
+            title_font_size=20,
+            margin=dict(t=80, b=40, l=40, r=40)
+        )
+        st.plotly_chart(fig, use_container_width=True)
     
     with col2:
         # Transaction Types
@@ -319,21 +474,34 @@ def render_bank_analytics(df, stats, bank_name, bank_id, csv_path):
                 title=t("chart_types_title"),
                 labels={'x': t("chart_types_x"), 'y': t("chart_types_y")},
                 color=list(stats['type_counts'].keys()),
-                color_discrete_sequence=px.colors.qualitative.Set2
+                color_discrete_sequence=['#6366f1', '#818cf8', '#94a3b8'],
+                template="plotly_dark"
             )
-            st.plotly_chart(fig, width='stretch')
+            fig.update_layout(
+                font_family="Outfit",
+                title_font_size=20,
+                showlegend=False
+            )
+            st.plotly_chart(fig, use_container_width=True)
 
     if stats['category_spending']:
+        st.markdown("---")
         st.subheader(t("chart_spending_share"))
         spending_fig = px.pie(
-            names=list(stats['category_spending'].keys()),
+            names=[tc(n) for n in stats['category_spending'].keys()],
             values=list(stats['category_spending'].values()),
-            hole=0.3
+            hole=0.5,
+            template="plotly_dark",
+            color_discrete_sequence=px.colors.qualitative.Pastel
         )
         spending_fig.update_traces(textposition='inside', textinfo='percent+label')
-        spending_fig.update_layout(showlegend=True)
+        spending_fig.update_layout(
+            font_family="Outfit",
+            showlegend=True,
+            margin=dict(t=40, b=40, l=40, r=40)
+        )
         st.caption(t("spending_share_caption"))
-        st.plotly_chart(spending_fig, width='stretch')
+        st.plotly_chart(spending_fig, use_container_width=True)
     
     # Category Breakdown
     if stats['categories'] or stats['category_spending']:
@@ -348,7 +516,7 @@ def render_bank_analytics(df, stats, bank_name, bank_id, csv_path):
             
             fig_count = px.bar(
                 x=list(categories_sorted.values()),
-                y=list(categories_sorted.keys()),
+                y=[tc(n) for n in categories_sorted.keys()],
                 orientation='h',
                 labels={'x': 'Transaction Count', 'y': 'Category'},
                 color=list(categories_sorted.values()),
@@ -364,7 +532,7 @@ def render_bank_analytics(df, stats, bank_name, bank_id, csv_path):
             
             fig_spent = px.bar(
                 x=list(spending_sorted.values()),
-                y=list(spending_sorted.keys()),
+                y=[tc(n) for n in spending_sorted.keys()],
                 orientation='h',
                 labels={'x': 'Total Amount ($)', 'y': 'Category'},
                 color=list(spending_sorted.values()),
@@ -377,7 +545,7 @@ def render_bank_analytics(df, stats, bank_name, bank_id, csv_path):
         cat_data = []
         for cat in sorted(stats['categories'].keys()):
             cat_data.append({
-                "Category": cat,
+                "Category": tc(cat),
                 "Transactions": stats['categories'].get(cat, 0),
                 "Total Spent": f"${stats['category_spending'].get(cat, 0.0):,.2f}"
             })
@@ -386,16 +554,22 @@ def render_bank_analytics(df, stats, bank_name, bank_id, csv_path):
         # Drill-down: Detailed Transactions by Category
         st.markdown("---")
         st.subheader(t("drilldown_title"))
-        selected_cat = st.selectbox(t("drilldown_select"), [t("all")] + sorted(list(stats['categories'].keys())), key=f"{bank_id}_drilldown_cat")
+        selected_cat = st.selectbox(
+            t("drilldown_select"), 
+            options=[t("all")] + sorted(list(stats['categories'].keys())), 
+            format_func=lambda x: tc(x) if x != t("all") else x,
+            key=f"{bank_id}_drilldown_cat"
+        )
         
         display_df = df_filtered.copy()
         if selected_cat != t("all"):
             # Filter by matching the category part of destination_name
+            # Internal key (selected_cat) is still English
             display_df = display_df[display_df['destination_name'].str.contains(f":{selected_cat}", na=False)]
         
         # Format for display
         if not display_df.empty:
-            st.markdown(t("showing_txns", count=len(display_df), cat=selected_cat))
+            st.markdown(t("showing_txns", count=len(display_df), cat=tc(selected_cat)))
             # Select relevant columns
             view_cols = ['date', 'description', 'amount', 'destination_name', 'tags']
             st.dataframe(display_df[view_cols], width='stretch')
@@ -447,30 +621,23 @@ def render_bank_analytics(df, stats, bank_name, bank_id, csv_path):
             col1, col2 = st.columns(2)
             with col1:
                 # Common category suggestions (Internal IDs)
-                common_cats_internal = ["Groceries", "Restaurants", "Shopping", "Transport", "Subscriptions", "Entertainment", "Health", "Fees", "Online"]
-                
-                # Manual map to translations
-                cat_translations = {c: t(f"cat_{c.lower()}") for c in common_cats_internal}
+                common_cats = ["Groceries", "Restaurants", "Shopping", "Transport", "Subscriptions", "Entertainment", "Health", "Fees", "Online"]
                 
                 # If ML suggested a category that's not in common_cats, add it temporarily
-                if suggested_cat_hub and suggested_cat_hub not in common_cats_internal:
-                    common_cats_internal.insert(0, suggested_cat_hub)
-                    # Add translation if missing (fallback to itself)
-                    if suggested_cat_hub not in cat_translations:
-                        cat_translations[suggested_cat_hub] = suggested_cat_hub
+                if suggested_cat_hub and suggested_cat_hub not in common_cats:
+                    common_cats.insert(0, suggested_cat_hub)
                 
                 # Pre-select the ML suggested category if available
-                default_ix = common_cats_internal.index(suggested_cat_hub) if suggested_cat_hub in common_cats_internal else 0
+                default_ix = common_cats.index(suggested_cat_hub) if suggested_cat_hub in common_cats else 0
                 
                 # Display localized but value is internal
-                selected_cat_display = st.selectbox(
+                category = st.selectbox(
                     t("select_category"), 
-                    options=[cat_translations[c] for c in common_cats_internal],
+                    options=common_cats,
                     index=default_ix, 
-                    key=f"{bank_name}_fix_category"
+                    format_func=lambda x: tc(x),
+                    key=f"{bank_id}_fix_category"
                 )
-                # Map back to internal ID
-                category = [k for k, v in cat_translations.items() if v == selected_cat_display][0]
             
             # Auto-suggest expense based on category
             # If ML has a full path like Expenses:Food:Groceries, use it directly if it matches the selected leaf category
@@ -518,6 +685,10 @@ def render_comparison(df_sant, df_hsbc):
     stats_sant = calculate_categorization_stats(df_sant)
     stats_hsbc = calculate_categorization_stats(df_hsbc)
     
+    if stats_sant is None or stats_hsbc is None:
+        st.warning(t("no_data_comparison"))
+        return
+    
     # Comparison Metrics
     col1, col2 = st.columns(2)
     
@@ -534,17 +705,27 @@ def render_comparison(df_sant, df_hsbc):
         st.metric(t("metric_categorized"), f"{stats_hsbc['coverage_pct']:.1f}%", help=t("help_coverage"))
     
     # Side-by-side coverage chart
+    st.markdown("---")
     fig = go.Figure(data=[
         go.Bar(name=t("metric_categorized"), x=['Santander', 'HSBC'], 
-               y=[stats_sant['categorized'], stats_hsbc['categorized']], marker_color='#00CC96'),
+               y=[stats_sant['categorized'], stats_hsbc['categorized']], 
+               marker_color='#6366f1'),
         go.Bar(name=t("uncategorized"), x=['Santander', 'HSBC'], 
-               y=[stats_sant['uncategorized'], stats_hsbc['uncategorized']], marker_color='#EF553B')
+               y=[stats_sant['uncategorized'], stats_hsbc['uncategorized']], 
+               marker_color='#475569')
     ])
-    fig.update_layout(barmode='stack', title=t("chart_coverage_title"))
-    st.plotly_chart(fig, width='stretch')
+    fig.update_layout(
+        barmode='stack', 
+        title=t("chart_coverage_title"),
+        template="plotly_dark",
+        font_family="Outfit",
+        title_font_size=20
+    )
+    st.plotly_chart(fig, use_container_width=True)
 
 def main():
-    st.title(t("app_title"))
+    st.markdown('<h1 class="premium-header">Ledger Smart Converter</h1>', unsafe_allow_html=True)
+    st.markdown(f'<p style="color: var(--text-muted); font-size: 1.1rem; margin-top: -1rem;">{t("app_title")}</p>', unsafe_allow_html=True)
     
     # Sidebar: Language Selection
     lang_options = {"🇺🇸 English": "en", "🇲🇽 Español": "es"}
