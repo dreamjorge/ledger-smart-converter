@@ -1,4 +1,24 @@
 version: 1
+banks:
+  santander_likeu:
+    name: "Liabilities:CC:Santander LikeU"
+    display_name: "Santander LikeU (XLSX/PDF)"
+    type: "xlsx"
+    account_key: "credit_card"
+    payment_asset_key: "payment_asset"
+    card_tag: "card:likeu"
+    fallback_name: "Liabilities:CC:Santander LikeU"
+    fallback_asset: "Assets:Santander Débito"
+  hsbc:
+    name: "Liabilities:CC:HSBC"
+    display_name: "HSBC Mexico (XML/PDF)"
+    type: "xml"
+    account_key: "hsbc_credit_card"
+    payment_asset_key: "hsbc_payment_asset"
+    card_tag: "card:hsbc"
+    fallback_name: "Liabilities:CC:HSBC"
+    fallback_asset: "Assets:HSBC Débito"
+
 defaults:
   currency: MXN
   accounts:
@@ -308,6 +328,7 @@ rules:
   - chatgpt
   - paramount
   - max
+  - hbomax
   - hbomax
   set:
     expense: Expenses:Entertainment:DigitalServices

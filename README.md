@@ -86,6 +86,15 @@ When you upload a PDF statement:
 2.  **OCR Fallback**: If text reading fails (e.g., scanned PDF), it uses **Tesseract OCR** to extract the information.
     - *Default Windows path checked*: `C:\Program Files\Tesseract-OCR\tesseract.exe`
 
+### Feedback loop
+Use `src/pdf_feedback.py` when you want to compare the OCR output against the XML reference and collect the rows that still fail.
+```powershell
+.\.venv\Scripts\python.exe src\pdf_feedback.py `
+  --pdf data\hsbc\statements.pdf `
+  --xml data\hsbc\statements.xml
+```
+The script writes `data/hsbc/feedback/feedback_summary.json`, `pdf_only.csv`, `xml_only.csv`, and `raw_lines.csv` so you can tune `src/pdf_utils.py` (regex, date parsing, preprocessing) based on real mismatches before dropping the XML altogether.
+
 ## Configuration (`rules.yml`)
 
 Configure account names and closing dates at the top:

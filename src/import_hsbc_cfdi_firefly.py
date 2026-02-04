@@ -58,6 +58,107 @@ class TxnRaw:
     amount: float
     rfc: str
     account_hint: str  # numerodecuenta si viene
+    source: str = "xml"
+    page: int = 0
+    source_line: str = ""
+
+
+def txn_match_key(txn: TxnRaw) -> Tuple[str, float]:
+    """Claves simples para emparejar transacciones entre PDF y XML."""
+    return txn.date, round(abs(txn.amount), 2)
+
+
+def apply_xml_reference_to_pdf(pdf_txns: List[TxnRaw], xml_txns: List[TxnRaw]) -> Tuple[List[TxnRaw], Dict[str, Any]]:
+    """
+    Fusiona los datos del PDF con los metadatos del XML cuando existe coincidencia.
+    Retorna la lista final de TxnRaw y un resumen de la validación.
+    """
+    xml_index = defaultdict(list)
+    for idx, txn in enumerate(xml_txns):
+        xml_index[txn_match_key(txn)].append((idx, txn))
+
+    merged: List[TxnRaw] = []
+    pdf_only: List[TxnRaw] = []
+    diffs: List[Dict[str, Any]] = []
+    used_xml = set()
+
+    for pdf in pdf_txns:
+        key = txn_match_key(pdf)
+        candidate = None
+        for idx, xml_txn in xml_index.get(key, []):
+            if idx not in used_xml:
+                candidate = (idx, xml_txn)
+                break
+
+        if candidate:
+            idx, xml_txn = candidate
+            used_xml.add(idx)
+            merged.append(TxnRaw(
+                date=pdf.date,
+                description=pdf.description or xml_txn.description,
+                amount=pdf.amount,
+                rfc=xml_txn.rfc or pdf.rfc,
+                account_hint=xml_txn.account_hint or pdf.account_hint,
+                source=pdf.source,
+            ))
+
+            desc_pdf = cu.strip_ws(pdf.description)
+            desc_xml = cu.strip_ws(xml_txn.description)
+            if (desc_pdf.lower() != desc_xml.lower()) or abs(pdf.amount - xml_txn.amount) > 0.01:
+                diffs.append({
+                    "date": pdf.date,
+                    "pdf_amount": pdf.amount,
+                    "xml_amount": xml_txn.amount,
+                    "pdf_desc": desc_pdf,
+                    "xml_desc": desc_xml,
+                })
+        else:
+            merged.append(pdf)
+            pdf_only.append(pdf)
+
+    xml_only = [txn for idx, txn in enumerate(xml_txns) if idx not in used_xml]
+
+    summary = {
+        "matched": len(pdf_txns) - len(pdf_only),
+        "total_pdf": len(pdf_txns),
+        "total_xml": len(xml_txns),
+        "pdf_only": pdf_only,
+        "xml_only": xml_only,
+        "differences": diffs,
+    }
+    return merged, summary
+
+
+def print_pdf_xml_validation_summary(summary: Optional[Dict[str, Any]]) -> None:
+    if not summary:
+        return
+
+    print("\n--- Validación PDF vs XML ---")
+    print(f"  Coincidencias: {summary['matched']} / {summary['total_pdf']} (PDF) vs {summary['total_xml']} (XML)")
+
+    if summary["differences"]:
+        print("  Diferencias detectadas (descripcion o monto):")
+        for diff in summary["differences"][:3]:
+            print(f"    {diff['date']}: PDF ${diff['pdf_amount']:.2f} [{diff['pdf_desc']}] vs XML [{diff['xml_desc']}] (${diff['xml_amount']:.2f})")
+        if len(summary["differences"]) > 3:
+            extras = len(summary["differences"]) - 3
+            print(f"    ... y {extras} diferencias adicionales.")
+
+    if summary["pdf_only"]:
+        count = len(summary["pdf_only"])
+        print(f"  Entradas solo en PDF: {count}")
+        for txn in summary["pdf_only"][:3]:
+            print(f"    {txn.date} - ${txn.amount:.2f} - {txn.description}")
+        if count > 3:
+            print(f"    ... {count - 3} mas.")
+
+    if summary["xml_only"]:
+        count = len(summary["xml_only"])
+        print(f"  Entradas solo en XML: {count}")
+        for txn in summary["xml_only"][:3]:
+            print(f"    {txn.date} - ${txn.amount:.2f} - {txn.description}")
+        if count > 3:
+            print(f"    ... {count - 3} mas.")
 
 
 # ----------------------------
@@ -183,9 +284,10 @@ def main() -> int:
     xml_path = Path(args.xml) if args.xml else None
     csv_path = Path(args.csv) if args.csv else None
     pdf_path = Path(args.pdf) if args.pdf else None
+    pdf_source_mode = bool(args.pdf_source and pdf_path and pdf_path.exists())
     rules_path = Path(args.rules)
 
-    if not xml_path and not csv_path and not (args.pdf_source and pdf_path):
+    if not xml_path and not csv_path and not pdf_source_mode:
         print("ERROR: Debe proporcionar --xml, --csv o --pdf (con --pdf-source)")
         return 2
 
@@ -201,11 +303,38 @@ def main() -> int:
         for k, v in pdf_meta.items():
             print(f"  {k}: {v}")
 
+    xml_reference_txns: List[TxnRaw] = []
+    xml_reference_datos: Dict[str, str] = {}
+    xml_reference_loaded = False
+    if xml_path and xml_path.exists() and xml_path.suffix.lower() == ".xml":
+        try:
+            root = ET.fromstring(xml_path.read_text(encoding="utf-8", errors="strict"))
+        except UnicodeDecodeError:
+            root = ET.fromstring(xml_path.read_text(encoding="utf-8", errors="ignore"))
+
+        addenda = get_addenda(root)
+        if addenda is None:
+            msg = "ERROR: No encontré cfdi:Addenda en el XML. Este script espera movimientos dentro de la Addenda."
+            if pdf_source_mode:
+                print(f"WARNING: {msg} - el PDF sigue siendo la fuente principal.")
+            else:
+                print(msg)
+                return 3
+        else:
+            xml_reference_datos = get_datos_generales(addenda)
+            xml_reference_txns = extract_movimientos(addenda)
+            xml_reference_loaded = True
+    elif xml_path and not xml_path.exists():
+        print(f"ERROR: No existe XML: {xml_path}")
+        return 2
+
+    pdf_xml_summary: Optional[Dict[str, Any]] = None
+
     # Parse Transactions
     raw_txns = []
     datos = {}
     
-    if args.pdf_source and pdf_path:
+    if pdf_source_mode:
         print(f"--- Usando PDF (OCR) como fuente de transacciones ---")
         pdf_txns = pu.extract_transactions_from_pdf(pdf_path, use_ocr=True)
         year = datetime.now().year
@@ -223,9 +352,22 @@ def main() -> int:
                 description=pt["description"],
                 amount=pt["amount"],
                 rfc="",
-                account_hint=""
+                account_hint="",
+                source="pdf",
+                page=pt.get("page", 0),
+                source_line=pt.get("line", "")
             ))
-        datos = {"nombredelCliente": "PDF Extract", "periodo": pdf_meta.get("cutoff_date", "Unknown")}
+
+        datos = xml_reference_datos.copy() if xml_reference_datos else {}
+        datos.setdefault("nombredelCliente", "PDF Extract")
+        datos.setdefault("periodo", pdf_meta.get("cutoff_date", xml_reference_datos.get("periodo", "Unknown")))
+        if xml_reference_txns:
+            raw_txns, pdf_xml_summary = apply_xml_reference_to_pdf(raw_txns, xml_reference_txns)
+        elif not raw_txns:
+            print("WARNING: No se extrajeron movimientos del PDF.")
+
+        if not datos:
+            datos = {"nombredelCliente": "PDF Extract", "periodo": pdf_meta.get("cutoff_date", "Unknown")}
     elif (csv_path and csv_path.exists()) or (xml_path and xml_path.suffix.lower() in [".csv", ".xlsx", ".xls"]):
         # Handle cases where user might have passed CSV/XLSX to --xml or used --csv
         source = csv_path or xml_path
@@ -289,23 +431,11 @@ def main() -> int:
         
         datos = {"nombredelCliente": "File Extract", "periodo": "See transactions"}
     else:
-        # Standard XML Parse
-        if not xml_path or not xml_path.exists():
-            print(f"ERROR: No existe XML: {xml_path}")
-            return 2
-        
-        try:
-            root = ET.fromstring(xml_path.read_text(encoding="utf-8", errors="strict"))
-        except UnicodeDecodeError:
-            root = ET.fromstring(xml_path.read_text(encoding="utf-8", errors="ignore"))
-
-        addenda = get_addenda(root)
-        if addenda is None:
-            print("ERROR: No encontré cfdi:Addenda en el XML. Este script espera movimientos dentro de la Addenda.")
+        if not xml_reference_loaded:
+            print("ERROR: El XML proporcionado no contiene movimientos válidos.")
             return 3
-
-        datos = get_datos_generales(addenda)
-        raw_txns = extract_movimientos(addenda)
+        datos = xml_reference_datos
+        raw_txns = xml_reference_txns
 
     rules_yml = yaml.safe_load(rules_path.read_text(encoding="utf-8"))
     defaults = rules_yml.get("defaults", {}) or {}
@@ -460,6 +590,9 @@ def main() -> int:
     print(f"Movimientos exportados: {len(out_rows)}")
     print(f"Suma cargos: {sum_charges:.2f}")
     print(f"Suma pagos: {sum_payments:.2f}")
+
+    if pdf_xml_summary:
+        print_pdf_xml_validation_summary(pdf_xml_summary)
 
     return 0
 

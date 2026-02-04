@@ -47,6 +47,15 @@ ANALYTICS_CSV_TARGETS = {
     "Santander LikeU": ("santander", "firefly_likeu.csv"),
     "HSBC Mexico": ("hsbc", "firefly_hsbc.csv"),
 }
+
+@st.cache_data
+def get_banks_config():
+    rules_path = CONFIG_DIR / "rules.yml"
+    if rules_path.exists():
+        with open(rules_path, "r", encoding="utf-8") as f:
+            cfg = yaml.safe_load(f)
+            return cfg.get("banks", {})
+    return {}
 NAV_KEY = "nav_page"
 BANK_KEY = "bank_select"
 COPY_FEEDBACK_KEY = "copy_feedback"
@@ -221,7 +230,7 @@ def render_analytics_dashboard():
         with selected_tabs[tab_idx]:
             st.subheader(t("bank_analytics_header", bank="Santander"))
             stats = calculate_categorization_stats(df_sant)
-            render_bank_analytics(df_sant, stats, "Santander", santander_csv)
+            render_bank_analytics(df_sant, stats, "Santander", "santander_likeu", santander_csv)
         tab_idx += 1
 
     # HSBC Tab
@@ -229,7 +238,7 @@ def render_analytics_dashboard():
         with selected_tabs[tab_idx]:
             st.subheader(t("bank_analytics_header", bank="HSBC"))
             stats = calculate_categorization_stats(df_hsbc)
-            render_bank_analytics(df_hsbc, stats, "HSBC", hsbc_csv)
+            render_bank_analytics(df_hsbc, stats, "HSBC", "hsbc", hsbc_csv)
         tab_idx += 1
     
     # Comparison Tab
@@ -238,7 +247,7 @@ def render_analytics_dashboard():
             st.subheader(t("bank_comparison"))
             render_comparison(df_sant, df_hsbc)
 
-def render_bank_analytics(df, stats, bank_name, csv_path):
+def render_bank_analytics(df, stats, bank_name, bank_id, csv_path):
     """Render analytics for a single bank."""
     if df is None or df.empty:
         st.error("No data available")
@@ -377,7 +386,7 @@ def render_bank_analytics(df, stats, bank_name, csv_path):
         # Drill-down: Detailed Transactions by Category
         st.markdown("---")
         st.subheader(t("drilldown_title"))
-        selected_cat = st.selectbox(t("drilldown_select"), [t("all")] + sorted(list(stats['categories'].keys())), key=f"{bank_name}_drilldown_cat")
+        selected_cat = st.selectbox(t("drilldown_select"), [t("all")] + sorted(list(stats['categories'].keys())), key=f"{bank_id}_drilldown_cat")
         
         display_df = df_filtered.copy()
         if selected_cat != t("all"):
@@ -415,7 +424,7 @@ def render_bank_analytics(df, stats, bank_name, csv_path):
             c_search, c_suggest = st.columns([2, 3])
             
             with c_search:
-                search_term = st.text_input(t("fuzzy_search"), "", key=f"{bank_name}_fuzzy_search")
+                search_term = st.text_input(t("fuzzy_search"), "", key=f"{bank_id}_fuzzy_search")
                 if search_term:
                     matches = sm.find_similar_merchants(search_term, merchant_list, threshold=50)
                     if matches:
@@ -423,7 +432,7 @@ def render_bank_analytics(df, stats, bank_name, csv_path):
                     else:
                         st.warning(t("no_similar_merchants"))
 
-            selected_merchant = st.selectbox(t("select_merchant"), merchant_list, key=f"{bank_name}_fix_merchant")
+            selected_merchant = st.selectbox(t("select_merchant"), merchant_list, key=f"{bank_id}_fix_merchant")
             
             # Get ML Prediction
             ml_predictions = ML_ENGINE.predict(selected_merchant)
@@ -496,12 +505,11 @@ def render_bank_analytics(df, stats, bank_name, csv_path):
                 st.success(t("rule_saved", merchant=selected_merchant))
                 st.info(t("regenerating"))
                 
-                # Re-run the appropriate import script
-                script = "import_likeu_firefly.py" if bank_name == "Santander" else "import_hsbc_cfdi_firefly.py"
-                
-                # We need to know which file was used. 
-                # This is tricky because the files are in DATA_DIR.
-                # For now, we'll try to find the "latest" processed file or assume standard names.
+                # Re-run the generic importer
+                script = "generic_importer.py"
+                # We need to find the data file. For now, we assume it's the one we just processed.
+                # Actually, the user can just regenerate from the import tab if needed, 
+                # but we can try to find the last uploaded file in temp.
                 st.warning(t("reprocess_warning"))
                 st.balloons()
 
@@ -571,15 +579,22 @@ def main():
     st.sidebar.markdown("---")
     
     # Bank Selection
-    bank_map = {
-        t("bank_santander"): "Santander LikeU",
-        t("bank_hsbc"): "HSBC Mexico"
-    }
+    banks_cfg = get_banks_config()
+    if banks_cfg:
+        # Create a mapping from display name to ID
+        bank_map = {cfg.get("display_name", bid): bid for bid, cfg in banks_cfg.items()}
+    else:
+        # Fallback to hardcoded list if rules.yml is missing or empty
+        bank_map = {
+            t("bank_santander"): "santander_likeu",
+            t("bank_hsbc"): "hsbc"
+        }
     bank_options = list(bank_map.keys())
     if BANK_KEY not in st.session_state or st.session_state[BANK_KEY] not in bank_options:
         st.session_state[BANK_KEY] = bank_options[0]
     bank_label = st.sidebar.selectbox(t("select_bank"), options=bank_options, key=BANK_KEY)
-    bank = bank_map[bank_label]
+    bank_id = bank_map[bank_label]
+    bank_cfg = banks_cfg.get(bank_id, {})
     
     # Rules File
     rules_path = CONFIG_DIR / "rules.yml"
@@ -601,22 +616,22 @@ def main():
     # Main Content
     # ----------------------------
     
-    with st.expander(t("quick_start"), expanded=bank == "Santander LikeU"):
-        st.write(t("welcome_bank", bank=bank))
+    with st.expander(t("quick_start"), expanded=bank_id == "santander_likeu"):
+        st.write(t("welcome_bank", bank=bank_label))
         st.write(t("steps_desc"))
         
-        file_type_label = "Excel" if bank == "Santander LikeU" else "XML"
+        file_type_label = "Excel" if bank_cfg.get("type") == "xlsx" else "XML"
         st.markdown(t("step_1", file_type=file_type_label))
         st.markdown(t("step_2"))
         st.markdown(t("step_3"))
         st.markdown(t("step_4"))
         
-        if bank == "Santander LikeU":
+        if bank_id == "santander_likeu":
             st.info(t("tip_santander"))
         else:
             st.info(t("tip_hsbc"))
 
-    st.header(t("import_header", bank=bank))
+    st.header(t("import_header", bank=bank_label))
     
     uploaded_main = None
     uploaded_pdf = None
@@ -624,9 +639,9 @@ def main():
     col1, col2 = st.columns(2)
     
     with col1:
-        if bank == "Santander LikeU":
+        if bank_cfg.get("type") == "xlsx":
             uploaded_main = st.file_uploader(t("select_xlsx"), type=["xlsx"], help=t("help_xlsx"))
-        else: # HSBC
+        else: # XML / HSBC
             uploaded_main = st.file_uploader(t("select_xml"), type=["xml", "csv", "xlsx"], help=t("help_xml"))
             
     with col2:
@@ -646,31 +661,27 @@ def main():
                 # Output paths
                 output_base = TEMP_DIR / "output"
                 output_base.mkdir(parents=True, exist_ok=True)
-                analytics_target = ANALYTICS_CSV_TARGETS.get(bank)
-                if analytics_target:
-                    dest_dir, dest_name = analytics_target
-                    out_csv = DATA_DIR / dest_dir / dest_name
-                    out_csv.parent.mkdir(parents=True, exist_ok=True)
-                else:
-                    out_csv = output_base / "firefly_import.csv"
-                out_unknown = output_base / "unknown_merchants.csv"
-                out_suggestions = output_base / "rules_suggestions.yml"
+                analytics_target = ANALYTICS_CSV_TARGETS.get(bank_label)
+                if not analytics_target:
+                    # Generic target based on bank_id
+                    analytics_target = (bank_id.split('_')[0], f"firefly_{bank_id}.csv")
+                
+                dest_dir, dest_name = analytics_target
+                out_csv = DATA_DIR / dest_dir / dest_name
+                out_csv.parent.mkdir(parents=True, exist_ok=True)
+                
+                out_unknown = DATA_DIR / dest_dir / "unknown_merchants.csv"
+                out_suggestions = DATA_DIR / dest_dir / "rules_suggestions.yml"
                 
                 # 2. Construct Script Arguments
                 args = []
-                script = ""
+                script = "generic_importer.py"
                 
-                if bank == "Santander LikeU":
-                    script = "import_likeu_firefly.py"
-                    args.extend(["--xlsx", str(main_path)])
-                else:
-                    script = "import_hsbc_cfdi_firefly.py"
-                    args.extend(["--xml", str(main_path)])
-                
+                args.extend(["--bank", bank_id])
+                args.extend(["--data", str(main_path)] if main_path else [])
                 args.extend(["--rules", str(rules_path)])
                 args.extend(["--out", str(out_csv)])
                 args.extend(["--unknown-out", str(out_unknown)])
-                args.extend(["--suggestions-out", str(out_suggestions)])
                 
                 if pdf_path:
                     args.extend(["--pdf", str(pdf_path)])
@@ -693,7 +704,7 @@ def main():
                     """)
                     
                     if st.button(t("copy_to_analysis")):
-                        copied, result = copy_csv_to_analysis(bank, out_csv)
+                        copied, result = copy_csv_to_analysis(bank_label, out_csv)
                         if copied:
                             st.session_state[COPY_FEEDBACK_KEY] = t("copy_success", path=result)
                             st.session_state[NAV_KEY] = t("nav_analytics")
