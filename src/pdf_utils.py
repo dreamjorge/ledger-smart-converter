@@ -159,6 +159,7 @@ def extract_transactions_from_pdf(pdf_path: Path, use_ocr: bool = False) -> List
         # 2. Fallback to OCR if forced or if Text Extraction failed to find rows
         # We check rows found after attempt 1
         sub_txns = []
+        line = ""
         if txt:
             for line in txt.splitlines():
                 m = row_rx.search(line)
@@ -167,9 +168,10 @@ def extract_transactions_from_pdf(pdf_path: Path, use_ocr: bool = False) -> List
                         "raw_date": m.group(1),
                         "description": m.group(2).strip(),
                         "amount": parse_amount_str(m.group(3).replace(",", ".")),
-                        "page": page_idx + 1
+                        "page": page_idx + 1,
+                        "line": line.strip()
                     })
-        
+
         if not sub_txns:
             # Try OCR (either forced or as fallback)
             if pytesseract:
@@ -186,7 +188,8 @@ def extract_transactions_from_pdf(pdf_path: Path, use_ocr: bool = False) -> List
                                 "raw_date": m.group(1),
                                 "description": m.group(2).strip(),
                                 "amount": parse_amount_str(m.group(3).replace(",", ".")),
-                                "page": page_idx + 1
+                                "page": page_idx + 1,
+                                "line": line.strip()
                             })
 
         print(f"DEBUG: Page {page_idx+1}: Used {used_method}. Found {len(sub_txns)} rows.")
@@ -198,7 +201,42 @@ def extract_transactions_from_pdf(pdf_path: Path, use_ocr: bool = False) -> List
     doc.close()
     return txns
 
-def extract_pdf_metadata(pdf_path: Path) -> Dict[str, Any]:
+
+def collect_pdf_lines(pdf_path: Path, use_ocr: bool = False) -> List[Dict[str, Any]]:
+    """
+    Returns every text line from the PDF pages, including OCR fallback lines.
+    """
+    if not pdf_path.exists() or fitz is None:
+        return []
+
+    doc = fitz.open(str(pdf_path))
+    lines: List[Dict[str, Any]] = []
+
+    for page_idx in range(doc.page_count):
+        page = doc.load_page(page_idx)
+        text = page.get_text()
+        method = "text"
+        if not text.strip() and use_ocr and pytesseract:
+            img = render_page(doc, page_idx, zoom=3.0)
+            if img is not None:
+                gray = preprocess_for_ocr(img)
+                text = pytesseract.image_to_string(gray, lang="spa+eng", config="--psm 6")
+                method = "ocr"
+
+        for raw_line in text.splitlines():
+            stripped = raw_line.strip()
+            if not stripped:
+                continue
+            lines.append({
+                "page": page_idx + 1,
+                "method": method,
+                "text": stripped
+            })
+
+    doc.close()
+    return lines
+
+def extract_pdf_metadata(pdf_path: Path, patterns: Optional[Dict[str, List[re.Pattern]]] = None) -> Dict[str, Any]:
     """
     Extracts dates and amounts from PDF.
     Tries Text extraction first.
@@ -214,6 +252,9 @@ def extract_pdf_metadata(pdf_path: Path) -> Dict[str, Any]:
     doc = fitz.open(str(pdf_path))
     metadata = {}
     
+    # Use provided patterns or default
+    active_patterns = patterns if patterns is not None else PATTERNS
+
     # 1. Text Extraction (Page 1 is covering 99% of summary info)
     page1_text = ""
     if doc.page_count > 0:
@@ -221,7 +262,7 @@ def extract_pdf_metadata(pdf_path: Path) -> Dict[str, Any]:
         page1_text = doc[0].get_text()
 
     # Search regexes in text
-    for key, regexes in PATTERNS.items():
+    for key, regexes in active_patterns.items():
         for rx in regexes:
             m = rx.search(page1_text)
             if m:
@@ -246,7 +287,7 @@ def extract_pdf_metadata(pdf_path: Path) -> Dict[str, Any]:
             txt_ocr = ocr_image(preprocess_for_ocr(crop)).lower()
             
             # Re-run regexes on OCR text
-            for key, regexes in PATTERNS.items():
+            for key, regexes in active_patterns.items():
                 if key in metadata: continue # already found
                 for rx in regexes:
                     m = rx.search(txt_ocr)
