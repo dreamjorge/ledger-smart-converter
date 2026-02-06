@@ -1,6 +1,14 @@
-# Plan de mejoras (propuesta)
+# Plan de mejoras (propuesta ejecutable)
 
-Este plan busca tres metas: **despliegue claro**, **unificación de cuentas**, y **generación consistente de base de datos** para el dashboard y para exportación a Firefly III.
+Este plan busca tres metas: **despliegue claro**, **unificación de cuentas**, y **generación consistente de base de datos** para el dashboard y para exportación a Firefly III. El objetivo adicional es pasar de una visión conceptual a una **hoja de ruta accionable** con entregables, criterios de aceptación y riesgos.
+
+---
+
+## Principios de diseño
+- **Observabilidad primero**: cada etapa deja logs y métricas mínimas para auditoría.
+- **Idempotencia**: re-procesar un archivo no duplica data (hash de fuente).
+- **Extensibilidad**: nuevos bancos/formatos se integran por configuración.
+- **Compatibilidad**: mantener CSVs actuales durante la transición.
 
 ## 1) Despliegue (documentación + automatización)
 
@@ -8,11 +16,18 @@ Este plan busca tres metas: **despliegue claro**, **unificación de cuentas**, y
 - Documentar despliegue local y en servidor (Linux/Windows) con Streamlit.
 - Checklist de pre-requisitos (Python, Tesseract, deps) y rutas conocidas por SO.
 - Plantillas de `.env`/`config` para rutas de OCR y directorios de datos.
+- Sección de **troubleshooting** (OCR, encoding, permisos en rutas).
 
 **Mediano plazo (2-6 semanas)**
 - Script de instalación multiplataforma (PowerShell + bash) para instalar dependencias.
 - Script de arranque en modo servidor (`--server.address 0.0.0.0`).
 - Guía de despliegue en VPS (systemd o supervisor) y recomendaciones de backups.
+- Healthcheck básico (endpoint o script) para validar OCR, DB y rutas.
+
+**Entregables y aceptación**
+- README actualizado con pasos de instalación/arranque por SO.
+- Scripts con salida clara y codes de error.
+- Un playbook de despliegue con recuperación ante fallos.
 
 ## 2) Unificación de cuentas (modelo canónico)
 
@@ -23,6 +38,12 @@ Este plan busca tres metas: **despliegue claro**, **unificación de cuentas**, y
 - Introducir un **alias map** (por nombre de banco o CSV) → `account_id`.
 - Mantener **metadatos de cuenta** (tipo, moneda, banco, cierre, tags por defecto).
 - En `rules.yml`, separar **nombres de cuenta visibles** vs. **IDs internos**.
+- Normalizar tags de cuenta (`card:*`, `bank:*`, `currency:*`).
+
+**Detalle de configuración sugerida**
+- `config/accounts.yml`: catálogo canónico de cuentas y metadatos.
+- `config/aliases.yml`: mapeo de alias externos → `account_id`.
+- Actualizar `rules.yml` para referenciar `account_id` y `display_name`.
 
 **Resultados esperados**
 - Dashboard unificado con filtros por cuenta/banco/categoría.
@@ -46,6 +67,11 @@ Este plan busca tres metas: **despliegue claro**, **unificación de cuentas**, y
 - `imports`
   - `import_id`, `bank_id`, `source_file`, `processed_at`, `status`
 
+### Reglas de deduplicación
+- `source_hash = sha256(bank_id + source_file + date + amount + merchant)`
+- Unicidad por `(source_hash)` para evitar duplicados en re-procesos.
+- Campo `import_id` para rastrear lote de carga.
+
 ### Flujo de datos (ETL)
 1. **Ingesta**: CSV/XML/PDF → `transactions_raw`.
 2. **Normalización**: limpieza y enriquecimiento → `transactions`.
@@ -59,19 +85,39 @@ Este plan busca tres metas: **despliegue claro**, **unificación de cuentas**, y
 - Dashboard más rápido con consultas agregadas.
 - Exportación Firefly estable y auditable (log de importes).
 
+**Entregables y aceptación**
+- Migración de CSVs existentes a la DB sin pérdida de campos.
+- Exporter Firefly consume vistas en DB, no CSV directo.
+- Se puede re-procesar un mismo PDF/CSV sin duplicar filas.
+
 ## 4) Hoja de ruta sugerida (prioridades)
 
 **Fase 1 (rápida, 1-2 semanas)**
 - Documentación de despliegue + plantilla de config.
 - Mapa canónico de cuentas + alias.
 - Unificación de rutas de salida en `data/`.
+- Checklist de validación por banco (HSBC/Santander).
 
 **Fase 2 (2-6 semanas)**
 - Base de datos SQLite con migración de CSV existentes.
 - Exporter Firefly desde DB.
 - Dashboard leyendo vistas agregadas desde DB.
+- Registro de importaciones y auditoría básica.
 
 **Fase 3 (6+ semanas)**
 - UI para gestionar cuentas/rules.
 - Re-procesos incrementales y auditoría de cambios.
 - Sincronización automática con Firefly (opcional vía API).
+- Reporte mensual automático (PDF/CSV) con KPIs.
+
+---
+
+## Métricas de éxito
+- Tiempo de setup nuevo usuario < 30 minutos.
+- 0 duplicados en re-importaciones durante un mes de uso.
+- 90%+ de transacciones categorizadas automáticamente.
+
+## Riesgos y mitigaciones
+- **OCR inconsistente** → mantener XML/XLSX como fallback.
+- **Reglas desalineadas** → versionar reglas con `rules.yml` y registrar cambios.
+- **Migración de datos** → scripts idempotentes y backups previos.
