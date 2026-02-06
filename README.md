@@ -38,6 +38,31 @@ It features an intelligent **Learning Cycle** that helps you progressively categ
     .\scripts\setup_env.ps1
     ```
 
+## Deployment (Local / Server)
+
+This project runs as a Streamlit app. You can deploy it locally or on a small VM.
+
+### Windows (PowerShell)
+```powershell
+.\scripts\setup_env.ps1
+.\scripts\run_web.ps1
+```
+
+### Linux/macOS (bash)
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+streamlit run src/web_app.py --server.address 0.0.0.0 --server.port 8501
+```
+
+**OCR (optional):** install Tesseract and ensure it is on your PATH. For example:
+```bash
+sudo apt-get install tesseract-ocr
+```
+
+For a deeper roadmap (deployment, unified accounts, and database improvements), see [`docs/plan_mejoras.md`](docs/plan_mejoras.md).
+
 ## Usage
 
 ### 1. Launch the App

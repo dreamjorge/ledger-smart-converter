@@ -1,0 +1,77 @@
+# Plan de mejoras (propuesta)
+
+Este plan busca tres metas: **despliegue claro**, **unificación de cuentas**, y **generación consistente de base de datos** para el dashboard y para exportación a Firefly III.
+
+## 1) Despliegue (documentación + automatización)
+
+**Corto plazo (0-2 semanas)**
+- Documentar despliegue local y en servidor (Linux/Windows) con Streamlit.
+- Checklist de pre-requisitos (Python, Tesseract, deps) y rutas conocidas por SO.
+- Plantillas de `.env`/`config` para rutas de OCR y directorios de datos.
+
+**Mediano plazo (2-6 semanas)**
+- Script de instalación multiplataforma (PowerShell + bash) para instalar dependencias.
+- Script de arranque en modo servidor (`--server.address 0.0.0.0`).
+- Guía de despliegue en VPS (systemd o supervisor) y recomendaciones de backups.
+
+## 2) Unificación de cuentas (modelo canónico)
+
+**Objetivo:** presentar una vista homogénea de cuentas, sin importar si provienen de HSBC, Santander u otras fuentes.
+
+**Propuesta técnica**
+- Definir un **`account_id` canónico** (ej. `credit_card:santander_likeu`, `credit_card:hsbc`).
+- Introducir un **alias map** (por nombre de banco o CSV) → `account_id`.
+- Mantener **metadatos de cuenta** (tipo, moneda, banco, cierre, tags por defecto).
+- En `rules.yml`, separar **nombres de cuenta visibles** vs. **IDs internos**.
+
+**Resultados esperados**
+- Dashboard unificado con filtros por cuenta/banco/categoría.
+- Exportación consistente a Firefly con un mapeo único de cuentas.
+
+## 3) Generación de base de datos (dashboard + Firefly)
+
+**Problema actual:** la app trabaja sobre CSV dispersos; es difícil unificar y comparar histórico o re-procesos.
+
+**Propuesta:** introducir un **almacenamiento intermedio** (SQLite o DuckDB) con un esquema consistente.
+
+### Esquema sugerido (SQLite)
+- `transactions` (tabla principal)
+  - `id`, `date`, `amount`, `currency`, `merchant`, `description`
+  - `account_id`, `bank_id`, `statement_period`, `category`, `tags`
+  - `source_file`, `source_hash`, `created_at`, `updated_at`
+- `accounts`
+  - `account_id`, `display_name`, `type`, `bank_id`, `closing_day`, `currency`
+- `rules`
+  - `rule_id`, `regex`, `category`, `tags`, `priority`, `enabled`
+- `imports`
+  - `import_id`, `bank_id`, `source_file`, `processed_at`, `status`
+
+### Flujo de datos (ETL)
+1. **Ingesta**: CSV/XML/PDF → `transactions_raw`.
+2. **Normalización**: limpieza y enriquecimiento → `transactions`.
+3. **Reglas + ML**: categorización y tags → `transactions`.
+4. **Exports**:
+   - Vista `firefly_export` con columnas exactas requeridas.
+   - Vista `dashboard_metrics` agregada por periodos/categorías.
+
+**Beneficios**
+- Historial consistente, evita duplicados mediante `source_hash`.
+- Dashboard más rápido con consultas agregadas.
+- Exportación Firefly estable y auditable (log de importes).
+
+## 4) Hoja de ruta sugerida (prioridades)
+
+**Fase 1 (rápida, 1-2 semanas)**
+- Documentación de despliegue + plantilla de config.
+- Mapa canónico de cuentas + alias.
+- Unificación de rutas de salida en `data/`.
+
+**Fase 2 (2-6 semanas)**
+- Base de datos SQLite con migración de CSV existentes.
+- Exporter Firefly desde DB.
+- Dashboard leyendo vistas agregadas desde DB.
+
+**Fase 3 (6+ semanas)**
+- UI para gestionar cuentas/rules.
+- Re-procesos incrementales y auditoría de cambios.
+- Sincronización automática con Firefly (opcional vía API).
