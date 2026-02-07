@@ -109,6 +109,11 @@ TRANSLATIONS = {
         "last_data_update": "Last updated: {timestamp}",
         "bank_comparison": "Bank Comparison",
         "no_data_comparison": "Comparison data unavailable. One or both datasets might be empty.",
+        "monthly_spending_trends_title": "📊 Monthly Spending Trends",
+        "monthly_spending_trends_chart_title": "Monthly Spending by Category",
+        "no_monthly_spending_data": "No monthly spending data available for this selection.",
+        "start_date_filter": "Start Date",
+        "end_date_filter": "End Date",
         
         # Rule Hub
         "rule_hub_title": "🤖 Rule Correction Hub (Teach the AI)",
@@ -249,6 +254,11 @@ TRANSLATIONS = {
         "last_data_update": "Última actualización: {timestamp}",
         "bank_comparison": "Comparación de Bancos",
         "no_data_comparison": "Datos de comparación no disponibles. Uno o ambos conjuntos de datos podrían estar vacíos.",
+        "monthly_spending_trends_title": "📊 Tendencias de Gasto Mensual",
+        "monthly_spending_trends_chart_title": "Gasto Mensual por Categoría",
+        "no_monthly_spending_data": "No hay datos de gasto mensual disponibles para esta selección.",
+        "start_date_filter": "Fecha de Inicio",
+        "end_date_filter": "Fecha de Fin",
 
         # Rule Hub
         "rule_hub_title": "🤖 Centro de Corrección (Enseñar a la IA)",
