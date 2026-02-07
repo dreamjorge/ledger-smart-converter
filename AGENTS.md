@@ -111,7 +111,77 @@ quarto render <file>.qmd
 **Run Tests**: `python -m pytest tests/ -v` (see `docs/context/testing.qmd`)
 **Quick Run**: `python -m pytest tests/ -q`
 **CI**: `.github/workflows/ci.yml` runs on push/PR
-**Current**: 55 tests passing ✅
+**Current**: 227 tests passing ✅
+
+### ⚠️ CRITICAL: Test-Driven Development Policy
+
+**FOR EVERY NEW FEATURE OR BUG FIX, CREATE UNIT TESTS FIRST**
+
+This is **MANDATORY** to maintain project sanity and prevent regressions:
+
+1. **Before writing feature code**:
+   - Create test file: `tests/test_<module>.py`
+   - Write tests for expected behavior (TDD approach)
+   - Tests should fail initially (red phase)
+
+2. **While implementing**:
+   - Write minimal code to make tests pass (green phase)
+   - Refactor while keeping tests green
+
+3. **Coverage requirements**:
+   - **New modules**: Aim for 80%+ coverage
+   - **Critical paths** (imports, validation, classification): 90%+ coverage
+   - **Utilities**: 100% coverage (they're small and reusable)
+
+4. **Test types required**:
+   - **Unit tests**: Test functions/methods in isolation
+   - **Edge cases**: None, empty, invalid inputs
+   - **Integration tests**: Test workflows end-to-end
+   - **Error handling**: Test that errors are raised correctly
+
+5. **When NOT to test**:
+   - UI rendering code (Streamlit pages) - smoke tests only
+   - CLI entry points (`if __name__ == "__main__"`) - covered by integration
+   - Translation dictionaries - static data
+
+**Example workflow**:
+```bash
+# 1. Create test file first
+touch tests/test_my_feature.py
+
+# 2. Write failing tests
+pytest tests/test_my_feature.py  # Should fail
+
+# 3. Implement feature
+vim src/my_feature.py
+
+# 4. Run tests until green
+pytest tests/test_my_feature.py -v
+
+# 5. Commit together
+git add tests/test_my_feature.py src/my_feature.py
+git commit -m "feat: add my_feature with 15 tests"
+```
+
+**Benefits**:
+- ✅ Prevents regressions when refactoring
+- ✅ Documents expected behavior
+- ✅ Enables confident code changes
+- ✅ Catches bugs before production
+- ✅ Makes code review easier
+- ✅ CI validates every commit
+
+**Current test coverage** (as of 2026-02-07):
+- Core utilities: ~90% ✅
+- Services layer: ~75% ✅
+- Import pipeline: ~70% ✅
+- Domain models: 100% ✅
+
+**See `docs/context/testing.qmd` for**:
+- Writing effective tests
+- Mocking strategies
+- Fixture patterns
+- pytest best practices
 
 ## Code Style
 
