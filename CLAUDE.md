@@ -1,5 +1,22 @@
 # Claude Code Context
 
+## 🎯 Quick Context Files (NEW!)
+
+**For token efficiency, use modular QMD context files:**
+
+| Working On | Read This | Files |
+|-----------|-----------|-------|
+| Domain/Validation | `docs/context/domain.qmd` | `src/domain/`, `src/validation.py` |
+| Services Layer | `docs/context/services.qmd` | `src/services/` |
+| Bank Importers | `docs/context/importers.qmd` | `src/import_*.py`, `src/pdf_utils.py` |
+| UI/Dashboard | `docs/context/ui.qmd` | `src/ui/pages/` |
+| ML/Categories | `docs/context/ml-categorization.qmd` | `src/ml_categorizer.py`, `config/rules.yml` |
+| Testing | `docs/context/testing.qmd` | `tests/` |
+
+**See also:** `AGENTS.md` for complete agent guide, `docs/context/README.md` for QMD usage guide
+
+---
+
 ## Project Identity
 
 **Name**: Ledger Smart Converter
