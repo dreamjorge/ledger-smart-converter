@@ -224,14 +224,24 @@ def generate_bank_data(
 
 def main():
     """Generate dummy data for both banks."""
+    import sys
+    sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
+    from settings import load_settings
+
     print("Generating dummy transaction data for dashboard testing...")
 
+    # Get data directory from settings
+    settings = load_settings()
+    data_dir = settings.data_dir
+
     # Create data directories
-    santander_dir = Path("data/santander")
-    hsbc_dir = Path("data/hsbc")
+    santander_dir = data_dir / "santander"
+    hsbc_dir = data_dir / "hsbc"
 
     santander_dir.mkdir(parents=True, exist_ok=True)
     hsbc_dir.mkdir(parents=True, exist_ok=True)
+
+    print(f"📂 Using data directory: {data_dir}")
 
     # Generate Santander data
     print("\n📊 Generating Santander LikeU data...")

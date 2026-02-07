@@ -10,13 +10,18 @@ from pathlib import Path
 
 from logging_config import get_logger
 from errors import ConfigError, ParseError
+from settings import load_settings
 
 logger = get_logger("data_service")
 
+# Load settings to get proper data directory path
+_SETTINGS = load_settings()
+_DATA_DIR = _SETTINGS.data_dir
+
 BANK_FILE_MAP = {
-    "santander": Path("data/santander/firefly_likeu.csv"),
-    "santander_likeu": Path("data/santander/firefly_likeu.csv"),
-    "hsbc": Path("data/hsbc/firefly_hsbc.csv"),
+    "santander": _DATA_DIR / "santander" / "firefly_likeu.csv",
+    "santander_likeu": _DATA_DIR / "santander" / "firefly_likeu.csv",
+    "hsbc": _DATA_DIR / "hsbc" / "firefly_hsbc.csv",
 }
 
 
