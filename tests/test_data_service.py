@@ -5,6 +5,11 @@ from unittest.mock import patch, mock_open
 import io
 
 from services.data_service import get_csv_path, load_transactions_from_csv, load_all_bank_data
+from settings import load_settings
+
+# Get the expected data directory path from settings (same as data_service uses)
+_SETTINGS = load_settings()
+_DATA_DIR = _SETTINGS.data_dir
 
 
 class TestGetCsvPath:
@@ -12,15 +17,15 @@ class TestGetCsvPath:
 
     def test_returns_path_for_santander(self):
         path = get_csv_path("santander")
-        assert path == Path("data/santander/firefly_likeu.csv")
+        assert path == _DATA_DIR / "santander" / "firefly_likeu.csv"
 
     def test_returns_path_for_santander_likeu(self):
         path = get_csv_path("santander_likeu")
-        assert path == Path("data/santander/firefly_likeu.csv")
+        assert path == _DATA_DIR / "santander" / "firefly_likeu.csv"
 
     def test_returns_path_for_hsbc(self):
         path = get_csv_path("hsbc")
-        assert path == Path("data/hsbc/firefly_hsbc.csv")
+        assert path == _DATA_DIR / "hsbc" / "firefly_hsbc.csv"
 
     def test_returns_none_for_unknown_bank(self):
         path = get_csv_path("unknown_bank")
