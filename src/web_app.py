@@ -245,7 +245,6 @@ def main():
         render_analytics_dashboard(
             t=t,
             tc=tc,
-            data_dir=DATA_DIR,
             config_dir=CONFIG_DIR,
             copy_feedback_key=COPY_FEEDBACK_KEY,
             ml_engine=ML_ENGINE,

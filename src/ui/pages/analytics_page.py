@@ -14,6 +14,152 @@ from services import rule_service as rulesvc
 from services import data_service
 from services.analytics_service import calculate_categorization_stats
 
+def render_comparison(df_sant: pd.DataFrame, df_hsbc: pd.DataFrame, *, t: Callable, tc: Callable = None):
+    """Render comparison view between Santander and HSBC banks.
+
+    Args:
+        df_sant: Santander transactions DataFrame
+        df_hsbc: HSBC transactions DataFrame
+        t: Translation function
+        tc: Category translation function (optional)
+    """
+    # Default tc to t if not provided
+    if tc is None:
+        tc = lambda x: x
+    st.markdown(t("comparison_desc") if "comparison_desc" in dir(t) else "Compare spending patterns across both banks")
+
+    # Calculate stats for both banks
+    stats_sant = calculate_categorization_stats(df_sant)
+    stats_hsbc = calculate_categorization_stats(df_hsbc)
+
+    # Comparison metrics
+    st.markdown("### 📊 Overall Comparison")
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        st.metric("Santander Total", stats_sant["total"])
+        st.metric("Santander Spent", f"${stats_sant['total_spent']:,.2f}")
+
+    with col2:
+        st.metric("HSBC Total", stats_hsbc["total"])
+        st.metric("HSBC Spent", f"${stats_hsbc['total_spent']:,.2f}")
+
+    with col3:
+        total_txns = stats_sant["total"] + stats_hsbc["total"]
+        total_spent = stats_sant["total_spent"] + stats_hsbc["total_spent"]
+        st.metric("Combined Total", total_txns)
+        st.metric("Combined Spent", f"${total_spent:,.2f}")
+
+    # Side-by-side spending comparison
+    st.markdown("---")
+    st.markdown("### 💰 Spending Breakdown")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.markdown("**Santander**")
+        if stats_sant["category_spending"]:
+            fig_sant = px.pie(
+                names=[tc(n) for n in stats_sant["category_spending"].keys()],
+                values=list(stats_sant["category_spending"].values()),
+                hole=0.4,
+                template="plotly_dark",
+                color_discrete_sequence=px.colors.qualitative.Set2,
+            )
+            fig_sant.update_traces(textposition="inside", textinfo="percent+label")
+            fig_sant.update_layout(showlegend=False, height=400)
+            st.plotly_chart(fig_sant, use_container_width=True)
+
+    with col2:
+        st.markdown("**HSBC**")
+        if stats_hsbc["category_spending"]:
+            fig_hsbc = px.pie(
+                names=[tc(n) for n in stats_hsbc["category_spending"].keys()],
+                values=list(stats_hsbc["category_spending"].values()),
+                hole=0.4,
+                template="plotly_dark",
+                color_discrete_sequence=px.colors.qualitative.Set3,
+            )
+            fig_hsbc.update_traces(textposition="inside", textinfo="percent+label")
+            fig_hsbc.update_layout(showlegend=False, height=400)
+            st.plotly_chart(fig_hsbc, use_container_width=True)
+
+    # Combined category spending bar chart
+    st.markdown("---")
+    st.markdown("### 📈 Combined Category Spending")
+
+    # Merge category spending from both banks
+    all_categories = set(stats_sant["category_spending"].keys()) | set(stats_hsbc["category_spending"].keys())
+
+    comparison_data = []
+    for cat in all_categories:
+        comparison_data.append({
+            "Category": tc(cat),
+            "Santander": stats_sant["category_spending"].get(cat, 0),
+            "HSBC": stats_hsbc["category_spending"].get(cat, 0),
+        })
+
+    if comparison_data:
+        comp_df = pd.DataFrame(comparison_data)
+        comp_df = comp_df.sort_values("Santander", ascending=False)
+
+        fig_comparison = go.Figure()
+        fig_comparison.add_trace(go.Bar(
+            name="Santander",
+            x=comp_df["Category"],
+            y=comp_df["Santander"],
+            marker_color="#6366f1"
+        ))
+        fig_comparison.add_trace(go.Bar(
+            name="HSBC",
+            x=comp_df["Category"],
+            y=comp_df["HSBC"],
+            marker_color="#818cf8"
+        ))
+
+        fig_comparison.update_layout(
+            barmode="group",
+            template="plotly_dark",
+            font_family="Outfit",
+            title="Spending by Category (Both Banks)",
+            xaxis_title="Category",
+            yaxis_title="Amount (MXN)",
+            height=500,
+        )
+
+        st.plotly_chart(fig_comparison, use_container_width=True)
+
+    # Coverage comparison
+    st.markdown("---")
+    st.markdown("### 🎯 Categorization Coverage")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.markdown("**Santander**")
+        fig_cov_sant = px.pie(
+            names=["Categorized", "Uncategorized"],
+            values=[stats_sant["categorized"], stats_sant["uncategorized"]],
+            color_discrete_sequence=["#6366f1", "#475569"],
+            hole=0.6,
+        )
+        fig_cov_sant.update_layout(showlegend=True, height=300)
+        st.plotly_chart(fig_cov_sant, use_container_width=True)
+        st.caption(f"{stats_sant['coverage_pct']:.1f}% categorized")
+
+    with col2:
+        st.markdown("**HSBC**")
+        fig_cov_hsbc = px.pie(
+            names=["Categorized", "Uncategorized"],
+            values=[stats_hsbc["categorized"], stats_hsbc["uncategorized"]],
+            color_discrete_sequence=["#818cf8", "#475569"],
+            hole=0.6,
+        )
+        fig_cov_hsbc.update_layout(showlegend=True, height=300)
+        st.plotly_chart(fig_cov_hsbc, use_container_width=True)
+        st.caption(f"{stats_hsbc['coverage_pct']:.1f}% categorized")
+
+
 def render_analytics_dashboard(
     *,
     t: Callable,
@@ -77,7 +223,7 @@ def render_analytics_dashboard(
     if not df_sant.empty and not df_hsbc.empty:
         with selected_tabs[tab_idx]:
             st.subheader(t("bank_comparison"))
-            render_comparison(df_sant, df_hsbc, t=t)
+            render_comparison(df_sant, df_hsbc, t=t, tc=tc)
 
 
 def _render_metrics(t, stats):
