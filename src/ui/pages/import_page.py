@@ -43,16 +43,28 @@ def render_import_page(
             st.info(t("tip_hsbc"))
 
     st.header(t("import_header", bank=bank_label))
+
+    # Mobile tip
+    with st.expander("📱 Mobile Tips", expanded=False):
+        st.markdown("""
+        - Files upload best in landscape mode
+        - Ensure files are under 200MB
+        - Processing may take 30-60 seconds
+        - Keep screen active during upload
+        """)
+
     uploaded_main = None
     uploaded_pdf = None
-    col1, col2 = st.columns(2)
+
+    # Responsive columns: stack on mobile, side-by-side on desktop
+    col1, col2 = st.columns([1, 1])
     with col1:
         if bank_cfg.get("type") == "xlsx":
-            uploaded_main = st.file_uploader(t("select_xlsx"), type=["xlsx"], help=t("help_xlsx"))
+            uploaded_main = st.file_uploader(t("select_xlsx"), type=["xlsx"], help=t("help_xlsx"), key="main_uploader")
         else:
-            uploaded_main = st.file_uploader(t("select_xml"), type=["xml", "csv", "xlsx"], help=t("help_xml"))
+            uploaded_main = st.file_uploader(t("select_xml"), type=["xml", "csv", "xlsx"], help=t("help_xml"), key="main_uploader")
     with col2:
-        uploaded_pdf = st.file_uploader(t("select_pdf"), type=["pdf"], help=t("help_pdf"))
+        uploaded_pdf = st.file_uploader(t("select_pdf"), type=["pdf"], help=t("help_pdf"), key="pdf_uploader")
 
     force_pdf_ocr = False
     if uploaded_pdf:

@@ -32,7 +32,17 @@ def tc(category):
     return t(key)
 
 
-st.set_page_config(page_title=t("page_title"), page_icon="💳", layout="wide")
+st.set_page_config(
+    page_title=t("page_title"),
+    page_icon="💳",
+    layout="wide",
+    initial_sidebar_state="auto",  # Auto-collapse on mobile
+    menu_items={
+        'Get Help': None,
+        'Report a bug': None,
+        'About': "Ledger Smart Converter - Bank statement importer with ML categorization"
+    }
+)
 
 CUSTOM_CSS = """
 <style>
@@ -48,10 +58,12 @@ CUSTOM_CSS = """
         --border: rgba(255, 255, 255, 0.1);
     }
 
+    /* ===== BASE STYLES ===== */
     .main {
         background-color: var(--bg-dark);
         font-family: 'Outfit', sans-serif;
         color: var(--text-main);
+        padding: 1rem;
     }
 
     html, body, [class*="css"] {
@@ -64,6 +76,7 @@ CUSTOM_CSS = """
         color: var(--text-main) !important;
     }
 
+    /* ===== RESPONSIVE METRICS ===== */
     [data-testid="stMetric"] {
         background: var(--card-bg);
         padding: 1.5rem !important;
@@ -80,20 +93,24 @@ CUSTOM_CSS = """
         border-color: var(--primary) !important;
     }
 
+    /* ===== SIDEBAR ===== */
     [data-testid="stSidebar"] {
         background-color: #1e293b !important;
         border-right: 1px solid var(--border) !important;
     }
 
+    /* ===== BUTTONS (Touch-Friendly) ===== */
     .stButton > button {
         background-color: var(--primary) !important;
         color: white !important;
         border-radius: 8px !important;
         border: none !important;
-        padding: 0.5rem 1.5rem !important;
+        padding: 0.75rem 1.5rem !important;
         font-weight: 600 !important;
         transition: all 0.2s ease !important;
         width: 100% !important;
+        min-height: 44px !important; /* Touch-friendly size */
+        font-size: 1rem !important;
     }
 
     .stButton > button:hover {
@@ -102,9 +119,15 @@ CUSTOM_CSS = """
         transform: scale(1.02);
     }
 
+    .stButton > button:active {
+        transform: scale(0.98);
+    }
+
+    /* ===== TABS (Responsive) ===== */
     .stTabs [data-baseweb="tab-list"] {
         gap: 8px;
         background-color: transparent !important;
+        flex-wrap: wrap !important;
     }
 
     .stTabs [data-baseweb="tab"] {
@@ -112,7 +135,9 @@ CUSTOM_CSS = """
         border-radius: 8px 8px 0 0 !important;
         border: 1px solid var(--border) !important;
         color: var(--text-muted) !important;
-        padding: 8px 20px !important;
+        padding: 12px 20px !important;
+        min-height: 44px !important;
+        white-space: nowrap !important;
     }
 
     .stTabs [aria-selected="true"] {
@@ -121,13 +146,45 @@ CUSTOM_CSS = """
         border-bottom: 2px solid white !important;
     }
 
-    .stTextInput > div > div > input, .stSelectbox > div > div > div {
+    /* ===== INPUTS (Touch-Friendly) ===== */
+    .stTextInput > div > div > input,
+    .stSelectbox > div > div > div,
+    .stNumberInput > div > div > input {
         background-color: #1e293b !important;
         border-radius: 8px !important;
         border: 1px solid var(--border) !important;
         color: var(--text-main) !important;
+        min-height: 44px !important;
+        font-size: 16px !important; /* Prevents zoom on iOS */
     }
 
+    /* ===== FILE UPLOADER (Mobile Friendly) ===== */
+    [data-testid="stFileUploader"] {
+        border: 2px dashed var(--border) !important;
+        border-radius: 12px !important;
+        padding: 1.5rem !important;
+        background: var(--card-bg) !important;
+        min-height: 120px !important;
+    }
+
+    [data-testid="stFileUploader"] button {
+        min-height: 44px !important;
+    }
+
+    /* ===== EXPANDERS ===== */
+    .streamlit-expanderHeader {
+        background: var(--card-bg) !important;
+        border-radius: 8px !important;
+        padding: 1rem !important;
+        min-height: 44px !important;
+    }
+
+    /* ===== CHARTS (Responsive) ===== */
+    .stPlotlyChart {
+        width: 100% !important;
+    }
+
+    /* ===== ANIMATIONS ===== */
     @keyframes fadeIn {
         from { opacity: 0; transform: translateY(15px); }
         to { opacity: 1; transform: translateY(0); }
@@ -137,18 +194,203 @@ CUSTOM_CSS = """
         animation: fadeIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
     }
 
+    /* ===== HEADER ===== */
     .premium-header {
         background: linear-gradient(90deg, #6366f1 0%, #a855f7 100%);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
-        font-size: 3rem !important;
+        font-size: clamp(2rem, 5vw, 3rem) !important;
         font-weight: 800 !important;
         margin-bottom: 0.5rem !important;
+        line-height: 1.2 !important;
     }
 
-    header, footer { visibility: hidden; }
+    /* ===== MOBILE STYLES (max-width: 768px) ===== */
+    @media (max-width: 768px) {
+        /* Main container */
+        .main {
+            padding: 0.5rem !important;
+        }
+
+        /* Header */
+        .premium-header {
+            font-size: 2rem !important;
+            margin-bottom: 0.25rem !important;
+        }
+
+        /* Metrics - Stack vertically */
+        [data-testid="stMetric"] {
+            padding: 1rem !important;
+            margin-bottom: 0.5rem !important;
+        }
+
+        [data-testid="stMetricLabel"] {
+            font-size: 0.875rem !important;
+        }
+
+        [data-testid="stMetricValue"] {
+            font-size: 1.25rem !important;
+        }
+
+        /* Buttons */
+        .stButton > button {
+            padding: 1rem !important;
+            font-size: 1rem !important;
+            min-height: 48px !important;
+        }
+
+        /* Tabs */
+        .stTabs [data-baseweb="tab"] {
+            padding: 10px 16px !important;
+            font-size: 0.875rem !important;
+            flex: 1 1 auto !important;
+        }
+
+        /* Sidebar */
+        [data-testid="stSidebar"] {
+            min-width: 280px !important;
+            max-width: 100vw !important;
+        }
+
+        [data-testid="stSidebar"] [data-testid="stMarkdown"] {
+            font-size: 0.875rem !important;
+        }
+
+        /* File uploader */
+        [data-testid="stFileUploader"] {
+            padding: 1rem !important;
+            min-height: 100px !important;
+        }
+
+        /* Columns - Stack on mobile */
+        .row-widget.stHorizontal {
+            flex-direction: column !important;
+        }
+
+        [data-testid="column"] {
+            width: 100% !important;
+            min-width: 100% !important;
+        }
+
+        /* Charts */
+        .stPlotlyChart {
+            height: 300px !important;
+        }
+
+        /* Expanders */
+        .streamlit-expanderHeader {
+            padding: 0.75rem !important;
+            font-size: 0.875rem !important;
+        }
+
+        /* Inputs */
+        .stTextInput > div > div > input,
+        .stSelectbox > div > div > div,
+        .stNumberInput > div > div > input {
+            font-size: 16px !important;
+            padding: 0.75rem !important;
+        }
+
+        /* Hide some decorative elements on mobile */
+        [data-testid="stMetric"]:hover {
+            transform: none !important;
+        }
+
+        /* Reduce animation */
+        .element-container, .stMarkdown, .stPlotlyChart {
+            animation: none !important;
+        }
+    }
+
+    /* ===== TABLET STYLES (769px - 1024px) ===== */
+    @media (min-width: 769px) and (max-width: 1024px) {
+        .main {
+            padding: 1rem !important;
+        }
+
+        .premium-header {
+            font-size: 2.5rem !important;
+        }
+
+        [data-testid="stMetric"] {
+            padding: 1.25rem !important;
+        }
+
+        .stTabs [data-baseweb="tab"] {
+            padding: 10px 18px !important;
+        }
+    }
+
+    /* ===== DESKTOP OPTIMIZATIONS (min-width: 1025px) ===== */
+    @media (min-width: 1025px) {
+        .main {
+            max-width: 1400px !important;
+            margin: 0 auto !important;
+            padding: 2rem !important;
+        }
+
+        [data-testid="stSidebar"] {
+            min-width: 320px !important;
+        }
+    }
+
+    /* ===== ACCESSIBILITY ===== */
+    @media (prefers-reduced-motion: reduce) {
+        * {
+            animation: none !important;
+            transition: none !important;
+        }
+    }
+
+    /* ===== PRINT STYLES ===== */
+    @media print {
+        [data-testid="stSidebar"],
+        .stButton,
+        [data-testid="stFileUploader"] {
+            display: none !important;
+        }
+
+        .main {
+            background: white !important;
+            color: black !important;
+        }
+    }
+
+    /* ===== HIDE STREAMLIT DEFAULTS ===== */
+    header, footer {
+        visibility: hidden !important;
+    }
+
+    #MainMenu {
+        visibility: hidden !important;
+    }
+
+    /* ===== TOUCH IMPROVEMENTS ===== */
+    @media (hover: none) and (pointer: coarse) {
+        /* Better touch targets */
+        button, a, [role="button"] {
+            min-height: 44px !important;
+            min-width: 44px !important;
+        }
+
+        /* Remove hover effects on touch devices */
+        [data-testid="stMetric"]:hover {
+            transform: none !important;
+        }
+
+        .stButton > button:hover {
+            transform: none !important;
+        }
+    }
 </style>
 """
+
+# Mobile viewport meta tag for proper scaling
+VIEWPORT_META = """
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+"""
+
+st.markdown(VIEWPORT_META, unsafe_allow_html=True)
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
 SETTINGS = load_settings()
@@ -190,6 +432,27 @@ def get_ml_engine():
 
 
 ML_ENGINE = get_ml_engine()
+
+
+def get_responsive_columns(mobile_cols=1, desktop_cols=2):
+    """Helper to create responsive column layouts.
+
+    Returns number of columns based on viewport (simplified approach).
+    Streamlit doesn't have native viewport detection, so we use desktop_cols by default
+    and rely on CSS to stack columns on mobile.
+    """
+    return desktop_cols
+
+
+def render_mobile_tip():
+    """Render a helpful tip for mobile users."""
+    st.info("""
+    📱 **Mobile Tip**: For the best experience:
+    - Use landscape mode for charts
+    - Tap the sidebar icon (←) to access navigation
+    - Swipe to see more metrics
+    - Use the 'wide' layout for better visibility
+    """)
 
 
 def main():
