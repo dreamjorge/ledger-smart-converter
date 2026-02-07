@@ -4,6 +4,29 @@ Este plan busca tres metas: **despliegue claro**, **unificación de cuentas**, y
 
 ---
 
+## Estado actual (actualizado)
+
+### Completado
+- [x] Capa de confiabilidad en importador: validación de transacciones/tags, errores tipados y logging estructurado.
+- [x] Flags operativos en CLI de importación: `--strict`, `--dry-run`, `--log-json`.
+- [x] Escrituras atómicas para salidas de importación.
+- [x] Scripts bash añadidos: `scripts/setup_env.sh`, `scripts/run_web.sh`, `scripts/run_import.sh`.
+- [x] Healthcheck de entorno: `src/healthcheck.py`.
+- [x] Configuración por entorno: `src/settings.py` + `.env.example`.
+- [x] Refactor de arquitectura UI: `src/web_app.py` como router + páginas en `src/ui/pages/`.
+- [x] Capa de servicios: `src/services/import_service.py`, `src/services/rule_service.py`, `src/services/analytics_service.py`.
+- [x] Workflow seguro de reglas: staging en `config/rules.pending.yml`, detección de conflictos, merge con respaldo en `config/backups/`.
+- [x] Suite de pruebas ampliada (14 tests pasando localmente).
+- [x] CI automatizado en GitHub Actions: `.github/workflows/ci.yml`.
+
+### Pendiente (siguiente tramo)
+- [ ] Modelo canónico completo de cuentas (`account_id`) y alias dedicados en archivos separados.
+- [ ] Persistencia intermedia (SQLite/DuckDB) con migración desde CSVs.
+- [ ] Exporter Firefly y dashboard leyendo desde vistas de DB.
+- [ ] Auditoría avanzada de cambios de reglas y re-procesos incrementales.
+
+---
+
 ## Principios de diseño
 - **Observabilidad primero**: cada etapa deja logs y métricas mínimas para auditoría.
 - **Idempotencia**: re-procesar un archivo no duplica data (hash de fuente).

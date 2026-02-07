@@ -15,12 +15,18 @@ It features an intelligent **Learning Cycle** that helps you progressively categ
 -   **Statement Cycle Logic**: Automatic tagging of transactions with their statement period (`period:YYYY-MM`).
 -   **🌎 Bilingual Support**: Full Spanish/English support across the entire interface.
 -   **PDF Data Extraction (with OCR)**: Tesseract fallback for scanned documents.
+-   **✅ Reliability & Validation Layer**: Canonical transaction model, strict validation, structured importer logging, and deterministic processing.
+-   **✅ Safe Rules Workflow**: Stage changes in `config/rules.pending.yml`, detect conflicts, and merge with automatic backups.
+-   **✅ CI Ready**: Automated compile + test checks via GitHub Actions (`.github/workflows/ci.yml`).
 
 ## Folder Structure
 
 -   `src/`: Python source code (importers, utilities).
+-   `src/services/`: Service orchestration layer for import, analytics, and rule workflows.
+-   `src/ui/pages/`: Streamlit page modules (import + analytics), keeping `web_app.py` as a thin router.
 -   `config/`: Configuration files (`rules.yml`).
 -   `scripts/`: PowerShell scripts for execution.
+-   `.github/workflows/`: CI pipelines (test automation on push/PR).
 -   `data/`: Persistent storage for each bank (input files and generated CSVs).
     -   `hsbc/`: `firefly_hsbc.csv`, `unknown_merchants.csv`.
     -   `santander/`: `firefly_likeu.csv`, `unknown_merchants.csv`.
@@ -50,10 +56,14 @@ This project runs as a Streamlit app. You can deploy it locally or on a small VM
 
 ### Linux/macOS (bash)
 ```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-streamlit run src/web_app.py --server.address 0.0.0.0 --server.port 8501
+./scripts/setup_env.sh
+./scripts/run_web.sh
+```
+
+### Healthcheck
+Run a quick runtime validation for dependencies, paths, and OCR binary:
+```bash
+python src/healthcheck.py
 ```
 
 **OCR (optional):** install Tesseract and ensure it is on your PATH. For example:
@@ -72,6 +82,27 @@ Start the web interface using the dedicated script:
 ```
 Open your browser at `http://localhost:8501`.
 
+CLI import example (works in bash/PowerShell):
+```bash
+python src/generic_importer.py --bank santander_likeu --data data/input.csv --out data/santander/firefly_likeu.csv --unknown-out data/santander/unknown_merchants.csv
+```
+
+Additional reliability flags:
+- `--strict`: fail fast on validation issues.
+- `--dry-run`: parse and validate without writing CSVs.
+- `--log-json <path>`: write a JSON manifest with run counters and warnings.
+
+### Testing & CI
+Run tests locally:
+```bash
+python -m pytest -q
+```
+
+CI runs automatically on GitHub push/PR and executes:
+- dependency install
+- `py_compile` checks
+- pytest test suite
+
 ### 2. Importing Statements
 Go to the **"Import Files"** tab:
 - **Standard**: Upload your XML (HSBC) or XLSX (Santander) along with the PDF.
@@ -88,8 +119,9 @@ Switch to the **"Analytics Dashboard"** tab to:
 Found a miscategorized transaction? Scroll to the bottom of the Dashboard:
 1. **Fuzzy Search**: Use the search box to find the merchant (e.g., "WAL" will find "WALMART CASHI").
 2. **AI Prediction**: The system will show: `🤖 ML Prediction: Suggested category is Groceries (95%)`.
-3. **Verify & Save**: The category is pre-filled for you. Just click **Save Rule & Regenerate**.
-4. **Instant Retraining**: The AI learns from your correction immediately for future statements!
+3. **Stage Rule**: Save the rule into `config/rules.pending.yml` (no direct mutation of `rules.yml`).
+4. **Apply Pending Rules**: Merge staged rules safely (with conflict checks and timestamped backup under `config/backups/`).
+5. **Instant Retraining**: The AI retrains after successful merge for future statements.
 
 ---
 
