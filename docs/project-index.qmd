@@ -17,7 +17,7 @@ format: html
 - `generic_importer.py`: CLI entry point with validation flags (`--strict`, `--dry-run`, `--log-json`)
 - `import_hsbc_cfdi_firefly.py`: HSBC XML/PDF importer
 - `import_likeu_firefly.py`: Santander XLSX/PDF importer
-- `pdf_utils.py`: PDF text extraction + Tesseract OCR fallback
+- `pdf_utils.py`: PDF text extraction + OCR fallback (enhanced logging, robust error handling)
 
 **Domain** (`src/domain/`)
 - `transaction.py`: Canonical transaction model with validation
@@ -72,11 +72,12 @@ data/
 └── santander/        # Santander outputs
 
 scripts/
-├── setup_env.sh      # Environment setup
-├── run_web.sh        # Launch Streamlit
-└── run_import.sh     # CLI import helper
+├── setup_env.sh           # Environment setup
+├── run_web.sh             # Launch Streamlit
+├── run_import.sh          # CLI import helper
+└── generate_dummy_data.py # Generate test data for dashboard
 
-tests/                # pytest suite (14 tests)
+tests/                     # pytest suite (55 tests)
 ```
 
 ## Key Workflows
@@ -126,7 +127,22 @@ tests/                # pytest suite (14 tests)
 **Server**: Streamlit with `--server.address 0.0.0.0`
 **Healthcheck**: `python src/healthcheck.py`
 
+## Recent Enhancements (2026-02-06)
+
+**PDF Utils Improvements**:
+- Structured logging (replacing print statements)
+- Enhanced date parsing (ISO, Spanish abbreviations, numeric formats)
+- Robust amount parsing with graceful error handling
+- Comprehensive docstrings with examples
+- Better OCR configuration and fallback logic
+
+**Testing Infrastructure**:
+- Dummy data generator for dashboard testing (`scripts/generate_dummy_data.py`)
+- 70+ realistic Mexican merchants across 9 categories
+- 6 months of synthetic transaction data
+- Proper merchant/period tags and categorization
+
 ## Roadmap (see `plan_mejoras.md`)
 
-**Completed**: Validation layer, service architecture, safe rules workflow, CI
+**Completed**: Validation layer, service architecture, safe rules workflow, CI, enhanced PDF extraction
 **Next**: Account unification, SQLite persistence, Firefly API sync

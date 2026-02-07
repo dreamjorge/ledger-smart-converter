@@ -1,0 +1,428 @@
+---
+title: "Testing Context"
+format: html
+---
+
+## Purpose
+
+pytest-based test suite ensuring code quality and preventing regressions.
+
+## Test Statistics
+
+**Total Tests**: 55
+**Test Files**: 8
+**Coverage Areas**: Analytics, data service, import service, validation, rules, healthcheck, UI imports
+
+## Test Structure
+
+### Test Files
+
+**Location**: `tests/`
+
+```
+tests/
+├── test_analytics_service.py      # 24 tests - Analytics calculations
+├── test_common_utils.py            # 2 tests - Utility functions
+├── test_data_service.py            # 11 tests - CSV loading
+├── test_generic_importer.py        # 1 test - Import determinism
+├── test_healthcheck.py             # 1 test - Dependency validation
+├── test_import_service.py          # 2 tests - Import workflow
+├── test_rule_service.py            # 2 tests - Rule staging/merging
+├── test_settings.py                # 1 test - Environment config
+├── test_ui_pages_imports.py        # 1 test - UI module imports
+└── test_validation.py              # 10 tests - Transaction/tag validation
+```
+
+## Key Test Suites
+
+### Analytics Service Tests
+
+**File**: `tests/test_analytics_service.py`
+
+**Test Classes**:
+
+```python
+class TestIsCategorized:
+    """Test categorization detection logic."""
+    # 5 tests
+    # - Valid categorized names
+    # - Uncategorized detection
+    # - Empty/None values
+    # - Edge cases
+    # - Whitespace handling
+
+class TestBasicCategorization:
+    """Test stats calculation fundamentals."""
+    # 6 tests
+    # - No double counting regression
+    # - Basic stats calculation
+    # - None/empty dataframe handling
+    # - Uncategorized detection
+    # - Edge cases
+
+class TestDateFiltering:
+    """Test date range filtering."""
+    # 4 tests
+    # - Filter by start date
+    # - Filter by end date
+    # - Filter by date range
+    # - Empty results handling
+
+class TestPeriodFiltering:
+    """Test period tag filtering."""
+    # 4 tests
+    # - Filter by period tag
+    # - Multiple tags per transaction
+    # - No matches handling
+    # - Date filter takes priority
+
+class TestMonthlySpendingTrends:
+    """Test monthly aggregation."""
+    # 4 tests
+    # - Calculate trends by category
+    # - Ignore non-withdrawals
+    # - Only expense categories
+    # - Empty when no withdrawals
+
+class TestCategorySpending:
+    """Test category aggregation."""
+    # 2 tests
+    # - Sum spending by category
+    # - Count transactions by category
+```
+
+**Key Assertions**:
+```python
+def test_no_double_counting_regression():
+    """Ensure categorized + uncategorized = total."""
+    stats = calculate_categorization_stats(df)
+    assert stats["categorized"] + stats["uncategorized"] == stats["total"]
+```
+
+### Data Service Tests
+
+**File**: `tests/test_data_service.py`
+
+**Test Classes**:
+
+```python
+class TestGetCsvPath:
+    """Test bank ID to path mapping."""
+    # 6 tests
+    # - Santander path
+    # - Santander LikeU alias
+    # - HSBC path
+    # - Unknown bank returns None
+    # - Empty string returns None
+    # - Invalid type returns None
+
+class TestLoadTransactionsFromCsv:
+    """Test CSV loading and parsing."""
+    # 5 tests
+    # - Raises error for unknown bank
+    # - Raises error for invalid type
+    # - Raises error for empty ID
+    # - Returns empty for missing file
+    # - Parses date column correctly
+    # - Handles malformed CSV
+    # - Handles empty CSV
+    # - Preserves all columns
+
+class TestLoadAllBankData:
+    """Test bulk loading."""
+    # 3 tests
+    # - Returns dict with both banks
+    # - Calls load for each bank
+    # - Handles empty dataframes gracefully
+```
+
+**Fixtures**:
+```python
+@pytest.fixture
+def sample_csv(tmp_path):
+    """Create temporary CSV for testing."""
+    csv_content = """date,amount,description
+2024-01-15,100.00,Test transaction
+"""
+    csv_path = tmp_path / "test.csv"
+    csv_path.write_text(csv_content)
+    return csv_path
+```
+
+### Validation Tests
+
+**File**: `tests/test_validation.py`
+
+**Test Coverage**:
+```python
+def test_validate_transaction_happy_path():
+    """Valid transaction passes validation."""
+    txn = {
+        "date": "2024-01-15",
+        "amount": 100.00,
+        "description": "Test",
+        "bank_id": "test_bank"
+    }
+    is_valid, error = validate_transaction(txn)
+    assert is_valid
+    assert error is None
+
+def test_validate_transaction_invalid_date():
+    """Invalid date format fails validation."""
+    txn = {"date": "invalid", ...}
+    is_valid, error = validate_transaction(txn)
+    assert not is_valid
+    assert "date" in error.lower()
+
+def test_validate_tags_rejects_spaces():
+    """Tags with spaces are invalid."""
+    assert not validate_tags("merchant:foo bar")
+    assert validate_tags("merchant:foo_bar")
+```
+
+### Rule Service Tests
+
+**File**: `tests/test_rule_service.py`
+
+**Test Coverage**:
+```python
+def test_stage_and_merge_rule_creates_backup(tmp_path):
+    """Merging rules creates timestamped backup."""
+    # 1. Stage rule
+    # 2. Merge
+    # 3. Verify backup exists
+    # 4. Verify backup content matches original
+
+def test_stage_detects_conflict_on_existing_regex(tmp_path):
+    """Duplicate regex pattern triggers conflict."""
+    # 1. Create main rule
+    # 2. Stage conflicting rule
+    # 3. Verify conflict detected
+    # 4. Verify error details returned
+```
+
+### Import Service Tests
+
+**File**: `tests/test_import_service.py`
+
+**Test Coverage**:
+```python
+def test_resolve_output_paths_uses_target_mapping():
+    """Output paths resolved from target mapping."""
+    paths = resolve_output_paths("test_bank", {
+        "test_bank": {"csv_output": "/tmp/test.csv"}
+    })
+    assert paths["csv_output"] == Path("/tmp/test.csv")
+
+def test_copy_csv_to_analysis_and_last_updated(tmp_path):
+    """CSV copied atomically and timestamp retrieved."""
+    # 1. Create source CSV
+    # 2. Copy to analysis dir
+    # 3. Verify copy exists
+    # 4. Verify timestamp format
+```
+
+## Running Tests
+
+### All Tests
+```bash
+python -m pytest tests/ -v
+```
+
+### Specific Test File
+```bash
+python -m pytest tests/test_analytics_service.py -v
+```
+
+### Specific Test
+```bash
+python -m pytest tests/test_analytics_service.py::TestIsCategorized::test_valid_categorized_names -v
+```
+
+### With Coverage
+```bash
+python -m pytest tests/ --cov=src --cov-report=html
+```
+
+### Quick Run (No Verbose)
+```bash
+python -m pytest tests/ -q
+```
+
+## Test Patterns
+
+### Using Fixtures
+
+```python
+import pytest
+from pathlib import Path
+
+@pytest.fixture
+def temp_config(tmp_path):
+    """Create temporary config file."""
+    config_path = tmp_path / "config.yml"
+    config_path.write_text("test: value")
+    return config_path
+
+def test_with_fixture(temp_config):
+    """Test using fixture."""
+    assert temp_config.exists()
+```
+
+### Parametrized Tests
+
+```python
+@pytest.mark.parametrize("input,expected", [
+    ("2024-01-15", True),
+    ("invalid", False),
+    ("", False),
+])
+def test_date_validation(input, expected):
+    """Test date validation with multiple cases."""
+    result = is_valid_date(input)
+    assert result == expected
+```
+
+### Mocking
+
+```python
+from unittest.mock import patch, MagicMock
+
+def test_with_mock():
+    """Test with mocked dependency."""
+    with patch('module.function') as mock_func:
+        mock_func.return_value = "mocked"
+        result = call_function_that_uses_module()
+        assert result == "expected"
+        mock_func.assert_called_once()
+```
+
+### Temporary Files
+
+```python
+def test_with_temp_file(tmp_path):
+    """Test using pytest's tmp_path fixture."""
+    test_file = tmp_path / "test.csv"
+    test_file.write_text("data")
+
+    # Test code
+    assert test_file.exists()
+
+    # Cleanup automatic (tmp_path deleted after test)
+```
+
+## Continuous Integration
+
+### GitHub Actions
+
+**File**: `.github/workflows/ci.yml`
+
+**Triggers**:
+- Push to any branch
+- Pull request to main
+
+**Jobs**:
+1. Checkout code
+2. Setup Python 3.8+
+3. Install dependencies
+4. Run pytest
+5. Report results
+
+**Status**: Tests must pass for merge
+
+## Test Coverage
+
+### Current Coverage Areas
+
+**Well Tested** (✅):
+- Analytics service (24 tests)
+- Data service (11 tests)
+- Validation (10 tests)
+
+**Moderately Tested** (⚠️):
+- Import service (2 tests)
+- Rule service (2 tests)
+- Common utils (2 tests)
+
+**Minimally Tested** (⚠️):
+- Generic importer (1 test)
+- Healthcheck (1 test)
+- UI pages (1 import test)
+
+**Not Tested** (❌):
+- ML categorizer
+- Smart matching
+- PDF utils
+- Specific bank importers (HSBC, Santander)
+- UI rendering logic
+
+### Adding New Tests
+
+**Template**:
+```python
+# tests/test_new_module.py
+import pytest
+from pathlib import Path
+from src.new_module import function_to_test
+
+class TestFunctionName:
+    """Test suite for function_to_test."""
+
+    def test_happy_path(self):
+        """Test normal operation."""
+        result = function_to_test("valid_input")
+        assert result == "expected"
+
+    def test_error_handling(self):
+        """Test error cases."""
+        with pytest.raises(ValueError):
+            function_to_test("invalid_input")
+
+    def test_edge_cases(self):
+        """Test boundary conditions."""
+        assert function_to_test("") is None
+        assert function_to_test(None) is None
+
+@pytest.fixture
+def sample_data():
+    """Fixture for test data."""
+    return {"key": "value"}
+
+def test_with_fixture(sample_data):
+    """Test using fixture."""
+    assert sample_data["key"] == "value"
+```
+
+## Best Practices
+
+### Test Naming
+- Descriptive names: `test_function_name_does_what`
+- Group related tests in classes
+- Use docstrings to explain purpose
+
+### Test Independence
+- Each test should run independently
+- Use fixtures for setup/teardown
+- Don't rely on test execution order
+
+### Assertions
+- One logical assertion per test
+- Use specific assertions (`assert x == y`, not `assert x`)
+- Include descriptive failure messages when helpful
+
+### Fixtures Over Globals
+- Use pytest fixtures for shared setup
+- Scope fixtures appropriately (function, class, module, session)
+- Keep fixtures simple and focused
+
+### Mock External Dependencies
+- Mock file I/O when testing logic
+- Mock network calls
+- Mock expensive operations
+
+## Related Files
+
+- `tests/` - All test files
+- `.github/workflows/ci.yml` - CI configuration
+- `pytest.ini` - pytest configuration (if exists)
+- `conftest.py` - Shared fixtures (if exists)

@@ -1,0 +1,395 @@
+---
+title: "UI Layer Context"
+format: html
+---
+
+## Purpose
+
+Streamlit-based web interface for importing statements, viewing analytics, and correcting categorizations.
+
+## Architecture
+
+**Location**: `src/ui/`
+
+**Pattern**: Router + Page modules
+
+**Entry Point**: `src/web_app.py`
+
+## Application Structure
+
+### Router
+
+**File**: `src/web_app.py`
+
+**Responsibilities**:
+- Session state initialization
+- Tab-based navigation
+- Language switching (English/Spanish)
+- ML model loading
+- Page rendering delegation
+
+**Key Setup**:
+```python
+st.set_page_config(
+    page_title="Ledger Smart Converter",
+    page_icon="💰",
+    layout="wide"
+)
+
+# Load ML model (cached)
+ml_engine = load_ml_model()
+
+# Tabs
+tab1, tab2 = st.tabs([t("import"), t("analytics")])
+```
+
+### Import Page
+
+**File**: `src/ui/pages/import_page.py`
+
+**Function**: `render_import_interface(...)`
+
+**Features**:
+1. Bank selection dropdown
+2. File upload (PDF/XML/XLSX)
+3. Optional companion file upload
+4. Processing options:
+   - Strict validation toggle
+   - Dry-run mode toggle
+5. Import button with progress
+6. Results display with download
+
+**Workflow**:
+```python
+def render_import_interface(*, t, config_dir, ml_engine):
+    # 1. Bank selector
+    bank_id = st.selectbox(...)
+
+    # 2. File upload
+    uploaded = st.file_uploader(...)
+
+    # 3. Process button
+    if st.button("Import"):
+        # Save temp file
+        # Call importer
+        # Display results
+        # Offer CSV download
+```
+
+**State Management**:
+- Uses `st.session_state` for results
+- Caches ML model with `@st.cache_resource`
+- Stores uploaded files in temp directory
+
+### Analytics Page
+
+**File**: `src/ui/pages/analytics_page.py`
+
+**Function**: `render_analytics_dashboard(...)`
+
+**Features**:
+
+#### Dashboard Sections
+
+1. **Metrics Row** (`_render_metrics`)
+   - Total transactions
+   - Total spent
+   - Categorization coverage %
+   - Category field populated %
+   - Withdrawal count
+
+2. **Charts** (`_render_charts`)
+   - Categorization pie chart (categorized vs uncategorized)
+   - Transaction type bar chart
+   - Category spending pie chart
+
+3. **Category Deep Dive** (`_render_category_deep_dive`)
+   - Top 10 categories by transaction count (horizontal bar)
+   - Top 10 categories by spending (horizontal bar)
+   - Category summary table
+
+4. **Monthly Trends** (`_render_monthly_spending_trends`)
+   - Multi-line chart showing spending over time by category
+   - Date parsing and aggregation
+
+5. **Transaction Drilldown** (`_render_drilldown`)
+   - Category selector dropdown
+   - Filtered transaction table
+   - Date, description, amount, destination, tags columns
+
+6. **Rule Hub** (`_render_rule_hub`, expandable)
+   - Merchant search with fuzzy matching
+   - ML prediction display
+   - Category selector (9 common categories)
+   - Expense account suggestion
+   - Regex pattern editor
+   - Stage rule button
+   - Apply pending rules button
+   - ML retraining on apply
+
+#### Filtering System
+
+**Period Filter**:
+```python
+# Extract available periods from tags
+periods = set()
+for tag_str in df["tags"].dropna():
+    for tag in tag_str.split(","):
+        if tag.startswith("period:"):
+            periods.add(tag.split(":")[1])
+
+# Period selector
+selected_period = st.selectbox(
+    "Filter by Period",
+    ["All"] + sorted(periods, reverse=True)
+)
+```
+
+**Date Range Filter**:
+```python
+start_date = st.date_input("Start Date", value=None)
+end_date = st.date_input("End Date", value=None)
+
+# Filter dataframe
+if start_date and end_date:
+    df_filtered = df[
+        (df["date"] >= pd.to_datetime(start_date)) &
+        (df["date"] <= pd.to_datetime(end_date))
+    ]
+```
+
+**Priority**: Date range filter disables period filter when active
+
+#### Rule Correction Workflow
+
+**Sequence**:
+1. User searches for merchant (fuzzy search)
+2. System shows ML prediction with confidence
+3. User selects/confirms category
+4. System generates expense account suggestion
+5. User reviews/edits regex pattern
+6. User clicks "Stage Rule Change"
+   - Rule saved to `config/rules.pending.yml`
+   - Conflict detection runs
+   - Pending count shown
+7. User clicks "Apply Pending Rules" when ready
+   - Backup created in `config/backups/`
+   - Rules merged to `config/rules.yml`
+   - ML model retrained
+   - Cache cleared
+   - Success notification
+
+**Code Flow**:
+```python
+# Merchant search with fuzzy matching
+if search_term:
+    matches = sm.find_similar_merchants(
+        search_term,
+        merchant_list,
+        threshold=50
+    )
+
+# ML prediction
+ml_predictions = ml_engine.predict(selected_merchant)
+if ml_predictions:
+    top_cat, confidence = ml_predictions[0]
+    st.success(f"ML suggests: {top_cat} ({confidence:.0%})")
+
+# Stage rule
+if st.button("Stage Rule Change"):
+    ok, result = rulesvc.stage_rule_change(...)
+    if ok:
+        st.success(f"Staged. Pending: {result['pending_count']}")
+
+# Apply rules
+if st.button("Apply Pending Rules"):
+    ok, result = rulesvc.merge_pending_rules(...)
+    if ok:
+        ml.train_global_model()  # Retrain
+        st.cache_resource.clear()
+        st.balloons()
+```
+
+### Bank-Specific Tabs
+
+**Structure**:
+```python
+if not df_sant.empty and not df_hsbc.empty:
+    tabs = ["Santander", "HSBC", "Comparison"]
+    selected_tabs = st.tabs(tabs)
+
+    with selected_tabs[0]:
+        render_bank_analytics(df_sant, ...)
+
+    with selected_tabs[1]:
+        render_bank_analytics(df_hsbc, ...)
+
+    with selected_tabs[2]:
+        render_comparison(df_sant, df_hsbc, ...)
+```
+
+## Translation System
+
+**File**: `src/translations.py`
+
+**Functions**:
+```python
+def t(key: str, **kwargs) -> str:
+    """Translate UI text."""
+    lang = st.session_state.get("language", "en")
+    return TRANSLATIONS[lang].get(key, key).format(**kwargs)
+
+def tc(category: str) -> str:
+    """Translate category name."""
+    lang = st.session_state.get("language", "en")
+    return CATEGORY_TRANSLATIONS[lang].get(category, category)
+```
+
+**Usage**:
+```python
+st.header(t("analytics_title"))
+st.metric(t("metric_total_txns"), stats["total"])
+st.selectbox(t("select_category"), options=categories)
+```
+
+**Languages**: English, Spanish
+
+## Plotly Charts
+
+**Configuration**:
+```python
+fig = px.pie(
+    names=[...],
+    values=[...],
+    hole=0.6,
+    template="plotly_dark",
+    color_discrete_sequence=["#6366f1", "#475569"]
+)
+
+fig.update_layout(
+    font_family="Outfit",
+    title_font_size=20,
+    margin=dict(t=80, b=40, l=40, r=40)
+)
+
+st.plotly_chart(fig, use_container_width=True)
+```
+
+**Chart Types Used**:
+- `px.pie()` - Categorization, spending share
+- `px.bar()` - Transaction types, category counts/spending
+- `px.line()` - Monthly spending trends
+
+## Session State Variables
+
+**Common Keys**:
+```python
+st.session_state["language"]        # "en" or "es"
+st.session_state["import_results"]  # Last import output
+st.session_state["copy_feedback"]   # Success messages
+```
+
+## Data Loading
+
+**From Services**:
+```python
+from services import data_service
+
+df_sant = data_service.load_transactions_from_csv("santander_likeu")
+df_hsbc = data_service.load_transactions_from_csv("hsbc")
+```
+
+**Analytics Calculation**:
+```python
+from services.analytics_service import calculate_categorization_stats
+
+stats = calculate_categorization_stats(
+    df,
+    period=selected_period,
+    start_date=start_date,
+    end_date=end_date
+)
+```
+
+## Running the App
+
+### Local Development
+```bash
+./scripts/run_web.sh
+
+# Or directly:
+streamlit run src/web_app.py
+```
+
+### Server Deployment
+```bash
+streamlit run src/web_app.py \
+    --server.address 0.0.0.0 \
+    --server.port 8501
+```
+
+### Configuration
+`.streamlit/config.toml`:
+```toml
+[theme]
+primaryColor = "#6366f1"
+backgroundColor = "#0f172a"
+secondaryBackgroundColor = "#1e293b"
+textColor = "#f1f5f9"
+font = "sans serif"
+
+[server]
+maxUploadSize = 200
+```
+
+## UI Development Patterns
+
+### Don't Mutate State Directly
+```python
+# Bad
+st.session_state.results = new_results
+
+# Good
+results = process_data()
+st.session_state["results"] = results
+st.rerun()  # If needed
+```
+
+### Cache Expensive Operations
+```python
+@st.cache_resource
+def load_ml_model():
+    return ml.train_global_model()
+
+@st.cache_data
+def load_static_config():
+    return yaml.safe_load(...)
+```
+
+### Show Progress for Long Operations
+```python
+with st.spinner(t("processing")):
+    result = long_operation()
+
+st.progress(0.5, text="Halfway done")
+```
+
+### Handle Empty States
+```python
+if df.empty:
+    st.warning(t("no_data"))
+    return
+
+# Continue with non-empty dataframe
+```
+
+## Related Files
+
+- `src/web_app.py` - App router
+- `src/translations.py` - i18n support
+- `src/services/data_service.py` - Data loading
+- `src/services/analytics_service.py` - Stats calculation
+- `src/services/rule_service.py` - Rule staging/merging
+- `src/ml_categorizer.py` - ML predictions
+- `src/smart_matching.py` - Fuzzy search
+- `.streamlit/config.toml` - Streamlit config
