@@ -36,7 +36,7 @@ Create a new test file following TDD workflow for: $ARGUMENTS
 4. **Implement feature** until tests pass (green phase)
 
 5. **Coverage targets**:
-   - New modules: 80%+
+   - New modules: 85%+
    - Critical paths (imports, validation, ML): 90%+
    - Utilities: 100%
 

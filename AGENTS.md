@@ -20,6 +20,11 @@ Project-specific commands available in `.claude/commands/`:
 | `/import-bank [bank] [file]` | Run a bank statement import |
 | `/fix-ocr [file]` | Debug PDF/OCR parsing issues |
 | `/new-test [module]` | TDD workflow for creating new test files |
+| `/retrain` | Retrain ML categorization model with current rules |
+| `/coverage` | Run tests with 85% minimum coverage enforcement |
+| `/validate-config` | Validate config/rules.yml syntax and structure |
+| `/add-field [field]` | Guide to add a new Transaction model field |
+| `/generate-data` | Generate dummy test data for the dashboard |
 
 ---
 
@@ -99,6 +104,30 @@ codegraph init -i
 - **Utilities** - Validation, logging, settings, OCR, translations
 
 **Data Flow**: Input → Parse → Validate → Categorize (Rules + ML) → CSV → Firefly III
+
+## 🤖 Subagent Role Assignments
+
+For complex tasks, delegate to specialized subagents in parallel:
+
+| Subagent | Assigned Tasks | Key Files | QMD Context |
+|---|---|---|---|
+| **Import Agent** | New bank parsers, file ingestion debug | `src/import_*.py`, `src/generic_importer.py` | `importers.qmd` |
+| **Validation Agent** | Domain model changes, contract validation | `src/domain/transaction.py`, `src/validation.py`, `src/errors.py` | `domain.qmd` |
+| **ML/Rules Agent** | Categorization rules, model retraining | `src/ml_categorizer.py`, `src/smart_matching.py`, `config/rules.yml` | `ml-categorization.qmd` |
+| **OCR Agent** | PDF extraction, Tesseract debugging | `src/pdf_utils.py`, `src/pdf_feedback.py` | `importers.qmd` (PDF section) |
+| **Analytics Agent** | Dashboard metrics, data queries | `src/services/analytics_service.py`, `src/ui/pages/analytics_page.py` | `ui.qmd`, `services.qmd` |
+| **Testing Agent** | TDD workflow, coverage enforcement | `tests/`, `.github/workflows/ci.yml` | `testing.qmd` |
+
+### Parallel Delegation Pattern
+
+When a task spans multiple layers, assign each layer to a separate agent:
+
+```
+Example: "Add new bank with ML rules"
+  → Import Agent: create src/import_<bank>_firefly.py
+  → ML/Rules Agent: add categorization rules to config/rules.yml
+  → Testing Agent: write tests/test_<bank>.py (TDD first)
+```
 
 ## Common Tasks Quick Reference
 
