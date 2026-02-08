@@ -7,6 +7,22 @@
 **Framework**: Streamlit (web UI)
 **Primary Purpose**: Parse bank statements (PDF/XML/XLSX) → Firefly III CSV
 
+## ⚡ Claude Code Slash Commands
+
+Project-specific commands available in `.claude/commands/`:
+
+| Command | Description |
+|---|---|
+| `/add-bank [name]` | Step-by-step guide to add a new bank importer |
+| `/run-tests` | Run the pytest suite with test file references |
+| `/add-rule [merchant]` | Safe categorization rule staging workflow |
+| `/health` | System health check and diagnostics |
+| `/import-bank [bank] [file]` | Run a bank statement import |
+| `/fix-ocr [file]` | Debug PDF/OCR parsing issues |
+| `/new-test [module]` | TDD workflow for creating new test files |
+
+---
+
 ## 🎯 Quick Context Files (QMD)
 
 **Use these for focused context on specific areas:**

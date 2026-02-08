@@ -103,6 +103,22 @@ CI runs automatically on GitHub push/PR and executes:
 - `py_compile` checks
 - pytest test suite
 
+### Claude Code Slash Commands
+
+If you use [Claude Code](https://claude.ai/claude-code) as your AI coding assistant, this project includes project-specific slash commands in `.claude/commands/`:
+
+| Command | Description |
+|---|---|
+| `/add-bank [name]` | Step-by-step guide to add a new bank importer |
+| `/run-tests` | Run the pytest suite with test file references |
+| `/add-rule [merchant]` | Safe categorization rule staging workflow |
+| `/health` | System health check and diagnostics |
+| `/import-bank [bank] [file]` | Run a bank statement import |
+| `/fix-ocr [file]` | Debug PDF/OCR parsing issues |
+| `/new-test [module]` | TDD workflow for creating new test files |
+
+These commands are available automatically when you open the project in Claude Code.
+
 ### 2. Importing Statements
 Go to the **"Import Files"** tab:
 - **Standard**: Upload your XML (HSBC) or XLSX (Santander) along with the PDF.
