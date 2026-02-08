@@ -36,7 +36,7 @@ st.set_page_config(
     page_title=t("page_title"),
     page_icon="💳",
     layout="wide",
-    initial_sidebar_state="auto",  # Auto-collapse on mobile
+    initial_sidebar_state="expanded",  # Show sidebar on mobile too
     menu_items={
         'Get Help': None,
         'Report a bug': None,
