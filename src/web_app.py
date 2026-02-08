@@ -444,21 +444,26 @@ def get_responsive_columns(mobile_cols=1, desktop_cols=2):
     return desktop_cols
 
 
-def render_mobile_tip():
-    """Render a helpful tip for mobile users."""
-    st.info("""
-    📱 **Mobile Tip**: For the best experience:
-    - Use landscape mode for charts
-    - Tap the sidebar icon (←) to access navigation
-    - Swipe to see more metrics
-    - Use the 'wide' layout for better visibility
-    """)
+def build_bank_map(banks_cfg, t_func):
+    """Build a display-name → bank-id mapping from config.
+
+    Args:
+        banks_cfg: Dict of bank configs from rules.yml, or empty dict.
+        t_func: Translation helper callable.
+
+    Returns:
+        Dict mapping display label to bank_id.
+    """
+    if banks_cfg:
+        return {cfg.get("display_name", bid): bid for bid, cfg in banks_cfg.items()}
+    return {t_func("bank_santander"): "santander_likeu", t_func("bank_hsbc"): "hsbc"}
 
 
 def main():
     st.markdown('<h1 class="premium-header">Ledger Smart Converter</h1>', unsafe_allow_html=True)
     st.markdown(f'<p style="color: var(--text-muted); font-size: 1.1rem; margin-top: -1rem;">{t("app_title")}</p>', unsafe_allow_html=True)
 
+    # --- Sidebar: language + bank config (supplementary, not required for navigation) ---
     lang_options = {"🇺🇸 English": "en", "🇲🇽 Español": "es"}
     selected_lang_label = st.sidebar.selectbox(
         t("language_select"), options=list(lang_options.keys()), index=0 if st.session_state.lang == "en" else 1, key="lang_selector"
@@ -476,18 +481,8 @@ def main():
     st.sidebar.markdown(t("sidebar_desc"))
     st.sidebar.header(t("config"))
 
-    nav_options = [t("nav_import"), t("nav_analytics")]
-    if NAV_KEY not in st.session_state or st.session_state[NAV_KEY] not in nav_options:
-        st.session_state[NAV_KEY] = nav_options[0]
-    page = st.sidebar.radio(t("navigate"), nav_options, key=NAV_KEY)
-
-    st.sidebar.markdown("---")
-
     banks_cfg = get_banks_config()
-    if banks_cfg:
-        bank_map = {cfg.get("display_name", bid): bid for bid, cfg in banks_cfg.items()}
-    else:
-        bank_map = {t("bank_santander"): "santander_likeu", t("bank_hsbc"): "hsbc"}
+    bank_map = build_bank_map(banks_cfg, t)
     bank_options = list(bank_map.keys())
     if BANK_KEY not in st.session_state or st.session_state[BANK_KEY] not in bank_options:
         st.session_state[BANK_KEY] = bank_options[0]
@@ -504,7 +499,27 @@ def main():
     st.sidebar.markdown("---")
     st.sidebar.info(t("sidebar_info"))
 
-    if page == t("nav_analytics"):
+    # --- Main navigation via tabs (always visible, works on mobile) ---
+    tab_import, tab_analytics = st.tabs([t("nav_import"), t("nav_analytics")])
+
+    with tab_import:
+        render_import_page(
+            t=t,
+            root_dir=ROOT_DIR,
+            src_dir=SRC_DIR,
+            config_dir=CONFIG_DIR,
+            data_dir=DATA_DIR,
+            temp_dir=TEMP_DIR,
+            bank_label=bank_label,
+            bank_id=bank_id,
+            bank_cfg=bank_cfg,
+            analytics_csv_targets=ANALYTICS_CSV_TARGETS,
+            copy_feedback_key=COPY_FEEDBACK_KEY,
+            nav_key=NAV_KEY,
+            bank_key=BANK_KEY,
+        )
+
+    with tab_analytics:
         render_analytics_dashboard(
             t=t,
             tc=tc,
@@ -512,23 +527,6 @@ def main():
             copy_feedback_key=COPY_FEEDBACK_KEY,
             ml_engine=ML_ENGINE,
         )
-        return
-
-    render_import_page(
-        t=t,
-        root_dir=ROOT_DIR,
-        src_dir=SRC_DIR,
-        config_dir=CONFIG_DIR,
-        data_dir=DATA_DIR,
-        temp_dir=TEMP_DIR,
-        bank_label=bank_label,
-        bank_id=bank_id,
-        bank_cfg=bank_cfg,
-        analytics_csv_targets=ANALYTICS_CSV_TARGETS,
-        copy_feedback_key=COPY_FEEDBACK_KEY,
-        nav_key=NAV_KEY,
-        bank_key=BANK_KEY,
-    )
 
 
 if __name__ == "__main__":

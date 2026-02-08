@@ -1,5 +1,6 @@
 """Tests for web_app.py configuration and mobile UX."""
 import ast
+import sys
 from pathlib import Path
 
 WEB_APP = Path(__file__).parent.parent / "src" / "web_app.py"
@@ -24,12 +25,18 @@ def _get_page_config_kwargs():
     return {}
 
 
+def _get_function_names():
+    """Return set of all top-level function names defined in web_app.py."""
+    tree = ast.parse(WEB_APP.read_text(encoding="utf-8"))
+    return {node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)}
+
+
 def test_sidebar_expanded_on_mobile():
-    """Sidebar must be expanded by default so mobile users see navigation."""
+    """Sidebar must be expanded by default so mobile users see configuration."""
     kwargs = _get_page_config_kwargs()
     assert kwargs.get("initial_sidebar_state") == "expanded", (
         "initial_sidebar_state should be 'expanded' so the sidebar is visible "
-        "on mobile devices. 'auto' hides it and users can't find navigation."
+        "on mobile devices."
     )
 
 
@@ -39,10 +46,56 @@ def test_page_config_layout_wide():
     assert kwargs.get("layout") == "wide"
 
 
-def test_render_mobile_tip_defined():
-    """render_mobile_tip helper must exist for future use."""
-    tree = ast.parse(WEB_APP.read_text(encoding="utf-8"))
-    fn_names = {
-        node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)
+def test_build_bank_map_defined():
+    """build_bank_map helper must exist for testable bank mapping logic."""
+    assert "build_bank_map" in _get_function_names()
+
+
+def test_navigation_uses_tabs_not_sidebar_radio():
+    """Primary navigation must use st.tabs so it is always visible on mobile.
+
+    When navigation is sidebar-only, collapsing the sidebar on mobile makes
+    it impossible to switch between Import and Analytics pages.
+    """
+    source = WEB_APP.read_text(encoding="utf-8")
+    assert "st.tabs(" in source, "main() must use st.tabs for primary navigation"
+    # sidebar radio for navigation must not be the routing mechanism anymore
+    assert 'sidebar.radio' not in source, (
+        "st.sidebar.radio should not drive page routing — use st.tabs instead "
+        "so navigation is accessible even when the sidebar is hidden on mobile."
+    )
+
+
+def test_build_bank_map_with_config():
+    """build_bank_map returns display_name→id mapping when config is provided."""
+    sys.path.insert(0, str(WEB_APP.parent))
+    from web_app import build_bank_map
+
+    banks_cfg = {
+        "santander_likeu": {"display_name": "Santander LikeU"},
+        "hsbc": {"display_name": "HSBC Mexico"},
     }
-    assert "render_mobile_tip" in fn_names
+    result = build_bank_map(banks_cfg, lambda k: k)
+    assert result == {"Santander LikeU": "santander_likeu", "HSBC Mexico": "hsbc"}
+
+
+def test_build_bank_map_fallback_empty_config():
+    """build_bank_map falls back to translated defaults when config is empty."""
+    sys.path.insert(0, str(WEB_APP.parent))
+    from web_app import build_bank_map
+
+    def mock_t(key):
+        return {"bank_santander": "Santander", "bank_hsbc": "HSBC"}[key]
+
+    result = build_bank_map({}, mock_t)
+    assert result == {"Santander": "santander_likeu", "HSBC": "hsbc"}
+
+
+def test_build_bank_map_uses_bid_when_no_display_name():
+    """build_bank_map falls back to bank_id when display_name is missing."""
+    sys.path.insert(0, str(WEB_APP.parent))
+    from web_app import build_bank_map
+
+    banks_cfg = {"mybank": {}}  # no display_name key
+    result = build_bank_map(banks_cfg, lambda k: k)
+    assert result == {"mybank": "mybank"}
