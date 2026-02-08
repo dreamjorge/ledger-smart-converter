@@ -372,7 +372,7 @@ class TestGenericImporterHelpers:
         txn = TxnRaw(date="2026-01-15", description="Test purchase", amount=-100.50)
         tags = {"tag1", "tag2"}
 
-        row = importer._make_withdrawal(txn, "Expenses:Food", "Food", tags)
+        row = importer._make_withdrawal(txn, "Test purchase", "Expenses:Food", "Food", tags)
 
         assert row["type"] == "withdrawal"
         assert row["date"] == "2026-01-15"
@@ -389,7 +389,7 @@ class TestGenericImporterHelpers:
         txn = TxnRaw(date="2026-01-15", description="Payment", amount=500.00)
         tags = {"tag1"}
 
-        row = importer._make_transfer(txn, "Source Account", "Dest Account", tags, "payment")
+        row = importer._make_transfer(txn, "Payment", "Source Account", "Dest Account", tags, "payment")
 
         assert row["type"] == "transfer"
         assert row["date"] == "2026-01-15"

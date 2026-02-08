@@ -325,6 +325,61 @@ class TestClassify:
 
 
 # ===========================
+# Clean Description Tests
+# ===========================
+
+class TestCleanDescription:
+    """Test clean_description function for human-readable bank descriptions."""
+
+    def test_restores_spanish_accents(self):
+        """Test that common Spanish bank terms get their accents restored."""
+        assert cu.clean_description("INTERES MORATORIO") == "Interés Moratorio"
+        assert cu.clean_description("COMISION CAJERO") == "Comisión Cajero"
+        assert cu.clean_description("DEPOSITO EN CUENTA") == "Depósito En Cuenta"
+
+    def test_expands_abbreviations(self):
+        """Test that common bank abbreviations are expanded."""
+        assert cu.clean_description("TRANSF SPEI NOMINA") == "Transferencia SPEI Nómina"
+        assert cu.clean_description("WALMART SUPERCT") == "Walmart Supercenter"
+
+    def test_keeps_acronyms_uppercase(self):
+        """Test that known acronyms remain uppercase."""
+        assert cu.clean_description("PAGO SPEI") == "Pago SPEI"
+        assert cu.clean_description("RETENCION IVA") == "Retencion IVA"
+        assert cu.clean_description("CLABE INTERBANCARIA") == "CLABE Interbancaria"
+
+    def test_title_cases_unknown_words(self):
+        """Test that unrecognized words get title-cased."""
+        assert cu.clean_description("AMAZON PRIME") == "Amazon Prime"
+        assert cu.clean_description("NETFLIX") == "Netflix"
+        assert cu.clean_description("YOUTUBE PREMIUM") == "Youtube Premium"
+
+    def test_collapses_whitespace(self):
+        """Test that multiple spaces are collapsed to single space."""
+        assert cu.clean_description("COMISION   CAJERO") == "Comisión Cajero"
+        assert cu.clean_description("  INTERES  ") == "Interés"
+
+    def test_handles_empty_and_none(self):
+        """Test edge cases: empty string and None."""
+        assert cu.clean_description("") == ""
+        assert cu.clean_description(None) == ""
+
+    def test_handles_mixed_case_input(self):
+        """Test that input with mixed case still maps through glossary."""
+        assert cu.clean_description("interes moratorio") == "Interés Moratorio"
+        assert cu.clean_description("Comision Anualidad") == "Comisión Anualidad"
+
+    def test_preserves_numbers_in_description(self):
+        """Test that numbers in descriptions are preserved."""
+        assert cu.clean_description("7-ELEVEN STORE") == "7-Eleven Store"
+        assert cu.clean_description("PAGO 1234") == "Pago 1234"
+
+    def test_multiple_glossary_terms(self):
+        """Test descriptions with multiple glossary terms."""
+        assert cu.clean_description("COMISION TRANSF AUTOMATICO") == "Comisión Transferencia Automático"
+
+
+# ===========================
 # Suggest Rule Tests
 # ===========================
 

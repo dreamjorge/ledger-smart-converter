@@ -5,6 +5,79 @@ from datetime import datetime, date, timedelta
 from pathlib import Path
 
 # ----------------------------
+# Description Cleaning
+# ----------------------------
+
+# Words whose all-caps form loses Spanish accents — mapped to proper form.
+# Also includes common bank abbreviations → full word.
+_BANK_TERM_GLOSSARY = {
+    # -ción endings (lose accent in all-caps)
+    "COMISION": "Comisión",
+    "ADMINISTRACION": "Administración",
+    "CANCELACION": "Cancelación",
+    "DEVOLUCION": "Devolución",
+    "DISPOSICION": "Disposición",
+    "RENOVACION": "Renovación",
+    "OPERACION": "Operación",
+    "TRANSACCION": "Transacción",
+    "PROTECCION": "Protección",
+    "REPOSICION": "Reposición",
+    "FACTURACION": "Facturación",
+    "COMUNICACION": "Comunicación",
+    "NOTIFICACION": "Notificación",
+    "PUBLICACION": "Publicación",
+    # -ón endings
+    "PENSION": "Pensión",
+    # Proparoxytones (accent on 3rd-to-last syllable)
+    "DEPOSITO": "Depósito",
+    "CREDITO": "Crédito",
+    "DEBITO": "Débito",
+    "AUTOMATICO": "Automático",
+    "ELECTRONICO": "Electrónico",
+    "MEDICO": "Médico",
+    "NUMERO": "Número",
+    "MINIMO": "Mínimo",
+    "MAXIMO": "Máximo",
+    "UNICO": "Único",
+    "PUBLICO": "Público",
+    "NOMINA": "Nómina",
+    # Agudas (accent on last syllable)
+    "INTERES": "Interés",
+    # Common bank abbreviations
+    "TRANSF": "Transferencia",
+    "SUPERCT": "Supercenter",
+}
+
+# Acronyms that must stay fully uppercase regardless of context.
+_KEEP_UPPER = {
+    "SPEI", "IVA", "RFC", "ATM", "PIN", "CVV", "CIE", "CLABE",
+    "SAT", "CFE", "IMSS", "ISSSTE", "INFONAVIT",
+}
+
+
+def clean_description(desc: str) -> str:
+    """Normalize a raw bank description for human readability.
+
+    Applies three passes:
+    1. Collapse whitespace.
+    2. Restore Spanish accents / expand abbreviations via glossary.
+    3. Title-case any remaining words (acronyms in _KEEP_UPPER stay uppercase).
+    """
+    desc = re.sub(r"\s+", " ", (desc or "").strip())
+    words = desc.split(" ")
+    result = []
+    for word in words:
+        upper = word.upper()
+        if upper in _BANK_TERM_GLOSSARY:
+            result.append(_BANK_TERM_GLOSSARY[upper])
+        elif upper in _KEEP_UPPER:
+            result.append(upper)
+        else:
+            result.append(word.title())
+    return " ".join(result)
+
+
+# ----------------------------
 # Parsing Utilities
 # ----------------------------
 

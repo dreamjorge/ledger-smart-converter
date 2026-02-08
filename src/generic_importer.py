@@ -186,9 +186,10 @@ class GenericImporter:
         warning_count = 0
         
         for t in txns:
+            clean_desc = cu.clean_description(t.description)
             canonical = CanonicalTransaction(
                 date=t.date,
-                description=t.description,
+                description=clean_desc,
                 amount=float(t.amount),
                 bank_id=self.bank_id,
                 account_id=self.acc_name,
@@ -203,7 +204,7 @@ class GenericImporter:
                     raise ValidationError(f"Invalid transaction {canonical.id}: {record_errors}")
                 continue
 
-            expense, tags, merchant = cu.classify(t.description, self.compiled_rules, self.merchant_aliases, self.fallback_expense)
+            expense, tags, merchant = cu.classify(clean_desc, self.compiled_rules, self.merchant_aliases, self.fallback_expense)
             tags = set(tags)
             tags.add(self.bank_cfg["card_tag"])
             period = cu.get_statement_period(t.date, self.closing_day)
@@ -223,45 +224,45 @@ class GenericImporter:
             # HSBC special inference if it's HSBC
             if self.bank_id == "hsbc":
                 from import_hsbc_cfdi_firefly import infer_kind
-                kind = infer_kind(t.description, t.amount, t.rfc)
+                kind = infer_kind(clean_desc, t.amount, t.rfc)
                 if kind == "charge":
-                    row = self._make_withdrawal(t, expense, category, tags)
+                    row = self._make_withdrawal(t, clean_desc, expense, category, tags)
                 elif kind == "payment":
-                    row = self._make_transfer(t, self.pay_asset, self.acc_name, tags, "pago")
+                    row = self._make_transfer(t, clean_desc, self.pay_asset, self.acc_name, tags, "pago")
                 else: # refund/cashback
                     src = "Income:Cashback" if kind == "cashback" else "Income:Other"
-                    row = self._make_transfer(t, src, self.acc_name, tags, kind)
+                    row = self._make_transfer(t, clean_desc, src, self.acc_name, tags, kind)
             else:
                 # Standard Logic
                 if t.amount < 0: # Charge
-                    row = self._make_withdrawal(t, expense, category, tags)
+                    row = self._make_withdrawal(t, clean_desc, expense, category, tags)
                 else: # Payment
-                    row = self._make_transfer(t, self.pay_asset, self.acc_name, tags, "pago")
-            
+                    row = self._make_transfer(t, clean_desc, self.pay_asset, self.acc_name, tags, "pago")
+
             if row:
                 out_rows.append(row)
                 if row["type"] == "withdrawal" and expense == self.fallback_expense:
                     ua = unknown_agg[merchant]
                     ua["count"] += 1
                     ua["total"] += abs(t.amount)
-                    if len(ua["examples"]) < 5: ua["examples"].add(t.description)
+                    if len(ua["examples"]) < 5: ua["examples"].add(clean_desc)
                     
         return out_rows, self._format_unknown(unknown_agg), warning_count
 
-    def _make_withdrawal(self, t, expense, category, tags):
+    def _make_withdrawal(self, t, desc, expense, category, tags):
         return {
             "type": "withdrawal", "date": t.date, "amount": f"{abs(t.amount):.2f}",
-            "currency_code": self.currency, "description": t.description,
+            "currency_code": self.currency, "description": desc,
             "source_name": self.acc_name, "destination_name": expense,
             "category_name": category, "tags": ",".join(sorted(tags))
         }
 
-    def _make_transfer(self, t, source, dest, tags, extra_tag):
+    def _make_transfer(self, t, desc, source, dest, tags, extra_tag):
         t2 = set(tags)
         t2.add(extra_tag)
         return {
             "type": "transfer", "date": t.date, "amount": f"{abs(t.amount):.2f}",
-            "currency_code": self.currency, "description": t.description,
+            "currency_code": self.currency, "description": desc,
             "source_name": source, "destination_name": dest,
             "category_name": "", "tags": ",".join(sorted(t2))
         }
