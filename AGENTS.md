@@ -162,10 +162,11 @@ This is **MANDATORY** to maintain project sanity and prevent regressions:
    - Write minimal code to make tests pass (green phase)
    - Refactor while keeping tests green
 
-3. **Coverage requirements**:
-   - **New modules**: Aim for 80%+ coverage
+3. **Coverage requirements** (minimum enforced):
+   - **All new code**: 85%+ coverage (hard minimum)
    - **Critical paths** (imports, validation, classification): 90%+ coverage
    - **Utilities**: 100% coverage (they're small and reusable)
+   - Run: `python -m pytest tests/ --cov=src --cov-fail-under=85`
 
 4. **Test types required**:
    - **Unit tests**: Test functions/methods in isolation
