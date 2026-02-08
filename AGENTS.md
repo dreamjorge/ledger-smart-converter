@@ -26,6 +26,24 @@ cd docs/context
 quarto render <file>.qmd
 ```
 
+## 🔍 CodeGraph (Semantic Code Navigation)
+
+**`.codegraph/` exists** — use these tools instead of grep/glob for symbol lookups:
+
+| Tool | Use For |
+|------|---------|
+| `codegraph_search` | Find symbols by name (functions, classes, types) |
+| `codegraph_context` | Get relevant code context for a task |
+| `codegraph_callers` | Find what calls a function |
+| `codegraph_callees` | Find what a function calls |
+| `codegraph_impact` | See what's affected before changing a symbol |
+| `codegraph_node` | Get details + source code for a symbol |
+
+**Reinitialize if stale** (after large refactors):
+```bash
+codegraph init -i
+```
+
 ## 📊 Full Project Overview
 
 **Comprehensive Reference**: `docs/project-index.qmd` (or `.html` for rendered version)
