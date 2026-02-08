@@ -36,7 +36,7 @@ st.set_page_config(
     page_title=t("page_title"),
     page_icon="💳",
     layout="wide",
-    initial_sidebar_state="expanded",  # Show sidebar on mobile too
+    initial_sidebar_state="collapsed",  # Sidebar is info-only; controls live in main content
     menu_items={
         'Get Help': None,
         'Report a bug': None,
@@ -460,15 +460,21 @@ def build_bank_map(banks_cfg, t_func):
 
 
 def main():
-    st.markdown('<h1 class="premium-header">Ledger Smart Converter</h1>', unsafe_allow_html=True)
-    st.markdown(f'<p style="color: var(--text-muted); font-size: 1.1rem; margin-top: -1rem;">{t("app_title")}</p>', unsafe_allow_html=True)
+    # --- Top bar: header + language/bank controls (always visible, no sidebar needed) ---
+    col_title, col_lang, col_bank = st.columns([3, 1, 1])
+    with col_title:
+        st.markdown('<h1 class="premium-header">Ledger Smart Converter</h1>', unsafe_allow_html=True)
+        st.markdown(f'<p style="color: var(--text-muted); font-size: 1.1rem; margin-top: -1rem;">{t("app_title")}</p>', unsafe_allow_html=True)
 
-    # --- Sidebar: language + bank config (supplementary, not required for navigation) ---
-    lang_options = {"🇺🇸 English": "en", "🇲🇽 Español": "es"}
-    selected_lang_label = st.sidebar.selectbox(
-        t("language_select"), options=list(lang_options.keys()), index=0 if st.session_state.lang == "en" else 1, key="lang_selector"
-    )
-
+    lang_options = {"🇺🇸 EN": "en", "🇲🇽 ES": "es"}
+    with col_lang:
+        selected_lang_label = st.selectbox(
+            t("language_select"),
+            options=list(lang_options.keys()),
+            index=0 if st.session_state.lang == "en" else 1,
+            key="lang_selector",
+            label_visibility="collapsed",
+        )
     new_lang = lang_options[selected_lang_label]
     if new_lang != st.session_state.lang:
         st.session_state.lang = new_lang
@@ -477,29 +483,32 @@ def main():
                 del st.session_state[key]
         st.rerun()
 
-    st.sidebar.title(t("sidebar_welcome"))
-    st.sidebar.markdown(t("sidebar_desc"))
-    st.sidebar.header(t("config"))
-
     banks_cfg = get_banks_config()
     bank_map = build_bank_map(banks_cfg, t)
     bank_options = list(bank_map.keys())
     if BANK_KEY not in st.session_state or st.session_state[BANK_KEY] not in bank_options:
         st.session_state[BANK_KEY] = bank_options[0]
-    bank_label = st.sidebar.selectbox(t("select_bank"), options=bank_options, key=BANK_KEY)
+    with col_bank:
+        bank_label = st.selectbox(
+            t("select_bank"),
+            options=bank_options,
+            key=BANK_KEY,
+            label_visibility="collapsed",
+        )
     bank_id = bank_map[bank_label]
     bank_cfg = banks_cfg.get(bank_id, {})
 
+    # --- Sidebar: info-only (optional, collapsible) ---
+    st.sidebar.title(t("sidebar_welcome"))
+    st.sidebar.markdown(t("sidebar_desc"))
     rules_path = CONFIG_DIR / "rules.yml"
     if rules_path.exists():
         st.sidebar.success(f"{t('loaded_rules')}: {rules_path.name}")
     else:
         st.sidebar.error(t("no_rules"))
-
-    st.sidebar.markdown("---")
     st.sidebar.info(t("sidebar_info"))
 
-    # --- Main navigation via tabs (always visible, works on mobile) ---
+    # --- Main navigation via tabs ---
     tab_import, tab_analytics = st.tabs([t("nav_import"), t("nav_analytics")])
 
     with tab_import:

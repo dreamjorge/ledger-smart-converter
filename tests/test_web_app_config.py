@@ -31,12 +31,21 @@ def _get_function_names():
     return {node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)}
 
 
-def test_sidebar_expanded_on_mobile():
-    """Sidebar must be expanded by default so mobile users see configuration."""
+def test_sidebar_collapsed_by_default():
+    """Sidebar is info-only; controls live in main content so sidebar can start collapsed."""
     kwargs = _get_page_config_kwargs()
-    assert kwargs.get("initial_sidebar_state") == "expanded", (
-        "initial_sidebar_state should be 'expanded' so the sidebar is visible "
-        "on mobile devices."
+    assert kwargs.get("initial_sidebar_state") == "collapsed", (
+        "initial_sidebar_state should be 'collapsed' — language/bank selectors "
+        "are now in the top bar, so the sidebar holds only optional info."
+    )
+
+
+def test_lang_and_bank_selectors_in_main_content():
+    """Language and bank selectors must be in the main content area, not sidebar-only."""
+    source = WEB_APP.read_text(encoding="utf-8")
+    assert "sidebar.selectbox" not in source, (
+        "st.sidebar.selectbox should not be used for language or bank selection. "
+        "Move these controls to the main content so they are visible on mobile."
     )
 
 
