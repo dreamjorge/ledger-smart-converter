@@ -28,23 +28,31 @@ Project-specific commands available in `.claude/commands/`:
 
 ---
 
-## 🎯 Quick Context Files (QMD)
+## 🎯 QMD Context Configuration (Authoritative)
 
-**Use these for focused context on specific areas:**
+Use QMD files as the primary context source before reading broad code areas.
 
-| Area | QMD File | When to Use |
-|------|----------|-------------|
-| **Domain Models** | `docs/context/domain.qmd` | Working with transaction models, validation |
-| **Services** | `docs/context/services.qmd` | Import workflow, rules, analytics, data access |
-| **Importers** | `docs/context/importers.qmd` | Bank parsers, PDF extraction, adding new banks |
-| **UI** | `docs/context/ui.qmd` | Streamlit pages, dashboard, rule correction UI |
-| **ML & Categories** | `docs/context/ml-categorization.qmd` | ML predictions, fuzzy matching, categorization rules |
-| **Testing** | `docs/context/testing.qmd` | pytest suite, writing tests, CI/CD |
+| Area | Canonical QMD Path | Use For |
+|------|---------------------|---------|
+| **Domain Models** | `docs/context/domain.qmd` | Transaction model contracts, validation boundaries |
+| **Services** | `docs/context/services.qmd` | Import orchestration, rule service, analytics/data services |
+| **Importers** | `docs/context/importers.qmd` | Bank parsers, OCR/PDF extraction, ingestion flows |
+| **UI** | `docs/context/ui.qmd` | Streamlit pages, analytics dashboard, correction hub |
+| **ML & Categories** | `docs/context/ml-categorization.qmd` | Rule-based + ML categorization pipeline |
+| **Testing** | `docs/context/testing.qmd` | Pytest patterns, fixtures, mocking, coverage workflow |
+| **Project Overview** | `docs/project-index.qmd` | Architecture-wide orientation and cross-module navigation |
 
-**Render QMD to HTML for viewing**:
+### QMD Usage Rules for Agents
+
+1. Identify task area first, then load only matching QMD file(s).
+2. Prefer QMD + CodeGraph before full-source scanning.
+3. If task spans layers, load only the minimal set (for example: `importers.qmd` + `services.qmd`).
+4. Treat QMD paths above as canonical; do not invent alternative locations.
+
+**Render QMD to HTML (optional):**
 ```bash
-cd docs/context
-quarto render <file>.qmd
+quarto render docs/context/<file>.qmd
+quarto render docs/project-index.qmd
 ```
 
 ## 🔍 CodeGraph (Semantic Code Navigation)
