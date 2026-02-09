@@ -51,14 +51,37 @@ quarto render <file>.qmd
 
 **`.codegraph/` exists** — use these tools instead of grep/glob for symbol lookups:
 
-| Tool | Use For |
-|------|---------|
-| `codegraph_search` | Find symbols by name (functions, classes, types) |
-| `codegraph_context` | Get relevant code context for a task |
-| `codegraph_callers` | Find what calls a function |
-| `codegraph_callees` | Find what a function calls |
-| `codegraph_impact` | See what's affected before changing a symbol |
-| `codegraph_node` | Get details + source code for a symbol |
+| Tool | Use For | Example |
+|------|---------|---------|
+| `codegraph_search` | Find symbols by name (functions, classes, types) | `codegraph_search "parse_date"` |
+| `codegraph_context` | Get relevant code context for a task | `codegraph_context "Add PDF parsing"` |
+| `codegraph_callers` | Find what calls a function | `codegraph_callers "extract_transactions_from_pdf"` |
+| `codegraph_callees` | Find what a function calls | `codegraph_callees "process_hsbc_cfdi"` |
+| `codegraph_impact` | See what's affected before changing a symbol | `codegraph_impact "parse_es_date"` |
+| `codegraph_node` | Get details + source code for a symbol | `codegraph_node "TransactionCategorizer"` |
+
+### CodeGraph Best Practices for Analysis Tasks
+
+**Before refactoring or adding tests**:
+1. Use `codegraph_search` to find all related symbols
+2. Use `codegraph_callers` to understand dependencies
+3. Use `codegraph_impact` to assess change blast radius
+4. Use `codegraph_callees` to map function call graph
+
+**Example workflow for adding tests**:
+```bash
+# 1. Find all functions in module
+codegraph_search "pdf_utils"
+
+# 2. Check what calls critical functions
+codegraph_callers "extract_transactions_from_pdf"
+
+# 3. Understand dependencies before mocking
+codegraph_callees "ocr_image"
+
+# 4. Check impact before changing signature
+codegraph_impact "parse_mx_date"
+```
 
 **Reinitialize if stale** (after large refactors):
 ```bash
@@ -109,14 +132,15 @@ codegraph init -i
 
 For complex tasks, delegate to specialized subagents in parallel:
 
-| Subagent | Assigned Tasks | Key Files | QMD Context |
-|---|---|---|---|
-| **Import Agent** | New bank parsers, file ingestion debug | `src/import_*.py`, `src/generic_importer.py` | `importers.qmd` |
-| **Validation Agent** | Domain model changes, contract validation | `src/domain/transaction.py`, `src/validation.py`, `src/errors.py` | `domain.qmd` |
-| **ML/Rules Agent** | Categorization rules, model retraining | `src/ml_categorizer.py`, `src/smart_matching.py`, `config/rules.yml` | `ml-categorization.qmd` |
-| **OCR Agent** | PDF extraction, Tesseract debugging | `src/pdf_utils.py`, `src/pdf_feedback.py` | `importers.qmd` (PDF section) |
-| **Analytics Agent** | Dashboard metrics, data queries | `src/services/analytics_service.py`, `src/ui/pages/analytics_page.py` | `ui.qmd`, `services.qmd` |
-| **Testing Agent** | TDD workflow, coverage enforcement | `tests/`, `.github/workflows/ci.yml` | `testing.qmd` |
+| Subagent | Assigned Tasks | Key Files | QMD Context | CodeGraph Focus |
+|---|---|---|---|---|
+| **Import Agent** | New bank parsers, file ingestion debug | `src/import_*.py`, `src/generic_importer.py` | `importers.qmd` | `codegraph_search "import_.*_firefly"` |
+| **Validation Agent** | Domain model changes, contract validation | `src/domain/transaction.py`, `src/validation.py`, `src/errors.py` | `domain.qmd` | `codegraph_impact "Transaction"` |
+| **ML/Rules Agent** | Categorization rules, model retraining | `src/ml_categorizer.py`, `src/smart_matching.py`, `config/rules.yml` | `ml-categorization.qmd` | `codegraph_callees "train_global_model"` |
+| **OCR Agent** | PDF extraction, Tesseract debugging | `src/pdf_utils.py`, `src/pdf_feedback.py` | `importers.qmd` (PDF section) | `codegraph_callers "extract_transactions_from_pdf"` |
+| **Analytics Agent** | Dashboard metrics, data queries | `src/services/analytics_service.py`, `src/ui/pages/analytics_page.py` | `ui.qmd`, `services.qmd` | `codegraph_search "analytics"` |
+| **Testing Agent** | TDD workflow, coverage enforcement | `tests/`, `.github/workflows/ci.yml` | `testing.qmd` | `codegraph_search "test_"` |
+| **Architecture Agent** | Codebase analysis, refactoring, improvement planning | All modules | All QMDs + `docs/plan_mejoras.md` | All CodeGraph tools |
 
 ### Parallel Delegation Pattern
 
@@ -127,6 +151,21 @@ Example: "Add new bank with ML rules"
   → Import Agent: create src/import_<bank>_firefly.py
   → ML/Rules Agent: add categorization rules to config/rules.yml
   → Testing Agent: write tests/test_<bank>.py (TDD first)
+```
+
+### Architecture Analysis Pattern
+
+When conducting codebase analysis or creating improvement plans:
+
+```
+Example: "Analyze project status and create improvement plan"
+  → Architecture Agent workflow:
+     1. Read docs/plan_mejoras.md for roadmap context
+     2. Use codegraph_search to find untested modules
+     3. Use codegraph_impact to identify critical paths
+     4. Read relevant docs/context/*.qmd files for domain knowledge
+     5. Use codegraph_callers/callees to map dependencies
+     6. Create prioritized improvement plan with CodeGraph references
 ```
 
 ## Common Tasks Quick Reference
@@ -335,7 +374,7 @@ streamlit run src/web_app.py
 
 ## Token-Saving Workflow for Agents
 
-**Step 1**: Identify your task area (domain, services, importers, UI, ML, testing)
+**Step 1**: Identify your task area (domain, services, importers, UI, ML, testing, architecture)
 
 **Step 2**: Read the relevant QMD file:
 ```bash
@@ -347,20 +386,187 @@ context = Path("docs/context/<area>.qmd").read_text()
 cat docs/context/<area>.qmd
 ```
 
-**Step 3**: Reference specific sections as needed (QMD files are organized with clear headers)
+**Step 3**: Use CodeGraph for navigation instead of reading all files:
+```bash
+# Find symbols without reading files
+codegraph_search "function_name"
 
-**Step 4**: For full context, read `docs/project-index.qmd`
+# Understand dependencies without grep
+codegraph_callers "critical_function"
+
+# Check impact before changes without manual search
+codegraph_impact "refactor_target"
+```
+
+**Step 4**: Reference specific sections as needed (QMD files are organized with clear headers)
+
+**Step 5**: For full context, read `docs/project-index.qmd`
 
 **Benefits**:
 - 📉 Reduced token usage (read only relevant context)
 - 🎯 Focused context (no irrelevant information)
 - 📚 Comprehensive examples (code patterns and best practices)
 - 🔄 Always up-to-date (maintained alongside code)
+- ⚡ Faster navigation (CodeGraph vs grep/glob)
+- 🎯 Precise impact analysis (CodeGraph dependency tracking)
+
+### Example: Adding Tests with QMD + CodeGraph
+
+**Scenario**: Add unit tests for `pdf_utils.py`
+
+1. **Read context**: `cat docs/context/importers.qmd` (PDF utilities section)
+2. **Find functions**: `codegraph_search "pdf_utils"` (list all functions)
+3. **Check callers**: `codegraph_callers "extract_transactions_from_pdf"` (understand usage)
+4. **Check dependencies**: `codegraph_callees "ocr_image"` (identify mocking targets)
+5. **Write tests**: Use context + CodeGraph insights to write comprehensive tests
+6. **Verify coverage**: `pytest tests/test_pdf_utils.py --cov=src/pdf_utils`
+
+### Example: Refactoring with Impact Analysis
+
+**Scenario**: Consolidate duplicate date parsing functions
+
+1. **Read context**: `cat docs/context/importers.qmd` (Date parsing section)
+2. **Find duplicates**: `codegraph_search "parse.*date"` (find all variants)
+3. **Check impact**: `codegraph_impact "parse_es_date"` (find all callers)
+4. **Analyze dependencies**: `codegraph_callees "parse_es_date"` (check dependencies)
+5. **Plan refactor**: Create `src/date_utils.py` based on impact analysis
+6. **Migrate safely**: Update all callers identified by CodeGraph
+
+### Example: Architecture Analysis with Full Context
+
+**Scenario**: Create comprehensive improvement plan
+
+1. **Read roadmap**: `cat docs/plan_mejoras.md` (understand planned work)
+2. **Read project index**: `cat docs/project-index.qmd` (full architecture overview)
+3. **Find untested code**: `codegraph_search "def " | xargs -I{} grep -L "test_{}"` (combine with grep)
+4. **Identify critical paths**: `codegraph_callers <critical_function>` for each importer entry point
+5. **Read domain contexts**: All `docs/context/*.qmd` files for comprehensive understanding
+6. **Create plan**: Prioritized by impact (CodeGraph) and roadmap alignment (plan_mejoras.md)
+7. **Document with references**: Include CodeGraph commands for each improvement item
 
 ## Future Direction (Roadmap)
 
 **Next Phase**: SQLite persistence, account unification, hash-based deduplication
 **See**: `docs/plan_mejoras.md` for detailed roadmap
+
+## 🎫 Token Management & Agent Handoff
+
+### When Approaching Token Limit (98% usage ~196K/200K tokens)
+
+**STOP and follow this protocol:**
+
+1. **Save Progress**:
+   ```bash
+   # Create checkpoint file
+   cat > docs/checkpoint-$(date +%Y%m%d-%H%M).md <<EOF
+   # Checkpoint - $(date +%Y-%m-%d %H:%M)
+
+   ## Completed This Session
+   - [List completed tasks with file references]
+
+   ## Currently Working On
+   - [Current task status and next steps]
+
+   ## Test Count
+   - Before: XXX tests
+   - After: YYY tests (+ZZ)
+
+   ## Files Modified
+   - Created: [list]
+   - Modified: [list]
+
+   ## Next Agent Should
+   - [Specific next action]
+   - [Files to read first]
+   - [Commands to run]
+   EOF
+   ```
+
+2. **Commit Work**:
+   ```bash
+   git add -A
+   git commit -m "feat: [summary] - [test count change]
+
+   [Bullet list of changes]
+
+   Related: [task/issue references]
+
+   Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>"
+   ```
+
+3. **Update Continuation Plan**:
+   - If Phase 1 in progress: Update `docs/phase1-continuation-plan.md`
+   - If custom task: Create `docs/[task-name]-continuation.md`
+   - Include:
+     - What's done
+     - What's next
+     - CodeGraph commands for next agent
+     - QMD files to read
+     - Expected outcomes
+
+4. **Update AGENTS.md** (if needed):
+   - Add any new patterns discovered
+   - Document any tricky areas
+   - Update task assignments
+
+### Handoff File Template
+
+When creating continuation plan for next agent:
+
+```markdown
+# [Task Name] Continuation Plan
+
+**Last Updated**: [timestamp]
+**Session**: [N]
+**Token Usage**: [current/max]
+
+## Progress Summary
+- [Completed work]
+- [Test count change]
+- [Files modified]
+
+## Next Steps
+1. [Specific action]
+2. [Expected outcome]
+
+## For Next Agent
+
+### Quick Start
+1. Run: `pytest tests/ -q` (should see XXX tests passing)
+2. Read: `docs/context/[area].qmd`
+3. Analyze: `codegraph_search "[symbol]"`
+4. Continue: [specific instruction]
+
+### Context
+- **Working on**: [module/feature]
+- **Files**: [list]
+- **Related QMD**: `docs/context/[area].qmd`
+- **CodeGraph**: `codegraph_callees "[function]"`
+
+### Success Criteria
+- [ ] [Specific goal 1]
+- [ ] [Specific goal 2]
+- [ ] Tests: XXX → YYY (+ZZ)
+```
+
+### Token-Efficient Strategies
+
+**Before starting work**:
+- ✅ Use CodeGraph instead of reading full files
+- ✅ Read only relevant QMD sections
+- ✅ Use `--help` flags instead of reading docs
+- ✅ Check existing tests for patterns
+
+**During work**:
+- ✅ Write code in small chunks, commit frequently
+- ✅ Use grep/CodeGraph for lookups
+- ✅ Avoid reading large log files
+- ✅ Use `head`/`tail` for partial file views
+
+**When context is full**:
+- ✅ Commit work immediately
+- ✅ Create handoff file
+- ✅ Exit gracefully (don't start new complex tasks)
 
 ## Getting Help
 
@@ -369,3 +575,4 @@ cat docs/context/<area>.qmd
 - **Code examples**: Search QMD files for usage patterns
 - **Testing**: Refer to `docs/context/testing.qmd`
 - **API reference**: Check docstrings in source files
+- **Continuation plans**: Check `docs/*-continuation-plan.md` or `docs/checkpoint-*.md`

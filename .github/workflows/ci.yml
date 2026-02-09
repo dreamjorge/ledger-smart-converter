@@ -28,5 +28,7 @@ jobs:
           python -m py_compile src/generic_importer.py
           python -m py_compile src/healthcheck.py
 
-      - name: Run tests
-        run: python -m pytest -q
+      - name: Run tests with coverage
+        run: |
+          # Require 85% code coverage minimum
+          python -m pytest --cov=src --cov-report=term --cov-report=html --cov-fail-under=85 -q

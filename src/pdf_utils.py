@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Dict, Optional, Any, List
 
 from logging_config import get_logger
+from date_utils import parse_mexican_date as parse_mx_date_util
 
 logger = get_logger("pdf_utils")
 

@@ -12,7 +12,7 @@ def get_logger(name: str = "importer") -> logging.Logger:
         handler.setFormatter(logging.Formatter("%(levelname)s %(name)s %(message)s"))
         logger.addHandler(handler)
         logger.setLevel(logging.INFO)
-        logger.propagate = False
+        logger.propagate = True  # Allow pytest caplog to capture logs
     return logger
 
 

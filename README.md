@@ -98,10 +98,15 @@ Run tests locally:
 python -m pytest -q
 ```
 
+Run tests with coverage reporting (requires `pytest-cov`):
+```bash
+python -m pytest --cov=src --cov-report=term --cov-report=html
+```
+
 CI runs automatically on GitHub push/PR and executes:
 - dependency install
 - `py_compile` checks
-- pytest test suite
+- pytest test suite with 85% coverage enforcement
 
 ### Claude Code Slash Commands
 

@@ -50,23 +50,8 @@ def parse_iso_date(s: str) -> str:
     except ValueError:
         return s[:10]
 
-def parse_es_date(s: str) -> Optional[str]:
-    """'30/ene/26' -> '2026-01-30'."""
-    if s is None: return None
-    s = str(s).strip()
-    if re.match(r"^\d{4}-\d{2}-\d{2}$", s): return s
-    
-    months = {
-        "ene": "01", "feb": "02", "mar": "03", "abr": "04", "may": "05", "jun": "06",
-        "jul": "07", "ago": "08", "sep": "09", "oct": "10", "nov": "11", "dic": "12",
-    }
-    m = re.match(r"^\s*(\d{1,2})/([A-Za-z]{3})/(\d{2,4})\s*$", s)
-    if not m: return None
-    dd, mon, yy = m.group(1).zfill(2), m.group(2).lower(), m.group(3)
-    mm = months.get(mon)
-    if not mm: return None
-    yyyy = f"20{yy}" if len(yy) == 2 else yy
-    return f"{yyyy}-{mm}-{dd}"
+# Import consolidated date parsing functions
+from date_utils import parse_spanish_date as parse_es_date
 
 class GenericImporter:
     def __init__(self, rules_path: Path, bank_id: str):

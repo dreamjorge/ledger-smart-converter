@@ -22,7 +22,9 @@ from typing import Any, Dict, List, Tuple, Optional
 from collections import defaultdict
 
 import yaml
+from logging_config import get_logger
 
+logger = get_logger(__name__)
 
 # ----------------------------
 # Helpers
@@ -326,10 +328,10 @@ def main() -> int:
     out_path = Path(args.out)
 
     if not base_path.exists():
-        print(f"ERROR: base file not found: {base_path}")
+        logger.error(f"base file not found: {base_path}")
         return 2
     if not sugg_path.exists():
-        print(f"ERROR: suggestions file not found: {sugg_path}")
+        logger.error(f"suggestions file not found: {sugg_path}")
         return 2
 
     base = load_yaml(base_path)
@@ -338,8 +340,8 @@ def main() -> int:
     merged = merge_rules(base, sugg)
     dump_yaml(out_path, merged)
 
-    print("OK")
-    print(f"Merged rules written to: {out_path.resolve()}")
+    logger.info("OK")
+    logger.info(f"Merged rules written to: {out_path.resolve()}")
     return 0
 
 

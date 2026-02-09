@@ -30,10 +30,10 @@ class TestGetLogger:
         logger = get_logger("test_level")
         assert logger.level == logging.INFO
 
-    def test_logger_does_not_propagate(self):
-        """Test that logger propagate is disabled."""
+    def test_logger_propagates(self):
+        """Test that logger propagate is enabled (for pytest caplog)."""
         logger = get_logger("test_propagate")
-        assert logger.propagate is False
+        assert logger.propagate is True
 
     def test_returns_same_logger_on_second_call(self):
         """Test that calling get_logger twice with same name returns same logger."""

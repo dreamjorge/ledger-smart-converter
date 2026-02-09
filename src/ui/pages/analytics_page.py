@@ -13,6 +13,12 @@ from services import import_service as imp
 from services import rule_service as rulesvc
 from services import data_service
 from services.analytics_service import calculate_categorization_stats
+from ui.components.analytics_components import (
+    render_metrics,
+    render_charts,
+    render_category_deep_dive,
+    render_monthly_spending_trends,
+)
 
 def render_comparison(df_sant: pd.DataFrame, df_hsbc: pd.DataFrame, *, t: Callable, tc: Callable = None):
     """Render comparison view between Santander and HSBC banks.
@@ -226,133 +232,7 @@ def render_analytics_dashboard(
             render_comparison(df_sant, df_hsbc, t=t, tc=tc)
 
 
-def _render_metrics(t, stats):
-    col1, col2, col3, col4, col5 = st.columns(5)
-    with col1:
-        st.metric(t("metric_total_txns"), stats["total"], help=t("help_total_txns"))
-    with col2:
-        st.metric(t("metric_total_spent"), f"${stats['total_spent']:,.2f}", help=t("help_total_spent"))
-    with col3:
-        st.metric(t("metric_categorized"), f"{stats['categorized']} ({stats['coverage_pct']:.1f}%)", help=t("help_coverage"))
-    with col4:
-        st.metric(t("metric_category_field"), f"{stats['category_populated']} ({stats['category_pct']:.1f}%)")
-    with col5:
-        st.metric(t("metric_withdrawals"), stats["type_counts"].get("withdrawal", 0))
-
-def _render_charts(t, stats, tc):
-    st.markdown("---")
-    col1, col2 = st.columns(2)
-    with col1:
-        fig = px.pie(
-            names=[t("metric_categorized"), t("uncategorized")],
-            values=[stats["categorized"], stats["uncategorized"]],
-            title=t("chart_coverage_title"),
-            color_discrete_sequence=["#6366f1", "#475569"],
-            hole=0.6,
-            template="plotly_dark",
-        )
-        fig.update_layout(font_family="Outfit", title_font_size=20, margin=dict(t=80, b=40, l=40, r=40))
-        st.plotly_chart(fig, use_container_width=True)
-    with col2:
-        if stats["type_counts"]:
-            fig = px.bar(
-                x=list(stats["type_counts"].keys()),
-                y=list(stats["type_counts"].values()),
-                title=t("chart_types_title"),
-                labels={"x": t("chart_types_x"), "y": t("chart_types_y")},
-                color=list(stats["type_counts"].keys()),
-                color_discrete_sequence=["#6366f1", "#818cf8", "#94a3b8"],
-                template="plotly_dark",
-            )
-            fig.update_layout(font_family="Outfit", title_font_size=20, showlegend=False)
-            st.plotly_chart(fig, use_container_width=True)
-
-    if stats["category_spending"]:
-        st.markdown("---")
-        st.subheader(t("chart_spending_share"))
-        spending_fig = px.pie(
-            names=[tc(n) for n in stats["category_spending"].keys()],
-            values=list(stats["category_spending"].values()),
-            hole=0.5,
-            template="plotly_dark",
-            color_discrete_sequence=px.colors.qualitative.Pastel,
-        )
-        spending_fig.update_traces(textposition="inside", textinfo="percent+label")
-        spending_fig.update_layout(font_family="Outfit", showlegend=True, margin=dict(t=40, b=40, l=40, r=40))
-        st.caption(t("spending_share_caption"))
-        st.plotly_chart(spending_fig, use_container_width=True)
-
-def _render_category_deep_dive(t, tc, stats):
-    if stats["categories"] or stats["category_spending"]:
-        st.subheader(t("category_deep_dive"))
-        col1, col2 = st.columns(2)
-        with col1:
-            st.markdown(t("txns_by_category"))
-            categories_sorted = dict(sorted(stats["categories"].items(), key=lambda x: x[1], reverse=True)[:10])
-            fig_count = px.bar(
-                x=list(categories_sorted.values()),
-                y=[tc(n) for n in categories_sorted.keys()],
-                orientation="h",
-                labels={"x": "Transaction Count", "y": "Category"},
-                color=list(categories_sorted.values()),
-                color_continuous_scale="Blues",
-            )
-            fig_count.update_layout(showlegend=False, height=400)
-            st.plotly_chart(fig_count, width="stretch")
-        with col2:
-            st.markdown(t("money_by_category"))
-            spending_sorted = dict(sorted(stats["category_spending"].items(), key=lambda x: x[1], reverse=True)[:10])
-            fig_spent = px.bar(
-                x=list(spending_sorted.values()),
-                y=[tc(n) for n in spending_sorted.keys()],
-                orientation="h",
-                labels={"x": "Total Amount ($)", "y": "Category"},
-                color=list(spending_sorted.values()),
-                color_continuous_scale="Reds",
-            )
-            st.plotly_chart(fig_spent, width="stretch")
-
-        st.markdown(t("category_summary"))
-        cat_data = []
-        for cat in sorted(stats["categories"].keys()):
-            cat_data.append(
-                {
-                    "Category": tc(cat),
-                    "Transactions": stats["categories"].get(cat, 0),
-                    "Total Spent": f"${stats['category_spending'].get(cat, 0.0):,.2f}",
-                }
-            )
-        st.dataframe(pd.DataFrame(cat_data), width="stretch")
-
-def _render_monthly_spending_trends(t, tc, stats):
-    if stats["monthly_spending_trends"]:
-        st.markdown("---")
-        st.subheader(t("monthly_spending_trends_title"))
-        
-        trends_data = []
-        for month_year, categories in stats["monthly_spending_trends"].items():
-            for category, amount in categories.items():
-                trends_data.append({"Month": month_year, "Category": tc(category), "Amount": amount})
-        trends_df = pd.DataFrame(trends_data)
-        
-        if not trends_df.empty:
-            trends_df["Month"] = pd.to_datetime(trends_df["Month"])
-            trends_df = trends_df.sort_values(by="Month")
-            trends_df["Month"] = trends_df["Month"].dt.strftime("%Y-%m")
-
-            fig_trends = px.line(
-                trends_df,
-                x="Month",
-                y="Amount",
-                color="Category",
-                title=t("monthly_spending_trends_chart_title"),
-                labels={"Amount": "Total Spent ($)"},
-                template="plotly_dark",
-            )
-            fig_trends.update_layout(font_family="Outfit", title_font_size=20, hovermode="x unified")
-            st.plotly_chart(fig_trends, use_container_width=True)
-        else:
-            st.info(t("no_monthly_spending_data"))
+# Duplicate helper functions removed - using shared components from analytics_components.py
 
 def _render_drilldown(t, tc, stats, df_filtered_for_display, bank_id):
     st.markdown("---")
@@ -478,133 +358,7 @@ def _render_rule_hub(t, tc, df_filtered_for_display, bank_name, bank_id, config_
                         else:
                             st.warning("No pending rules to apply.")
 
-def _render_metrics(t, stats):
-    col1, col2, col3, col4, col5 = st.columns(5)
-    with col1:
-        st.metric(t("metric_total_txns"), stats["total"], help=t("help_total_txns"))
-    with col2:
-        st.metric(t("metric_total_spent"), f"${stats['total_spent']:,.2f}", help=t("help_total_spent"))
-    with col3:
-        st.metric(t("metric_categorized"), f"{stats['categorized']} ({stats['coverage_pct']:.1f}%)", help=t("help_coverage"))
-    with col4:
-        st.metric(t("metric_category_field"), f"{stats['category_populated']} ({stats['category_pct']:.1f}%)")
-    with col5:
-        st.metric(t("metric_withdrawals"), stats["type_counts"].get("withdrawal", 0))
-
-def _render_charts(t, stats, tc):
-    st.markdown("---")
-    col1, col2 = st.columns(2)
-    with col1:
-        fig = px.pie(
-            names=[t("metric_categorized"), t("uncategorized")],
-            values=[stats["categorized"], stats["uncategorized"]],
-            title=t("chart_coverage_title"),
-            color_discrete_sequence=["#6366f1", "#475569"],
-            hole=0.6,
-            template="plotly_dark",
-        )
-        fig.update_layout(font_family="Outfit", title_font_size=20, margin=dict(t=80, b=40, l=40, r=40))
-        st.plotly_chart(fig, use_container_width=True)
-    with col2:
-        if stats["type_counts"]:
-            fig = px.bar(
-                x=list(stats["type_counts"].keys()),
-                y=list(stats["type_counts"].values()),
-                title=t("chart_types_title"),
-                labels={"x": t("chart_types_x"), "y": t("chart_types_y")},
-                color=list(stats["type_counts"].keys()),
-                color_discrete_sequence=["#6366f1", "#818cf8", "#94a3b8"],
-                template="plotly_dark",
-            )
-            fig.update_layout(font_family="Outfit", title_font_size=20, showlegend=False)
-            st.plotly_chart(fig, use_container_width=True)
-
-    if stats["category_spending"]:
-        st.markdown("---")
-        st.subheader(t("chart_spending_share"))
-        spending_fig = px.pie(
-            names=[tc(n) for n in stats["category_spending"].keys()],
-            values=list(stats["category_spending"].values()),
-            hole=0.5,
-            template="plotly_dark",
-            color_discrete_sequence=px.colors.qualitative.Pastel,
-        )
-        spending_fig.update_traces(textposition="inside", textinfo="percent+label")
-        spending_fig.update_layout(font_family="Outfit", showlegend=True, margin=dict(t=40, b=40, l=40, r=40))
-        st.caption(t("spending_share_caption"))
-        st.plotly_chart(spending_fig, use_container_width=True)
-
-def _render_category_deep_dive(t, tc, stats):
-    if stats["categories"] or stats["category_spending"]:
-        st.subheader(t("category_deep_dive"))
-        col1, col2 = st.columns(2)
-        with col1:
-            st.markdown(t("txns_by_category"))
-            categories_sorted = dict(sorted(stats["categories"].items(), key=lambda x: x[1], reverse=True)[:10])
-            fig_count = px.bar(
-                x=list(categories_sorted.values()),
-                y=[tc(n) for n in categories_sorted.keys()],
-                orientation="h",
-                labels={"x": "Transaction Count", "y": "Category"},
-                color=list(categories_sorted.values()),
-                color_continuous_scale="Blues",
-            )
-            fig_count.update_layout(showlegend=False, height=400)
-            st.plotly_chart(fig_count, width="stretch")
-        with col2:
-            st.markdown(t("money_by_category"))
-            spending_sorted = dict(sorted(stats["category_spending"].items(), key=lambda x: x[1], reverse=True)[:10])
-            fig_spent = px.bar(
-                x=list(spending_sorted.values()),
-                y=[tc(n) for n in spending_sorted.keys()],
-                orientation="h",
-                labels={"x": "Total Amount ($)", "y": "Category"},
-                color=list(spending_sorted.values()),
-                color_continuous_scale="Reds",
-            )
-            st.plotly_chart(fig_spent, width="stretch")
-
-        st.markdown(t("category_summary"))
-        cat_data = []
-        for cat in sorted(stats["categories"].keys()):
-            cat_data.append(
-                {
-                    "Category": tc(cat),
-                    "Transactions": stats["categories"].get(cat, 0),
-                    "Total Spent": f"${stats['category_spending'].get(cat, 0.0):,.2f}",
-                }
-            )
-        st.dataframe(pd.DataFrame(cat_data), width="stretch")
-
-def _render_monthly_spending_trends(t, tc, stats):
-    if stats["monthly_spending_trends"]:
-        st.markdown("---")
-        st.subheader(t("monthly_spending_trends_title"))
-        
-        trends_data = []
-        for month_year, categories in stats["monthly_spending_trends"].items():
-            for category, amount in categories.items():
-                trends_data.append({"Month": month_year, "Category": tc(category), "Amount": amount})
-        trends_df = pd.DataFrame(trends_data)
-        
-        if not trends_df.empty:
-            trends_df["Month"] = pd.to_datetime(trends_df["Month"])
-            trends_df = trends_df.sort_values(by="Month")
-            trends_df["Month"] = trends_df["Month"].dt.strftime("%Y-%m")
-
-            fig_trends = px.line(
-                trends_df,
-                x="Month",
-                y="Amount",
-                color="Category",
-                title=t("monthly_spending_trends_chart_title"),
-                labels={"Amount": "Total Spent ($)"},
-                template="plotly_dark",
-            )
-            fig_trends.update_layout(font_family="Outfit", title_font_size=20, hovermode="x unified")
-            st.plotly_chart(fig_trends, use_container_width=True)
-        else:
-            st.info(t("no_monthly_spending_data"))
+# Duplicate helper functions removed - using shared components from analytics_components.py
 
 def _render_drilldown(t, tc, stats, df_filtered_for_display, bank_id):
     st.markdown("---")
@@ -793,9 +547,9 @@ def render_bank_analytics(df, stats, bank_name, bank_id, t, tc, config_dir: Path
         st.error(t("no_data_selection"))
         return
 
-    _render_metrics(t, stats)
-    _render_charts(t, stats, tc)
-    _render_category_deep_dive(t, tc, stats)
-    _render_monthly_spending_trends(t, tc, stats)
+    render_metrics(t, stats)
+    render_charts(t, stats, tc)
+    render_category_deep_dive(t, tc, stats)
+    render_monthly_spending_trends(t, tc, stats)
     _render_drilldown(t, tc, stats, df_filtered_for_display, bank_id)
     _render_rule_hub(t, tc, df_filtered_for_display, bank_name, bank_id, config_dir, ml_engine)

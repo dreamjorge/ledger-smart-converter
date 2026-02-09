@@ -26,6 +26,9 @@ import yaml
 # Local modules
 import common_utils as cu
 import pdf_utils as pu
+from logging_config import get_logger
+
+logger = get_logger(__name__)
 
 MONTHS = {
     "ene": "01", "feb": "02", "mar": "03", "abr": "04", "may": "05", "jun": "06",
@@ -35,25 +38,8 @@ MONTHS = {
 DATE_ES_RE = re.compile(r"^\s*(\d{1,2})/([A-Za-z]{3})/(\d{2,4})\s*$")
 
 
-def parse_es_date(s: str) -> Optional[str]:
-    """'30/ene/26' -> '2026-01-30'. También acepta '2026-01-30' ya en ISO."""
-    if s is None:
-        return None
-    s = str(s).strip()
-    
-    # Si ya es ISO YYYY-MM-DD
-    if re.match(r"^\d{4}-\d{2}-\d{2}$", s):
-        return s
-
-    m = DATE_ES_RE.match(s)
-    if not m:
-        return None
-    dd, mon, yy = m.group(1).zfill(2), m.group(2).lower(), m.group(3)
-    mm = MONTHS.get(mon)
-    if not mm:
-        return None
-    yyyy = f"20{yy}" if len(yy) == 2 else yy
-    return f"{yyyy}-{mm}-{dd}"
+# Import consolidated date parsing function
+from date_utils import parse_spanish_date as parse_es_date
 
 
 def find_header_row(df: pd.DataFrame) -> int:
@@ -85,10 +71,10 @@ def main() -> int:
     rules_path = Path(args.rules)
 
     if not xlsx_path and not (args.pdf_source and pdf_path):
-        print("ERROR: Debe proporcionar --xlsx o --pdf (con --pdf-source)")
+        logger.error(" Debe proporcionar --xlsx o --pdf (con --pdf-source)")
         return 2
     if not rules_path.exists():
-        print(f"ERROR: No existe rules.yml: {rules_path}")
+        logger.error(f" No existe rules.yml: {rules_path}")
         return 2
 
     rules_yml = yaml.safe_load(rules_path.read_text(encoding="utf-8"))
@@ -106,16 +92,16 @@ def main() -> int:
     # Metadata extraction
     pdf_meta = {}
     if pdf_path and pdf_path.exists():
-        print(f"\n--- Analizando PDF: {pdf_path.name} ---")
+        logger.info(f"\n--- Analizando PDF: {pdf_path.name} ---")
         pdf_meta = pu.extract_pdf_metadata(pdf_path)
         for k, v in pdf_meta.items():
-            print(f"  {k}: {v}")
+            logger.info(f"  {k}: {v}")
 
     # Lee datos
     df = pd.DataFrame()
     
     if args.pdf_source and pdf_path:
-        print(f"--- Usando PDF (OCR) como fuente de transacciones ---")
+        logger.info(f"--- Usando PDF (OCR) como fuente de transacciones ---")
         pdf_txns = pu.extract_transactions_from_pdf(pdf_path, use_ocr=True)
         year = datetime.now().year
         if "cutoff_date" in pdf_meta:
@@ -137,7 +123,7 @@ def main() -> int:
     else:
         # Lee XLSX
         if not xlsx_path or not xlsx_path.exists():
-            print(f"ERROR: No existe XLSX: {xlsx_path}")
+            logger.error(f" No existe XLSX: {xlsx_path}")
             return 2
             
         raw = pd.read_excel(xlsx_path, sheet_name=0, header=None)
@@ -148,7 +134,7 @@ def main() -> int:
 
         for col in ["fecha", "concepto", "importe"]:
             if col not in df.columns:
-                print(f"ERROR: No encontré columna '{col}'. Columnas: {list(df.columns)}")
+                logger.error(f" No encontré columna '{col}'. Columnas: {list(df.columns)}")
                 return 3
 
         df = df.dropna(subset=["fecha", "concepto", "importe"], how="any")
@@ -165,14 +151,14 @@ def main() -> int:
         if not date:
             # Only print if we are in PDF OCR mode, to avoid clutter in standard Excel mode
             if args.pdf_source:
-                print(f"DEBUG: Skipped row - Invalid Date: {r['fecha']}")
+                logger.debug(f" Skipped row - Invalid Date: {r['fecha']}")
             continue
 
         desc = str(r["concepto"]).strip()
         amt = cu.parse_money(r["importe"])
         if amt is None or amt == 0:
             if args.pdf_source:
-                print(f"DEBUG: Skipped row - Invalid Amount: {r['importe']} ({desc})")
+                logger.debug(f" Skipped row - Invalid Amount: {r['importe']} ({desc})")
             continue
 
         expense, tags, merchant = cu.classify(desc, compiled, merchant_aliases, fallback_expense)
@@ -260,21 +246,21 @@ def main() -> int:
     # Validación PDF
     pdf_path = Path(args.pdf)
     if args.pdf and pdf_path.exists():
-        print(f"\n--- Analizando PDF: {pdf_path.name} ---")
+        logger.info(f"\n--- Analizando PDF: {pdf_path.name} ---")
         meta = pu.extract_pdf_metadata(pdf_path)
         for k, v in meta.items():
-            print(f"  {k}: {v}")
+            logger.info(f"  {k}: {v}")
         
         # Comparaciones útiles
         if "total_pagar" in meta:
             diff_net = abs(meta["total_pagar"] - (sum_cargos - sum_abonos)) # aprox
-            print(f"  (Ref) Total Pagar PDF: {meta['total_pagar']:.2f}")
+            logger.info(f"  (Ref) Total Pagar PDF: {meta['total_pagar']:.2f}")
 
-    print("\n--- Resultados ---")
-    print(f"CSV Firefly: {out_path.resolve()}")
-    print(f"Movimientos exportados: {len(out_rows)}")
-    print(f"Suma cargos: {sum_cargos:.2f}")
-    print(f"Suma abonos: {sum_abonos:.2f}")
+    logger.info("\n--- Resultados ---")
+    logger.info(f"CSV Firefly: {out_path.resolve()}")
+    logger.info(f"Movimientos exportados: {len(out_rows)}")
+    logger.info(f"Suma cargos: {sum_cargos:.2f}")
+    logger.info(f"Suma abonos: {sum_abonos:.2f}")
 
     return 0
 
