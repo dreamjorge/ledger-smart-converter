@@ -29,6 +29,7 @@ from import_hsbc_cfdi_firefly import (
     CHARGE_SERVICE_HINT,
     REFUND_HINT,
     CASHBACK_HINT,
+    main,
 )
 
 
@@ -653,6 +654,69 @@ class TestHSBCEdgeCases:
 
         # Noon
         assert parse_iso_date("2024-01-15T12:00:00") == "2024-01-15"
+
+
+class TestHSBCMainCLI:
+    """Integration tests for main() flow."""
+
+    def test_main_processes_valid_xml_and_writes_outputs(self, tmp_path, fixtures_dir, monkeypatch):
+        rules_path = tmp_path / "rules.yml"
+        out_csv = tmp_path / "firefly.csv"
+        out_unknown = tmp_path / "unknown.csv"
+        out_suggestions = tmp_path / "suggestions.yml"
+        xml_path = fixtures_dir / "valid_cfdi.xml"
+
+        rules_path.write_text(
+            """
+version: 1
+defaults:
+  currency: MXN
+  fallback_expense: Expenses:Other:Uncategorized
+  accounts:
+    hsbc_credit_card:
+      name: Liabilities:CC:HSBC
+      closing_day: 15
+    hsbc_payment_asset: Assets:HSBC Debito
+merchant_aliases:
+  - canon: oxxo
+    any_regex: ["oxxo"]
+rules:
+  - name: OXXO
+    any_regex: ["oxxo"]
+    set:
+      expense: Expenses:Food:Convenience
+      tags: ["bucket:convenience"]
+""",
+            encoding="utf-8",
+        )
+
+        monkeypatch.setattr(
+            "sys.argv",
+            [
+                "prog",
+                "--xml",
+                str(xml_path),
+                "--rules",
+                str(rules_path),
+                "--out",
+                str(out_csv),
+                "--unknown-out",
+                str(out_unknown),
+                "--suggestions-out",
+                str(out_suggestions),
+            ],
+        )
+
+        assert main() == 0
+        assert out_csv.exists()
+        assert out_unknown.exists()
+        assert out_suggestions.exists()
+
+    def test_main_returns_2_without_input_source(self, tmp_path, monkeypatch):
+        rules_path = tmp_path / "rules.yml"
+        rules_path.write_text("defaults: {}\nrules: []\n", encoding="utf-8")
+        monkeypatch.setattr("sys.argv", ["prog", "--rules", str(rules_path)])
+        assert main() == 2
 
 
 if __name__ == "__main__":

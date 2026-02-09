@@ -29,3 +29,27 @@ def test_run_healthcheck_with_monkeypatched_dependencies(monkeypatch, tmp_path: 
     assert out["ok"] is True
     assert out["checks"]["config_exists"] is True
     assert out["checks"]["tesseract_binary_found"] is True
+
+
+def test_check_dependency_true_and_false():
+    assert hc._check_dependency("json") is True
+    assert hc._check_dependency("definitely_missing_module_12345") is False
+
+
+def test_is_writable_handles_exceptions():
+    class BrokenPath:
+        def mkdir(self, *args, **kwargs):
+            raise OSError("boom")
+
+        def __truediv__(self, _other):
+            return self
+
+    assert hc._is_writable(BrokenPath()) is False
+
+
+def test_main_returns_0_or_1_based_on_healthcheck(monkeypatch):
+    monkeypatch.setattr(hc, "run_healthcheck", lambda: {"ok": True})
+    assert hc.main() == 0
+
+    monkeypatch.setattr(hc, "run_healthcheck", lambda: {"ok": False})
+    assert hc.main() == 1
