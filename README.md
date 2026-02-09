@@ -106,7 +106,7 @@ python -m pytest --cov=src --cov-report=term --cov-report=html
 CI runs automatically on GitHub push/PR and executes:
 - dependency install
 - `py_compile` checks
-- pytest test suite with 85% coverage enforcement
+- pytest test suite with 60% coverage enforcement (excludes UI files)
 
 ### Claude Code Slash Commands
 
