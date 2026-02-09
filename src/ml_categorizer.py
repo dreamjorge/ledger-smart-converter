@@ -6,6 +6,9 @@ from typing import List, Dict, Any, Optional, Tuple
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
+from logging_config import get_logger
+
+logger = get_logger(__name__)
 
 MODEL_DIR = Path("config/ml_models")
 MODEL_PATH = MODEL_DIR / "categorizer_v1.joblib"
@@ -37,7 +40,7 @@ class TransactionCategorizer:
                     if 'description' in df.columns and 'destination_name' in df.columns:
                         dfs.append(df[['description', 'destination_name']])
                 except Exception as e:
-                    print(f"Error loading {p}: {e}")
+                    logger.error(f"Error loading {p}: {e}")
         
         if not dfs:
             return False
@@ -102,4 +105,4 @@ def train_global_model():
 
 if __name__ == "__main__":
     status = train_global_model()
-    print(status)
+    logger.info(status)

@@ -29,6 +29,12 @@ import yaml
 # Local modules
 import common_utils as cu
 import pdf_utils as pu
+<<<<<<< HEAD
+=======
+from logging_config import get_logger
+
+logger = get_logger(__name__)
+>>>>>>> 614302be74b660d8b51151a679b498f0afa20d6a
 
 CFDI_NS = {"cfdi": "http://www.sat.gob.mx/cfd/4"}
 
@@ -130,6 +136,7 @@ def apply_xml_reference_to_pdf(pdf_txns: List[TxnRaw], xml_txns: List[TxnRaw]) -
 
 
 def print_pdf_xml_validation_summary(summary: Optional[Dict[str, Any]]) -> None:
+<<<<<<< HEAD
     if not summary:
         return
 
@@ -159,6 +166,38 @@ def print_pdf_xml_validation_summary(summary: Optional[Dict[str, Any]]) -> None:
             print(f"    {txn.date} - ${txn.amount:.2f} - {txn.description}")
         if count > 3:
             print(f"    ... {count - 3} mas.")
+=======
+    """Log PDF vs XML validation summary."""
+    if not summary:
+        return
+
+    logger.info("PDF vs XML Validation")
+    logger.info(f"Matches: {summary['matched']} / {summary['total_pdf']} (PDF) vs {summary['total_xml']} (XML)")
+
+    if summary["differences"]:
+        logger.warning(f"Detected {len(summary['differences'])} differences (description or amount)")
+        for diff in summary["differences"][:3]:
+            logger.debug(f"  {diff['date']}: PDF ${diff['pdf_amount']:.2f} [{diff['pdf_desc']}] vs XML [{diff['xml_desc']}] (${diff['xml_amount']:.2f})")
+        if len(summary["differences"]) > 3:
+            extras = len(summary["differences"]) - 3
+            logger.debug(f"  ... and {extras} more differences")
+
+    if summary["pdf_only"]:
+        count = len(summary["pdf_only"])
+        logger.info(f"PDF-only entries: {count}")
+        for txn in summary["pdf_only"][:3]:
+            logger.debug(f"  {txn.date} - ${txn.amount:.2f} - {txn.description}")
+        if count > 3:
+            logger.debug(f"  ... {count - 3} more")
+
+    if summary["xml_only"]:
+        count = len(summary["xml_only"])
+        logger.info(f"XML-only entries: {count}")
+        for txn in summary["xml_only"][:3]:
+            logger.debug(f"  {txn.date} - ${txn.amount:.2f} - {txn.description}")
+        if count > 3:
+            logger.debug(f"  ... {count - 3} more")
+>>>>>>> 614302be74b660d8b51151a679b498f0afa20d6a
 
 
 # ----------------------------
@@ -288,20 +327,35 @@ def main() -> int:
     rules_path = Path(args.rules)
 
     if not xml_path and not csv_path and not pdf_source_mode:
+<<<<<<< HEAD
         print("ERROR: Debe proporcionar --xml, --csv o --pdf (con --pdf-source)")
         return 2
 
     if not rules_path.exists():
         print(f"ERROR: No existe rules.yml: {rules_path}")
+=======
+        logger.error(" Debe proporcionar --xml, --csv o --pdf (con --pdf-source)")
+        return 2
+
+    if not rules_path.exists():
+        logger.error(f" No existe rules.yml: {rules_path}")
+>>>>>>> 614302be74b660d8b51151a679b498f0afa20d6a
         return 2
 
     # Metadata extraction (Always try PDF for metadata if available)
     pdf_meta = {}
     if pdf_path and pdf_path.exists():
+<<<<<<< HEAD
         print(f"--- Analizando PDF: {pdf_path.name} ---")
         pdf_meta = pu.extract_pdf_metadata(pdf_path)
         for k, v in pdf_meta.items():
             print(f"  {k}: {v}")
+=======
+        logger.info(f" Analizando PDF: {pdf_path.name} ---")
+        pdf_meta = pu.extract_pdf_metadata(pdf_path)
+        for k, v in pdf_meta.items():
+            logger.info(f"{k}: {v}")
+>>>>>>> 614302be74b660d8b51151a679b498f0afa20d6a
 
     xml_reference_txns: List[TxnRaw] = []
     xml_reference_datos: Dict[str, str] = {}
@@ -316,16 +370,26 @@ def main() -> int:
         if addenda is None:
             msg = "ERROR: No encontré cfdi:Addenda en el XML. Este script espera movimientos dentro de la Addenda."
             if pdf_source_mode:
+<<<<<<< HEAD
                 print(f"WARNING: {msg} - el PDF sigue siendo la fuente principal.")
             else:
                 print(msg)
+=======
+                logger.warning(f" {msg} - el PDF sigue siendo la fuente principal.")
+            else:
+                logger.error(msg)
+>>>>>>> 614302be74b660d8b51151a679b498f0afa20d6a
                 return 3
         else:
             xml_reference_datos = get_datos_generales(addenda)
             xml_reference_txns = extract_movimientos(addenda)
             xml_reference_loaded = True
     elif xml_path and not xml_path.exists():
+<<<<<<< HEAD
         print(f"ERROR: No existe XML: {xml_path}")
+=======
+        logger.error(f" No existe XML: {xml_path}")
+>>>>>>> 614302be74b660d8b51151a679b498f0afa20d6a
         return 2
 
     pdf_xml_summary: Optional[Dict[str, Any]] = None
@@ -335,7 +399,11 @@ def main() -> int:
     datos = {}
     
     if pdf_source_mode:
+<<<<<<< HEAD
         print(f"--- Usando PDF (OCR) como fuente de transacciones ---")
+=======
+        logger.info(f" Usando PDF (OCR) como fuente de transacciones ---")
+>>>>>>> 614302be74b660d8b51151a679b498f0afa20d6a
         pdf_txns = pu.extract_transactions_from_pdf(pdf_path, use_ocr=True)
         year = datetime.now().year
         if "cutoff_date" in pdf_meta:
@@ -345,7 +413,11 @@ def main() -> int:
         for pt in pdf_txns:
             iso_date = pu.parse_mx_date(pt["raw_date"], year=year)
             if not iso_date:
+<<<<<<< HEAD
                 print(f"DEBUG: Skipping row - Invalid OCR Date: {pt['raw_date']}")
+=======
+                logger.debug(f" Skipping row - Invalid OCR Date: {pt['raw_date']}")
+>>>>>>> 614302be74b660d8b51151a679b498f0afa20d6a
                 continue
             raw_txns.append(TxnRaw(
                 date=iso_date,
@@ -364,14 +436,22 @@ def main() -> int:
         if xml_reference_txns:
             raw_txns, pdf_xml_summary = apply_xml_reference_to_pdf(raw_txns, xml_reference_txns)
         elif not raw_txns:
+<<<<<<< HEAD
             print("WARNING: No se extrajeron movimientos del PDF.")
+=======
+            logger.warning(" No se extrajeron movimientos del PDF.")
+>>>>>>> 614302be74b660d8b51151a679b498f0afa20d6a
 
         if not datos:
             datos = {"nombredelCliente": "PDF Extract", "periodo": pdf_meta.get("cutoff_date", "Unknown")}
     elif (csv_path and csv_path.exists()) or (xml_path and xml_path.suffix.lower() in [".csv", ".xlsx", ".xls"]):
         # Handle cases where user might have passed CSV/XLSX to --xml or used --csv
         source = csv_path or xml_path
+<<<<<<< HEAD
         print(f"--- Leyendo Archivo (HSBC): {source.name} ---")
+=======
+        logger.info(f" Leyendo Archivo (HSBC): {source.name} ---")
+>>>>>>> 614302be74b660d8b51151a679b498f0afa20d6a
         import pandas as pd
         
         if source.suffix.lower() in [".xlsx", ".xls"]:
@@ -391,7 +471,11 @@ def main() -> int:
             if "importe" in c: col_map["amount"] = c
 
         if "date" not in col_map or "desc" not in col_map:
+<<<<<<< HEAD
             print(f"ERROR: No pude identificar columnas básicas en el archivo. Columnas: {list(df.columns)}")
+=======
+            logger.error(f" No pude identificar columnas básicas en el archivo. Columnas: {list(df.columns)}")
+>>>>>>> 614302be74b660d8b51151a679b498f0afa20d6a
             return 3
             
         for _, row in df.iterrows():
@@ -432,7 +516,11 @@ def main() -> int:
         datos = {"nombredelCliente": "File Extract", "periodo": "See transactions"}
     else:
         if not xml_reference_loaded:
+<<<<<<< HEAD
             print("ERROR: El XML proporcionado no contiene movimientos válidos.")
+=======
+            logger.error(" El XML proporcionado no contiene movimientos válidos.")
+>>>>>>> 614302be74b660d8b51151a679b498f0afa20d6a
             return 3
         datos = xml_reference_datos
         raw_txns = xml_reference_txns
@@ -577,6 +665,7 @@ def main() -> int:
     # Validación PDF
     pdf_path = Path(args.pdf)
     if args.pdf and pdf_path.exists():
+<<<<<<< HEAD
         print(f"\n--- Analizando PDF: {pdf_path.name} ---")
         meta = pu.extract_pdf_metadata(pdf_path)
         for k, v in meta.items():
@@ -590,6 +679,21 @@ def main() -> int:
     print(f"Movimientos exportados: {len(out_rows)}")
     print(f"Suma cargos: {sum_charges:.2f}")
     print(f"Suma pagos: {sum_payments:.2f}")
+=======
+        logger.info(f"\n--- Analizando PDF: {pdf_path.name} ---")
+        meta = pu.extract_pdf_metadata(pdf_path)
+        for k, v in meta.items():
+            logger.info(f"{k}: {v}")
+
+    logger.info("\n--- Resultados ---")
+    logger.info(f"Cliente: {cliente}")
+    logger.info(f"Periodo: {periodo}")
+    logger.info(f"Cuenta (XML): {cuenta_xml}")
+    logger.info(f"CSV Firefly: {out_path.resolve()}")
+    logger.info(f"Movimientos exportados: {len(out_rows)}")
+    logger.info(f"Suma cargos: {sum_charges:.2f}")
+    logger.info(f"Suma pagos: {sum_payments:.2f}")
+>>>>>>> 614302be74b660d8b51151a679b498f0afa20d6a
 
     if pdf_xml_summary:
         print_pdf_xml_validation_summary(pdf_xml_summary)

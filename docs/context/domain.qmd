@@ -1,0 +1,110 @@
+---
+title: "Domain Layer Context"
+format: html
+---
+
+## Purpose
+
+Domain models enforce data validation and provide the canonical transaction representation.
+
+## Key File
+
+**`src/domain/transaction.py`** - Single source of truth for transaction structure
+
+## Transaction Model
+
+```python
+@dataclass(frozen=True)
+class CanonicalTransaction:
+    date: str              # ISO format YYYY-MM-DD
+    description: str       # Merchant/description text
+    amount: float          # Transaction amount
+    bank_id: str          # e.g., "santander_likeu", "hsbc"
+    account_id: str       # Account identifier
+    source: str = "data"  # Data source type
+    rfc: str = ""         # Mexican tax ID (optional)
+
+    @property
+    def id(self) -> str:  # Deterministic hash for deduplication
+```
+
+## Validation Rules
+
+**Date Format**: Must be ISO YYYY-MM-DD
+**Amount**: Must be valid float
+**Bank ID**: Must match configured bank
+**Account ID**: Required, non-empty
+
+**Validator**: `src/validation.py`
+
+```python
+validate_transaction(txn: Dict) -> Tuple[bool, Optional[str]]
+validate_tags(tags: str) -> bool  # No spaces allowed in tags
+```
+
+## Firefly III Output Format
+
+CSV columns generated from CanonicalTransaction:
+
+```
+date,amount,description,type,source_name,source_id,
+destination_name,destination_id,currency_code,
+foreign_currency_code,foreign_amount,internal_reference,
+external_id,notes,category_name,tags
+```
+
+## Error Types
+
+**`src/errors.py`**:
+- `ValidationError` - Invalid transaction data
+- `ParseError` - Parsing failure
+- `ConfigError` - Configuration issues
+
+## Usage in Importers
+
+```python
+from domain.transaction import CanonicalTransaction
+from validation import validate_transaction
+
+txn = CanonicalTransaction(
+    date="2024-01-15",
+    description="OXXO STORE",
+    amount=125.50,
+    bank_id="santander_likeu",
+    account_id="main",
+    rfc="ABC123456DEF"
+)
+
+is_valid, error_msg = validate_transaction(txn.__dict__)
+if not is_valid:
+    raise ValidationError(error_msg)
+```
+
+## Key Constraints
+
+- **Immutable**: `frozen=True` dataclass
+- **Validated**: Must pass validation before CSV write
+- **Hashed**: ID generated from key fields for deduplication
+- **Type-safe**: Strong typing with dataclass
+
+## Related Files
+
+- `src/validation.py` - Validation logic
+- `src/errors.py` - Error types
+- `src/services/import_service.py` - Uses domain model
+- `tests/test_validation.py` - Validation tests
+
+## Common Modifications
+
+**Add new field**:
+1. Add to dataclass
+2. Update `id` property hash if needed
+3. Update validators in `validation.py`
+4. Update importers to populate field
+5. Update analytics if needed
+6. Run tests
+
+**Change validation**:
+1. Edit `src/validation.py`
+2. Update `tests/test_validation.py`
+3. Ensure importers comply

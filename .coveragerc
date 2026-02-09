@@ -1,0 +1,19 @@
+[run]
+source = src
+omit =
+    */tests/*
+    */test_*.py
+    */__pycache__/*
+    */ui/*
+    */web_app.py
+    */pdf_feedback.py
+    */diag_rules.py
+    */merge_suggestions.py
+
+[report]
+precision = 2
+show_missing = True
+skip_covered = False
+
+[html]
+directory = htmlcov

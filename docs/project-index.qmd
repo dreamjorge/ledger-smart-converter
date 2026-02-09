@@ -1,0 +1,148 @@
+---
+title: "Ledger Smart Converter - Project Index"
+format: html
+---
+
+## Project Overview
+
+**Purpose**: Import bank statements (HSBC Mexico, Santander LikeU) into Firefly III with AI-powered categorization.
+
+**Key Features**: OCR PDF parsing, ML predictions, rule-based categorization, analytics dashboard, bilingual support.
+
+## Architecture
+
+### Core Components
+
+**Importers** (`src/`)
+- `generic_importer.py`: CLI entry point with validation flags (`--strict`, `--dry-run`, `--log-json`)
+- `import_hsbc_cfdi_firefly.py`: HSBC XML/PDF importer
+- `import_likeu_firefly.py`: Santander XLSX/PDF importer
+- `pdf_utils.py`: PDF text extraction + OCR fallback (enhanced logging, robust error handling)
+
+**Domain** (`src/domain/`)
+- `transaction.py`: Canonical transaction model with validation
+
+**Services** (`src/services/`)
+- `import_service.py`: Orchestrates import workflow
+- `rule_service.py`: Manages rules staging, conflict detection, merge with backup
+- `analytics_service.py`: Dashboard metrics and aggregations
+
+**ML & Matching**
+- `ml_categorizer.py`: sklearn-based category predictions
+- `smart_matching.py`: Fuzzy merchant search (rapidfuzz)
+
+**UI** (`src/ui/`)
+- `web_app.py`: Streamlit router
+- `pages/import_page.py`: File upload and processing
+- `pages/analytics_page.py`: Spending metrics, category breakdowns, rule correction
+
+**Utilities**
+- `validation.py`: Transaction/tag validation layer
+- `settings.py`: Environment config (`.env` support)
+- `healthcheck.py`: Dependency and OCR validation
+- `logging_config.py`: Structured logging
+
+## Data Flow
+
+```
+Input (PDF/XML/XLSX) → Parse → Validate → Categorize (Rules + ML) → CSV Output → Firefly III
+                                    ↓
+                            Analytics Dashboard
+```
+
+## Configuration
+
+**`config/rules.yml`**: Account definitions, closing days, categorization rules
+**`config/rules.pending.yml`**: Staged rule changes (safe workflow)
+**`config/backups/`**: Timestamped rule backups on merge
+
+## File Structure
+
+```
+src/
+├── domain/           # Canonical models
+├── services/         # Business logic layer
+├── ui/pages/         # Streamlit pages
+├── *_importer.py     # Bank-specific importers
+├── ml_categorizer.py # AI predictions
+└── pdf_utils.py      # OCR + text extraction
+
+data/
+├── hsbc/             # HSBC outputs
+└── santander/        # Santander outputs
+
+scripts/
+├── setup_env.sh           # Environment setup
+├── run_web.sh             # Launch Streamlit
+├── run_import.sh          # CLI import helper
+└── generate_dummy_data.py # Generate test data for dashboard
+
+tests/                     # pytest suite (55 tests)
+```
+
+## Key Workflows
+
+### Import
+1. Upload PDF/XML/XLSX via UI or CLI
+2. Extract transactions (text or OCR)
+3. Validate canonical model
+4. Apply rules + ML predictions
+5. Write CSV atomically
+6. Log run manifest (`--log-json`)
+
+### Rule Correction
+1. Search merchant (fuzzy)
+2. View ML prediction
+3. Stage rule in `rules.pending.yml`
+4. Detect conflicts
+5. Merge with backup
+6. Retrain ML model
+
+### Analytics
+1. Load CSVs from `data/`
+2. Aggregate by period/category/bank
+3. Display metrics, charts, drill-down
+
+## Reliability Features
+
+- **Validation**: Strict transaction/tag checks with typed errors
+- **Atomic writes**: Temp files + rename for CSV outputs
+- **Idempotent**: Hash-based deduplication (planned for DB phase)
+- **Logging**: Structured JSON manifests for auditing
+- **CI**: GitHub Actions (compile + pytest on push/PR)
+
+## Technology Stack
+
+- **Runtime**: Python 3.8+
+- **UI**: Streamlit
+- **ML**: scikit-learn (category prediction)
+- **Fuzzy Search**: rapidfuzz
+- **OCR**: Tesseract (optional)
+- **Testing**: pytest
+- **CI/CD**: GitHub Actions
+
+## Deployment
+
+**Local**: `./scripts/setup_env.sh && ./scripts/run_web.sh`
+**Server**: Streamlit with `--server.address 0.0.0.0`
+**Healthcheck**: `python src/healthcheck.py`
+
+## Recent Enhancements (2026-02-06)
+
+**PDF Utils Improvements**:
+- Structured logging (replacing print statements)
+- Enhanced date parsing (ISO, Spanish abbreviations, numeric formats)
+- Robust amount parsing with graceful error handling
+- Comprehensive docstrings with examples
+- Better OCR configuration and fallback logic
+
+**Testing Infrastructure**:
+- Dummy data generator for dashboard testing (`scripts/generate_dummy_data.py`)
+- 70+ realistic Mexican merchants across 9 categories
+- 6 months of synthetic transaction data
+- Proper merchant/period tags and categorization
+
+## Roadmap (see `plan_mejoras.md`)
+
+**Completed**: Validation layer, service architecture, safe rules workflow, CI, enhanced PDF extraction
+**Next**: Account unification, SQLite persistence, Firefly API sync

@@ -15,6 +15,9 @@ temp_web_uploads/
 *.pdf
 *.xlsx
 
+# Allow test fixtures
+!tests/fixtures/**/*.xml
+!tests/fixtures/**/*.xlsx
 # IDEs
 .vscode/
 .idea/

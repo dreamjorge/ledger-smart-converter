@@ -1,0 +1,241 @@
+---
+title: "Services Layer Context"
+format: html
+---
+
+## Purpose
+
+Business logic layer that orchestrates imports, rules, analytics, and data access.
+
+## Architecture
+
+**Location**: `src/services/`
+
+**Pattern**: Service layer separates business logic from UI and domain
+
+## Key Services
+
+### Import Service
+
+**File**: `src/services/import_service.py`
+
+**Key Functions**:
+
+```python
+resolve_output_paths(bank_id: str, target_mapping: Dict) -> Dict
+# Returns output CSV paths for a bank
+
+copy_csv_to_analysis(csv_path: Path, bank_id: str) -> bool
+# Atomic copy to analysis directory
+
+get_csv_last_updated(csv_path: Path) -> str
+# Returns formatted last modified timestamp
+```
+
+**Responsibilities**:
+- Map bank IDs to output paths
+- Atomic CSV file operations
+- Track file timestamps
+
+### Rule Service
+
+**File**: `src/services/rule_service.py`
+
+**Key Functions**:
+
+```python
+get_pending_count(pending_path: Path) -> int
+# Count rules in pending file
+
+stage_rule_change(
+    rules_path: Path,
+    pending_path: Path,
+    merchant_name: str,
+    regex_pattern: str,
+    expense_account: str,
+    bucket_tag: str
+) -> Tuple[bool, Dict]
+# Stage a new rule, detect conflicts
+
+merge_pending_rules(
+    rules_path: Path,
+    pending_path: Path,
+    backup_dir: Path
+) -> Tuple[bool, Dict]
+# Merge pending to main, create backup
+```
+
+**Safe Workflow**:
+1. User corrects category in UI
+2. Rule staged in `rules.pending.yml`
+3. Conflict detection runs
+4. If clean, merge with backup
+5. ML model retrains
+6. Pending file cleared
+
+**Conflict Detection**:
+- Checks if regex already exists
+- Prevents duplicate merchant rules
+- Returns conflict details for resolution
+
+### Analytics Service
+
+**File**: `src/services/analytics_service.py`
+
+**Key Functions**:
+
+```python
+is_categorized(destination_name: str) -> bool
+# Check if transaction is properly categorized
+
+calculate_categorization_stats(
+    df: pd.DataFrame,
+    period: Optional[str] = None,
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None
+) -> Dict
+# Calculate metrics for dashboard
+```
+
+**Stats Returned**:
+```python
+{
+    "total": int,                # Total transactions
+    "categorized": int,          # Properly categorized count
+    "uncategorized": int,        # Missing category count
+    "coverage_pct": float,       # Categorization percentage
+    "category_pct": float,       # Category field populated %
+    "category_populated": int,   # Has category_name
+    "total_spent": float,        # Sum of withdrawal amounts
+    "type_counts": Dict,         # Counts by transaction type
+    "categories": Dict,          # Counts by category
+    "category_spending": Dict,   # Spending by category
+    "monthly_spending_trends": Dict  # Monthly aggregates
+}
+```
+
+**Filtering**:
+- Period filtering: `period:YYYY-MM` tag
+- Date range: start_date and end_date parameters
+- Only withdrawal transactions for spending
+
+### Data Service
+
+**File**: `src/services/data_service.py`
+
+**Key Functions**:
+
+```python
+get_csv_path(bank_id: str) -> Optional[Path]
+# Map bank ID to CSV file path
+
+load_transactions_from_csv(bank_id: str) -> pd.DataFrame
+# Load and parse CSV with date conversion
+
+load_all_bank_data() -> Dict[str, pd.DataFrame]
+# Load all banks at once
+```
+
+**Bank Mapping**:
+```python
+BANK_FILE_MAP = {
+    "santander": Path("data/santander/firefly_likeu.csv"),
+    "santander_likeu": Path("data/santander/firefly_likeu.csv"),
+    "hsbc": Path("data/hsbc/firefly_hsbc.csv"),
+}
+```
+
+**Error Handling**:
+- Returns empty DataFrame on missing file
+- Logs errors but doesn't crash
+- Validates date column parsing
+
+## Service Patterns
+
+### Dependency Injection
+Services receive paths/config as parameters, not hardcoded
+
+### Error Handling
+Return tuples: `(success: bool, result: Dict)` for operations
+
+### Logging
+All services use structured logging from `logging_config.py`
+
+### Atomic Operations
+File writes use temp file → rename pattern
+
+## Testing
+
+**Location**: `tests/test_*_service.py`
+
+**Coverage**:
+- Import service: 3 tests
+- Rule service: 2 tests
+- Analytics service: 24 tests
+- Data service: 11 tests
+
+## Usage Examples
+
+### Import Workflow
+```python
+from services.import_service import resolve_output_paths, copy_csv_to_analysis
+
+paths = resolve_output_paths("santander_likeu", target_mapping)
+csv_path = paths["csv_output"]
+
+# Write transactions to CSV...
+
+# Copy to analysis directory
+copy_csv_to_analysis(csv_path, "santander_likeu")
+```
+
+### Rule Correction Workflow
+```python
+from services.rule_service import stage_rule_change, merge_pending_rules
+
+# Stage rule
+ok, result = stage_rule_change(
+    rules_path=Path("config/rules.yml"),
+    pending_path=Path("config/rules.pending.yml"),
+    merchant_name="OXXO",
+    regex_pattern="OXXO.*",
+    expense_account="Expenses:Food:Groceries",
+    bucket_tag="groceries"
+)
+
+if ok:
+    # Merge when ready
+    ok, merge_result = merge_pending_rules(
+        rules_path,
+        pending_path,
+        backup_dir=Path("config/backups")
+    )
+```
+
+### Analytics Dashboard
+```python
+from services.data_service import load_transactions_from_csv
+from services.analytics_service import calculate_categorization_stats
+
+df = load_transactions_from_csv("santander_likeu")
+
+# All time stats
+stats = calculate_categorization_stats(df)
+
+# Filtered by period
+stats = calculate_categorization_stats(df, period="2024-01")
+
+# Filtered by date range
+stats = calculate_categorization_stats(
+    df,
+    start_date=datetime(2024, 1, 1),
+    end_date=datetime(2024, 1, 31)
+)
+```
+
+## Related Files
+
+- `src/domain/transaction.py` - Domain models used by services
+- `src/ui/pages/*.py` - UI calls services
+- `config/rules.yml` - Configuration loaded by services
+- `tests/test_*_service.py` - Service tests

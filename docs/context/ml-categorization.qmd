@@ -1,0 +1,386 @@
+---
+title: "ML & Categorization Context"
+format: html
+---
+
+## Purpose
+
+Machine learning category predictions and smart merchant matching for automated transaction categorization.
+
+## ML Categorization
+
+### File
+
+**`src/ml_categorizer.py`**
+
+### Model Architecture
+
+**Algorithm**: sklearn Multinomial Naive Bayes
+**Features**: TfidfVectorizer on merchant names
+**Training Data**: Categorization rules from `config/rules.yml`
+
+### Key Functions
+
+```python
+def train_global_model() -> MLCategorizer:
+    """Train ML model from rules configuration."""
+    # 1. Load rules.yml
+    # 2. Extract merchant→category mappings
+    # 3. Train TfidfVectorizer + MultinomialNB
+    # 4. Return trained model
+
+class MLCategorizer:
+    def predict(self, description: str) -> List[Tuple[str, float]]:
+        """Predict category for merchant description.
+
+        Returns:
+            List of (category, confidence) tuples, sorted by confidence
+        """
+        # 1. Vectorize description
+        # 2. Get prediction probabilities
+        # 3. Return top predictions with confidence scores
+```
+
+### Training Process
+
+**Data Source**: `config/rules.yml` categorization_rules section
+
+**Format**:
+```yaml
+categorization_rules:
+  - merchant: "OXXO"
+    regex: "OXXO.*"
+    expense_account: "Expenses:Food:Groceries"
+    bucket_tag: "groceries"
+```
+
+**Training**:
+1. Extract all (merchant, expense_account) pairs
+2. Fit TfidfVectorizer on merchant names
+3. Train MultinomialNB classifier
+4. Cache model in memory
+
+**Retraining Triggers**:
+- On app startup
+- After merging pending rules
+- After clearing Streamlit cache
+
+### Prediction Usage
+
+**In Categorization Flow**:
+```python
+from ml_categorizer import train_global_model
+
+ml_engine = train_global_model()
+
+# For each transaction
+predictions = ml_engine.predict("OXXO STORE 123")
+
+if predictions:
+    category, confidence = predictions[0]
+    if confidence > 0.3:  # Confidence threshold
+        assign_category(category)
+```
+
+**In UI Rule Hub**:
+```python
+# Show ML suggestion to user
+predictions = ml_engine.predict(selected_merchant)
+if predictions:
+    top_cat, conf = predictions[0]
+    st.success(f"ML suggests: {top_cat} ({conf:.0%})")
+```
+
+### Model Characteristics
+
+**Strengths**:
+- Fast training (milliseconds)
+- Good for text classification
+- Handles Spanish merchant names well
+- Probabilistic output (confidence scores)
+
+**Limitations**:
+- Requires rules for training
+- New merchants need rules or manual categorization
+- Case-sensitive without preprocessing
+
+**Typical Confidence Ranges**:
+- > 0.7: High confidence, likely correct
+- 0.3-0.7: Medium confidence, review recommended
+- < 0.3: Low confidence, manual review needed
+
+## Smart Matching
+
+### File
+
+**`src/smart_matching.py`**
+
+### Purpose
+
+Fuzzy string matching for merchant search in UI
+
+### Key Function
+
+```python
+def find_similar_merchants(
+    query: str,
+    merchant_list: List[str],
+    threshold: int = 50
+) -> List[Tuple[str, int]]:
+    """Find merchants similar to query using fuzzy matching.
+
+    Args:
+        query: Search term
+        merchant_list: List of merchant names
+        threshold: Minimum similarity score (0-100)
+
+    Returns:
+        List of (merchant, score) tuples, sorted by score descending
+    """
+```
+
+### Algorithm
+
+**Library**: rapidfuzz
+**Method**: Levenshtein distance with optimizations
+
+**Scoring**: 0-100 scale
+- 100 = exact match
+- 90+ = very similar (typo tolerance)
+- 70-89 = similar
+- 50-69 = somewhat similar
+- < 50 = not similar (filtered out)
+
+### Usage in UI
+
+**Merchant Search**:
+```python
+import smart_matching as sm
+
+# User types search term
+search_term = st.text_input("Search merchant", "")
+
+if search_term:
+    # Find similar merchants
+    matches = sm.find_similar_merchants(
+        search_term,
+        merchant_list,
+        threshold=50
+    )
+
+    if matches:
+        # Filter merchant list to matches
+        merchant_list = [m for m, _score in matches]
+    else:
+        st.warning("No similar merchants found")
+```
+
+**Benefits**:
+- Typo tolerance ("oxxo" matches "OXXO")
+- Partial matching ("star" matches "STARBUCKS")
+- Fast searching through large merchant lists
+- Case-insensitive matching
+
+## Rule-Based Categorization
+
+### Configuration
+
+**File**: `config/rules.yml`
+
+**Structure**:
+```yaml
+categorization_rules:
+  - merchant: "OXXO"                          # Display name
+    regex: "OXXO.*"                           # Matching pattern
+    expense_account: "Expenses:Food:Groceries" # Firefly account
+    bucket_tag: "groceries"                   # Category tag
+
+  - merchant: "Uber"
+    regex: "UBER.*"
+    expense_account: "Expenses:Transport:Uber"
+    bucket_tag: "transport"
+```
+
+### Matching Logic
+
+**Priority**: Rules are checked in order
+**First Match Wins**: Stop after first regex match
+
+**Process**:
+```python
+for rule in categorization_rules:
+    pattern = re.compile(rule["regex"], re.IGNORECASE)
+    if pattern.match(description):
+        return rule["expense_account"], rule["bucket_tag"]
+
+# No match → try ML prediction
+ml_predictions = ml_engine.predict(description)
+if ml_predictions and ml_predictions[0][1] > 0.3:
+    return ml_predictions[0][0], extract_tag(ml_predictions[0][0])
+
+# Still no match → uncategorized
+return "Uncategorized", None
+```
+
+## Safe Rule Workflow
+
+### Staging Rules
+
+**File**: `config/rules.pending.yml`
+
+**Purpose**: Stage rule changes before merging to main rules
+
+**Structure**: Same as `rules.yml`
+
+**Workflow**:
+1. User corrects category in UI
+2. Rule added to `rules.pending.yml`
+3. Conflict detection runs
+4. User reviews pending rules
+5. Batch apply when ready
+
+### Conflict Detection
+
+**Check**: Duplicate regex patterns
+
+**Process**:
+```python
+# Load main rules
+main_rules = load_rules("config/rules.yml")
+
+# Load pending rules
+pending_rules = load_rules("config/rules.pending.yml")
+
+# Check for conflicts
+for pending in pending_rules:
+    for main in main_rules:
+        if pending["regex"] == main["regex"]:
+            # Conflict found
+            conflicts.append({
+                "rule": pending["merchant"],
+                "conflicts": [main["merchant"]]
+            })
+```
+
+**Resolution**: User must edit pending rules to fix conflicts
+
+### Merging Rules
+
+**Process**:
+1. Create backup: `config/backups/rules_YYYYMMDD_HHMMSS.yml`
+2. Append pending rules to main rules
+3. Write updated main rules
+4. Clear pending rules file
+5. Retrain ML model
+6. Clear Streamlit cache
+
+**Code**:
+```python
+from services.rule_service import merge_pending_rules
+
+ok, result = merge_pending_rules(
+    rules_path=Path("config/rules.yml"),
+    pending_path=Path("config/rules.pending.yml"),
+    backup_dir=Path("config/backups")
+)
+
+if ok:
+    # Retrain ML
+    ml.train_global_model()
+    st.cache_resource.clear()
+```
+
+## Merchant Tagging
+
+### Automatic Tags
+
+**Generated for each transaction**:
+
+```python
+# From description "OXXO STORE 123"
+merchant_tag = "merchant:oxxo_store_123"
+
+# From statement period
+period_tag = "period:2024-01"
+
+# Combined
+tags = "merchant:oxxo_store_123,period:2024-01"
+```
+
+**Normalization**:
+- Lowercase
+- Replace spaces with underscores
+- Remove special characters
+- Keep alphanumeric and underscores
+
+**Purpose**:
+- Enable merchant-based filtering
+- Support fuzzy search
+- Track spending by merchant
+- Period-based analytics
+
+## Category Hierarchy
+
+### Firefly III Structure
+
+**Format**: `Expenses:Parent:Child`
+
+**Examples**:
+```
+Expenses:Food:Groceries
+Expenses:Food:Restaurants
+Expenses:Transport:Uber
+Expenses:Transport:Gas
+Expenses:Shopping:Clothing
+Expenses:Entertainment:Streaming
+```
+
+### Common Categories
+
+**Pre-defined in UI**:
+- Groceries
+- Restaurants
+- Transport
+- Shopping
+- Subscriptions
+- Entertainment
+- Health
+- Fees
+- Online
+
+### Category Extraction
+
+**From Full Account Path**:
+```python
+# "Expenses:Food:Groceries" → "Groceries"
+if ":" in destination_name:
+    category = destination_name.split(":")[-1]
+else:
+    category = destination_name
+```
+
+## Testing
+
+**ML Model**:
+- Trained on rules at startup
+- Predictions validated manually
+- No automated tests (model quality depends on rules)
+
+**Smart Matching**:
+- `tests/test_generic_importer.py` includes determinism test
+- Fuzzy matching behavior verified manually
+
+**Categorization**:
+- `tests/test_analytics_service.py` validates categorization detection
+- `is_categorized()` function tested with multiple cases
+
+## Related Files
+
+- `src/ml_categorizer.py` - ML model
+- `src/smart_matching.py` - Fuzzy search
+- `src/services/rule_service.py` - Rule management
+- `config/rules.yml` - Main rules
+- `config/rules.pending.yml` - Staged rules
+- `config/backups/` - Rule backups
+- `src/ui/pages/analytics_page.py` - Rule Hub UI
+- `tests/test_analytics_service.py` - Categorization tests

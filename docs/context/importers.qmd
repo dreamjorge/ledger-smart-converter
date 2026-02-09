@@ -1,0 +1,296 @@
+---
+title: "Bank Importers Context"
+format: html
+---
+
+## Purpose
+
+Bank-specific parsers that extract transactions from PDF, XML, or XLSX files and convert to canonical format.
+
+## Importer Files
+
+### HSBC CFDI Importer
+
+**File**: `src/import_hsbc_cfdi_firefly.py`
+
+**Input Formats**:
+- XML files (CFDI electronic invoices)
+- PDF files (fallback with OCR)
+
+**Key Functions**:
+
+```python
+def process_hsbc_cfdi(xml_path: Path, pdf_path: Optional[Path]) -> List[Dict]:
+    """Extract transactions from HSBC CFDI files."""
+    # 1. Parse XML for structured data
+    # 2. If XML missing, fallback to PDF OCR
+    # 3. Return list of transaction dicts
+```
+
+**Data Extraction**:
+- Date: From XML `<Fecha>` tag or PDF regex
+- Amount: From XML `<Total>` tag or PDF patterns
+- Description: Merchant name from XML or OCR
+- RFC: From XML `<Emisor>` RfcEmisor attribute
+
+**Configuration**: Uses `config/rules.yml` HSBC section
+
+### Santander LikeU Importer
+
+**File**: `src/import_likeu_firefly.py`
+
+**Input Formats**:
+- XLSX files (statement downloads)
+- PDF files (fallback with OCR)
+
+**Key Functions**:
+
+```python
+def process_likeu_statements(xlsx_path: Path, pdf_path: Optional[Path]) -> List[Dict]:
+    """Extract transactions from Santander LikeU files."""
+    # 1. Parse XLSX with pandas
+    # 2. Clean and validate dates
+    # 3. Extract amounts
+    # 4. Return transaction dicts
+```
+
+**Data Extraction**:
+- Date: Column parsing with date validation
+- Amount: Numeric column with Mexican formatting
+- Description: Merchant/description column
+- Period: Calculated from closing_day config
+
+**Configuration**: Uses `config/rules.yml` Santander section
+
+## Generic Importer (CLI)
+
+**File**: `src/generic_importer.py`
+
+**Purpose**: Unified entry point for all bank imports
+
+**Usage**:
+```bash
+python src/generic_importer.py \
+    --bank santander_likeu \
+    --data statement.xlsx \
+    --out output.csv \
+    --strict \
+    --dry-run
+```
+
+**Flags**:
+- `--strict`: Fail fast on validation errors
+- `--dry-run`: Parse but don't write CSV
+- `--log-json`: Output run manifest as JSON
+
+**Workflow**:
+1. Load bank configuration
+2. Call bank-specific importer
+3. Validate transactions
+4. Apply rules + ML categorization
+5. Write CSV (atomic)
+6. Log manifest
+
+## PDF Utilities
+
+**File**: `src/pdf_utils.py`
+
+**Purpose**: Shared PDF extraction logic for all importers
+
+**Key Functions**:
+
+```python
+def extract_transactions_from_pdf(
+    pdf_path: Path,
+    use_ocr: bool = False
+) -> List[Dict[str, Any]]:
+    """Extract transaction rows from PDF."""
+    # 1. Try text extraction first
+    # 2. Fallback to OCR if needed
+    # 3. Parse with regex patterns
+    # 4. Return transaction dicts
+
+def extract_pdf_metadata(
+    pdf_path: Path,
+    patterns: Optional[Dict] = None
+) -> Dict[str, Any]:
+    """Extract statement metadata (dates, amounts)."""
+    # 1. Extract from page 1 text
+    # 2. OCR fallback for missing data
+    # 3. Return metadata dict
+
+def parse_mx_date(
+    date_str: str,
+    year: Optional[int] = None
+) -> Optional[str]:
+    """Parse Mexican date formats to ISO."""
+    # Supports: "12 ENE", "12/01/24", "2024-01-12"
+```
+
+**Enhanced Features** (2026-02-06):
+- Structured logging instead of print()
+- Comprehensive error handling
+- Improved date parsing (more formats)
+- Robust amount parsing (returns None vs crash)
+- Better OCR configuration
+
+**Patterns**:
+```python
+PATTERNS = {
+    "cutoff_date": [...],  # Statement cutoff date
+    "due_date": [...],     # Payment due date
+    "period": [...],       # Statement period
+    "pago_minimo": [...],  # Minimum payment
+    "total_pagar": [...]   # Total due
+}
+```
+
+## Categorization Integration
+
+After extraction, transactions are categorized:
+
+1. **Rule-based**: `config/rules.yml` regex matching
+2. **ML fallback**: `src/ml_categorizer.py` predictions
+3. **Merchant tags**: Added automatically from description
+4. **Period tags**: `period:YYYY-MM` from closing_day
+
+## Configuration Schema
+
+**`config/rules.yml`**:
+
+```yaml
+banks:
+  santander_likeu:
+    closing_day: 15  # Statement closing day of month
+    source_account: "Santander LikeU"
+
+  hsbc:
+    closing_day: 20
+    source_account: "HSBC Credit"
+
+categorization_rules:
+  - merchant: "OXXO"
+    regex: "OXXO.*"
+    expense_account: "Expenses:Food:Groceries"
+    bucket_tag: "groceries"
+```
+
+## Adding New Bank Importer
+
+### 1. Create Importer File
+
+**Template**:
+```python
+# src/import_<bank>_firefly.py
+from pathlib import Path
+from typing import List, Dict
+from domain.transaction import CanonicalTransaction
+
+def process_<bank>_statement(file_path: Path) -> List[Dict]:
+    """Extract transactions from <bank> files."""
+    transactions = []
+
+    # Parse bank-specific format
+    # ...
+
+    for row in parsed_data:
+        txn = {
+            "date": parse_date(row["date"]),
+            "description": row["description"],
+            "amount": parse_amount(row["amount"]),
+            "bank_id": "<bank>",
+            "account_id": "main"
+        }
+        transactions.append(txn)
+
+    return transactions
+```
+
+### 2. Add Configuration
+
+**`config/rules.yml`**:
+```yaml
+banks:
+  <bank>:
+    closing_day: 15
+    source_account: "<Bank Name>"
+```
+
+### 3. Register in Generic Importer
+
+**`src/generic_importer.py`**:
+```python
+from import_<bank>_firefly import process_<bank>_statement
+
+BANK_PROCESSORS = {
+    "santander_likeu": process_likeu_statements,
+    "hsbc": process_hsbc_cfdi,
+    "<bank>": process_<bank>_statement,  # Add here
+}
+```
+
+### 4. Add Tests
+
+**`tests/test_<bank>.py`**:
+```python
+def test_process_<bank>_statement():
+    result = process_<bank>_statement(sample_file)
+    assert len(result) > 0
+    assert result[0]["date"] == "2024-01-15"
+```
+
+## Common Parsing Patterns
+
+### Date Parsing
+```python
+from pdf_utils import parse_mx_date
+
+date_iso = parse_mx_date("12 ENE", year=2024)  # "2024-01-12"
+```
+
+### Amount Parsing
+```python
+from pdf_utils import parse_amount_str
+
+amount = parse_amount_str("1,234.56")  # 1234.56
+```
+
+### Period Tagging
+```python
+from common_utils import determine_statement_period
+
+period = determine_statement_period(
+    transaction_date="2024-01-25",
+    closing_day=15
+)  # "2024-02"
+```
+
+## Error Handling
+
+**Validation**:
+```python
+from validation import validate_transaction
+
+is_valid, error = validate_transaction(txn_dict)
+if not is_valid:
+    logger.error(f"Invalid transaction: {error}")
+    continue  # Skip invalid transactions
+```
+
+**Logging**:
+```python
+from logging_config import get_logger
+
+logger = get_logger("import_<bank>")
+logger.info(f"Extracted {len(txns)} transactions")
+logger.warning(f"Skipped {skipped} invalid rows")
+```
+
+## Related Files
+
+- `src/domain/transaction.py` - Canonical transaction model
+- `src/validation.py` - Transaction validation
+- `src/common_utils.py` - Shared utilities (date, amount, period)
+- `src/pdf_utils.py` - PDF extraction utilities
+- `config/rules.yml` - Bank configuration
+- `tests/test_generic_importer.py` - Integration test

@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+<<<<<<< HEAD
 """
+=======
+r"""
+>>>>>>> 614302be74b660d8b51151a679b498f0afa20d6a
 Merge + clean Firefly rules:
 - Input: rules.yml (base) + rules_suggestions.yml (output from assisted learning)
 - Fixes:
@@ -22,7 +26,13 @@ from typing import Any, Dict, List, Tuple, Optional
 from collections import defaultdict
 
 import yaml
+<<<<<<< HEAD
 
+=======
+from logging_config import get_logger
+
+logger = get_logger(__name__)
+>>>>>>> 614302be74b660d8b51151a679b498f0afa20d6a
 
 # ----------------------------
 # Helpers
@@ -81,7 +91,11 @@ def normalize_tags(tags: Any) -> List[str]:
 
 
 def normalize_regex(rx: str) -> str:
+<<<<<<< HEAD
     """
+=======
+    r"""
+>>>>>>> 614302be74b660d8b51151a679b498f0afa20d6a
     Makes regex more robust:
     - Turns escaped spaces '\\ ' or '\ ' into '\\s+'
     - Collapses multiple space tokens into '\\s+'
@@ -326,10 +340,17 @@ def main() -> int:
     out_path = Path(args.out)
 
     if not base_path.exists():
+<<<<<<< HEAD
         print(f"ERROR: base file not found: {base_path}")
         return 2
     if not sugg_path.exists():
         print(f"ERROR: suggestions file not found: {sugg_path}")
+=======
+        logger.error(f"base file not found: {base_path}")
+        return 2
+    if not sugg_path.exists():
+        logger.error(f"suggestions file not found: {sugg_path}")
+>>>>>>> 614302be74b660d8b51151a679b498f0afa20d6a
         return 2
 
     base = load_yaml(base_path)
@@ -338,8 +359,13 @@ def main() -> int:
     merged = merge_rules(base, sugg)
     dump_yaml(out_path, merged)
 
+<<<<<<< HEAD
     print("OK")
     print(f"Merged rules written to: {out_path.resolve()}")
+=======
+    logger.info("OK")
+    logger.info(f"Merged rules written to: {out_path.resolve()}")
+>>>>>>> 614302be74b660d8b51151a679b498f0afa20d6a
     return 0
 
 
