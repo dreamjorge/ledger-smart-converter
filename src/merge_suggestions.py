@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-"""
+r"""
 Merge + clean Firefly rules:
 - Input: rules.yml (base) + rules_suggestions.yml (output from assisted learning)
 - Fixes:
@@ -83,7 +83,7 @@ def normalize_tags(tags: Any) -> List[str]:
 
 
 def normalize_regex(rx: str) -> str:
-    """
+    r"""
     Makes regex more robust:
     - Turns escaped spaces '\\ ' or '\ ' into '\\s+'
     - Collapses multiple space tokens into '\\s+'
