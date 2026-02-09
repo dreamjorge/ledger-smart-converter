@@ -74,7 +74,7 @@ def render_comparison(df_sant: pd.DataFrame, df_hsbc: pd.DataFrame, *, t: Callab
             )
             fig_sant.update_traces(textposition="inside", textinfo="percent+label")
             fig_sant.update_layout(showlegend=False, height=400)
-            st.plotly_chart(fig_sant, use_container_width=True)
+            st.plotly_chart(fig_sant, width="stretch")
 
     with col2:
         st.markdown("**HSBC**")
@@ -88,7 +88,7 @@ def render_comparison(df_sant: pd.DataFrame, df_hsbc: pd.DataFrame, *, t: Callab
             )
             fig_hsbc.update_traces(textposition="inside", textinfo="percent+label")
             fig_hsbc.update_layout(showlegend=False, height=400)
-            st.plotly_chart(fig_hsbc, use_container_width=True)
+            st.plotly_chart(fig_hsbc, width="stretch")
 
     # Combined category spending bar chart
     st.markdown("---")
@@ -133,7 +133,7 @@ def render_comparison(df_sant: pd.DataFrame, df_hsbc: pd.DataFrame, *, t: Callab
             height=500,
         )
 
-        st.plotly_chart(fig_comparison, use_container_width=True)
+        st.plotly_chart(fig_comparison, width="stretch")
 
     # Coverage comparison
     st.markdown("---")
@@ -150,7 +150,7 @@ def render_comparison(df_sant: pd.DataFrame, df_hsbc: pd.DataFrame, *, t: Callab
             hole=0.6,
         )
         fig_cov_sant.update_layout(showlegend=True, height=300)
-        st.plotly_chart(fig_cov_sant, use_container_width=True)
+        st.plotly_chart(fig_cov_sant, width="stretch")
         st.caption(f"{stats_sant['coverage_pct']:.1f}% categorized")
 
     with col2:
@@ -162,7 +162,7 @@ def render_comparison(df_sant: pd.DataFrame, df_hsbc: pd.DataFrame, *, t: Callab
             hole=0.6,
         )
         fig_cov_hsbc.update_layout(showlegend=True, height=300)
-        st.plotly_chart(fig_cov_hsbc, use_container_width=True)
+        st.plotly_chart(fig_cov_hsbc, width="stretch")
         st.caption(f"{stats_hsbc['coverage_pct']:.1f}% categorized")
 
 

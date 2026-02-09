@@ -49,7 +49,7 @@ def render_charts(t, stats, tc):
             template="plotly_dark",
         )
         fig.update_layout(font_family="Outfit", title_font_size=20, margin=dict(t=80, b=40, l=40, r=40))
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
     with col2:
         if stats["type_counts"]:
             fig = px.bar(
@@ -62,7 +62,7 @@ def render_charts(t, stats, tc):
                 template="plotly_dark",
             )
             fig.update_layout(font_family="Outfit", title_font_size=20, showlegend=False)
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch")
 
     if stats["category_spending"]:
         st.markdown("---")
@@ -77,7 +77,7 @@ def render_charts(t, stats, tc):
         spending_fig.update_traces(textposition="inside", textinfo="percent+label")
         spending_fig.update_layout(font_family="Outfit", showlegend=True, margin=dict(t=40, b=40, l=40, r=40))
         st.caption(t("spending_share_caption"))
-        st.plotly_chart(spending_fig, use_container_width=True)
+        st.plotly_chart(spending_fig, width="stretch")
 
 
 def render_category_deep_dive(t, tc, stats):
@@ -163,6 +163,6 @@ def render_monthly_spending_trends(t, tc, stats):
                 template="plotly_dark",
             )
             fig_trends.update_layout(font_family="Outfit", title_font_size=20, hovermode="x unified")
-            st.plotly_chart(fig_trends, use_container_width=True)
+            st.plotly_chart(fig_trends, width="stretch")
         else:
             st.info(t("no_monthly_spending_data"))
