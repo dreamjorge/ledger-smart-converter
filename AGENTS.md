@@ -48,6 +48,21 @@ Use QMD files as the primary context source before reading broad code areas.
 2. Prefer QMD + CodeGraph before full-source scanning.
 3. If task spans layers, load only the minimal set (for example: `importers.qmd` + `services.qmd`).
 4. Treat QMD paths above as canonical; do not invent alternative locations.
+5. **MANDATORY: After completing any code change, update the relevant QMD file(s) to reflect the new state.** If you added a function, changed a signature, introduced a pattern, or refactored a module — the matching QMD must be updated in the same commit. Stale context is worse than no context.
+
+#### What "keeping context updated" means in practice
+
+| Change Made | QMD to Update |
+|-------------|---------------|
+| New/renamed/removed function in `src/ui/` | `ui.qmd` |
+| New service method or changed signature | `services.qmd` |
+| New bank importer or PDF parsing change | `importers.qmd` |
+| Domain model field added/removed | `domain.qmd` |
+| ML pipeline change, new category, rule schema | `ml-categorization.qmd` |
+| New test pattern, fixture, or coverage change | `testing.qmd` |
+| Cross-cutting refactor (multiple layers) | All affected QMDs |
+
+**Minimum update per change**: function name, signature, and a one-line description of the change. For larger changes, update the relevant section fully.
 
 **Render QMD to HTML (optional):**
 ```bash
@@ -340,6 +355,7 @@ python src/generic_importer.py --bank <name> --data <file> --out <csv>
 - ❌ Don't hardcode paths → use `settings.py` config
 - ❌ Don't use `print()` → use structured logging
 - ❌ Don't mutate dataframes in place → create filtered copies
+- ❌ **Don't leave QMD context files stale** → update the matching QMD in the same commit as the code change; outdated context misleads future agents
 
 ## Recent Enhancements (2026-02-06)
 
