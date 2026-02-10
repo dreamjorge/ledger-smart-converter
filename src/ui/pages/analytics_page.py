@@ -32,7 +32,7 @@ def render_comparison(df_sant: pd.DataFrame, df_hsbc: pd.DataFrame, *, t: Callab
     # Default tc to t if not provided
     if tc is None:
         tc = lambda x: x
-    st.markdown(t("comparison_desc") if "comparison_desc" in dir(t) else "Compare spending patterns across both banks")
+    st.markdown(t("comparison_desc"))
 
     # Calculate stats for both banks
     stats_sant = calculate_categorization_stats(df_sant)
@@ -199,10 +199,8 @@ def render_analytics_dashboard(
     if not df_sant.empty:
         with selected_tabs[tab_idx]:
             st.subheader(t("bank_analytics_header", bank="Santander"))
-            stats = calculate_categorization_stats(df_sant)
             render_bank_analytics(
                 df=df_sant,
-                stats=stats,
                 bank_name="Santander",
                 bank_id="santander_likeu",
                 t=t,
@@ -214,10 +212,8 @@ def render_analytics_dashboard(
     if not df_hsbc.empty:
         with selected_tabs[tab_idx]:
             st.subheader(t("bank_analytics_header", bank="HSBC"))
-            stats = calculate_categorization_stats(df_hsbc)
             render_bank_analytics(
                 df=df_hsbc,
-                stats=stats,
                 bank_name="HSBC",
                 bank_id="hsbc",
                 t=t,
@@ -277,14 +273,18 @@ def _render_rule_hub(t, tc, df_filtered_for_display, bank_name, bank_id, config_
                         st.warning(t("no_similar_merchants"))
 
             selected_merchant = st.selectbox(t("select_merchant"), merchant_list, key=f"{bank_id}_fix_merchant")
-            ml_predictions = ml_engine.predict(selected_merchant)
+            ml_predictions = []
             suggested_cat_hub = None
-            if ml_predictions:
-                top_cat, confidence = ml_predictions[0]
-                if confidence > 0.3:
-                    st.success(t("ml_prediction", cat=top_cat, conf=confidence))
-                    if ":" in top_cat:
-                        suggested_cat_hub = top_cat.split(":")[-1]
+            try:
+                ml_predictions = ml_engine.predict(selected_merchant) or []
+                if ml_predictions:
+                    top_cat, confidence = ml_predictions[0]
+                    if confidence > 0.3:
+                        st.success(t("ml_prediction", cat=top_cat, conf=confidence))
+                        if ":" in top_cat:
+                            suggested_cat_hub = top_cat.split(":")[-1]
+            except Exception:
+                st.caption("ML prediction unavailable")
 
             col1, col2 = st.columns(2)
             with col1:
@@ -357,7 +357,7 @@ def _render_rule_hub(t, tc, df_filtered_for_display, bank_name, bank_id, config_
                             st.warning("No pending rules to apply.")
 
 
-def render_bank_analytics(df, stats, bank_name, bank_id, t, tc, config_dir: Path, ml_engine):
+def render_bank_analytics(df, bank_name, bank_id, t, tc, config_dir: Path, ml_engine):
     if df is None or df.empty:
         st.error("No data available")
         return
