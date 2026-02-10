@@ -27,3 +27,75 @@ def test_validate_transaction_invalid_date():
 def test_validate_tags_rejects_spaces():
     errors = validate_tags(["bucket:groceries", "bad tag"])
     assert errors == ["invalid_tag:bad tag"]
+
+
+def test_validate_transaction_empty_description():
+    txn = CanonicalTransaction(
+        date="2026-02-01",
+        description="",
+        amount=-100.0,
+        bank_id="santander_likeu",
+        account_id="Liabilities:CC:Santander LikeU",
+    )
+    assert "missing_description" in validate_transaction(txn)
+
+
+def test_validate_transaction_whitespace_only_description():
+    txn = CanonicalTransaction(
+        date="2026-02-01",
+        description="   ",
+        amount=-100.0,
+        bank_id="santander_likeu",
+        account_id="Liabilities:CC:Santander LikeU",
+    )
+    assert "missing_description" in validate_transaction(txn)
+
+
+def test_validate_transaction_none_amount():
+    txn = CanonicalTransaction(
+        date="2026-02-01",
+        description="OXXO",
+        amount=None,
+        bank_id="santander_likeu",
+        account_id="Liabilities:CC:Santander LikeU",
+    )
+    assert "missing_amount" in validate_transaction(txn)
+
+
+def test_validate_transaction_empty_bank_id():
+    txn = CanonicalTransaction(
+        date="2026-02-01",
+        description="OXXO",
+        amount=-50.0,
+        bank_id="",
+        account_id="Liabilities:CC:Santander LikeU",
+    )
+    assert "missing_bank_id" in validate_transaction(txn)
+
+
+def test_validate_transaction_empty_account_id():
+    txn = CanonicalTransaction(
+        date="2026-02-01",
+        description="OXXO",
+        amount=-50.0,
+        bank_id="santander_likeu",
+        account_id="",
+    )
+    assert "missing_account_id" in validate_transaction(txn)
+
+
+def test_validate_transaction_multiple_errors():
+    txn = CanonicalTransaction(
+        date="bad-date",
+        description="",
+        amount=None,
+        bank_id="",
+        account_id="",
+    )
+    errors = validate_transaction(txn)
+    assert "invalid_date" in errors
+    assert "missing_description" in errors
+    assert "missing_amount" in errors
+    assert "missing_bank_id" in errors
+    assert "missing_account_id" in errors
+    assert len(errors) == 5

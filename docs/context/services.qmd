@@ -233,6 +233,37 @@ stats = calculate_categorization_stats(
 )
 ```
 
+## CodeGraph Navigation for Services
+
+Use CodeGraph to trace service dependencies before modifying business logic:
+
+```bash
+# Find all service functions
+codegraph_search "analytics_service"
+codegraph_search "import_service"
+codegraph_search "rule_service"
+
+# Trace who calls a service function (UI → service)
+codegraph_callers "calculate_categorization_stats"
+codegraph_callers "resolve_output_paths"
+
+# Trace what a service function calls (service → domain)
+codegraph_callees "merge_pending_rules"
+codegraph_callees "load_transactions_from_csv"
+
+# Check blast radius before changing service signatures
+codegraph_impact "stage_rule_change"
+codegraph_impact "copy_csv_to_analysis"
+
+# Get full source for implementation context
+codegraph_node "calculate_categorization_stats"
+```
+
+**Before modifying any service function:**
+1. `codegraph_impact "<function>"` — find all callers (UI + tests)
+2. `codegraph_callees "<function>"` — identify mocking targets for tests
+3. Update function + update callers + update tests together
+
 ## Related Files
 
 - `src/domain/transaction.py` - Domain models used by services

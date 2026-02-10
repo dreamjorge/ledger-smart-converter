@@ -7,11 +7,39 @@ format: html
 
 pytest-based test suite ensuring code quality and preventing regressions.
 
+## CodeGraph Navigation for Testing
+
+Use CodeGraph tools to trace test → source relationships before writing new tests:
+
+| CodeGraph Tool | Testing Use Case | Example |
+|---|---|---|
+| `codegraph_callers` | Find what calls a function (to understand test scope) | `codegraph_callers "extract_transactions_from_pdf"` |
+| `codegraph_callees` | Find dependencies (to identify mocking targets) | `codegraph_callees "ocr_image"` |
+| `codegraph_search` | Discover all functions in a module | `codegraph_search "pdf_utils"` |
+| `codegraph_impact` | Know blast radius before refactor | `codegraph_impact "parse_mx_date"` |
+| `codegraph_node` | Get implementation details for test design | `codegraph_node "TransactionCategorizer"` |
+
+**Typical test-writing workflow with CodeGraph:**
+```bash
+# 1. Find all functions to test
+codegraph_search "import_likeu"
+
+# 2. Find callers to understand expected behavior
+codegraph_callers "find_header_row"
+
+# 3. Find dependencies to mock
+codegraph_callees "extract_transactions_from_pdf"
+
+# 4. Write tests using implementation details
+codegraph_node "parse_mx_date"
+```
+
 ## Test Statistics
 
-**Total Tests**: 55
-**Test Files**: 8
-**Coverage Areas**: Analytics, data service, import service, validation, rules, healthcheck, UI imports
+**Total Tests**: 521
+**Test Files**: 18+
+**Coverage**: 89.20% (threshold: 85%)
+**Coverage Areas**: Analytics, data service, import service, validation, rules, healthcheck, UI imports, HSBC importer, LikeU importer, PDF utils, ML categorizer
 
 ## Test Structure
 
@@ -426,3 +454,19 @@ def test_with_fixture(sample_data):
 - `.github/workflows/ci.yml` - CI configuration
 - `pytest.ini` - pytest configuration (if exists)
 - `conftest.py` - Shared fixtures (if exists)
+
+## Token-Efficient Test Research
+
+Before reading test files, use CodeGraph to understand structure:
+```bash
+# List all test-related symbols
+codegraph_search "test_"
+
+# Trace a specific function under test
+codegraph_callers "calculate_categorization_stats"
+
+# Find what a test helper calls
+codegraph_callees "sample_csv"
+```
+
+**Coverage tracking**: `python -m pytest --cov=src --cov-report=term-missing -q`

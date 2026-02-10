@@ -167,3 +167,52 @@ class TestLoadAllBankData:
 
             assert result['santander'].empty
             assert result['hsbc'].empty
+
+
+class TestLoadTransactionsCsvErrorPaths:
+    """Test exception handling paths in load_transactions_from_csv (lines 120, 124-141)."""
+
+    def test_csv_without_date_column_logs_warning(self, tmp_path):
+        """When CSV has no 'date' column, returns df without date parsing (line 120)."""
+        csv_content = "amount,description\n100.0,OXXO\n"
+        csv_file = tmp_path / "nodatecol.csv"
+        csv_file.write_text(csv_content)
+
+        with patch('services.data_service.get_csv_path', return_value=csv_file):
+            df = load_transactions_from_csv("santander")
+            # Should return the df but without date column parsed
+            assert isinstance(df, pd.DataFrame)
+            assert "date" not in df.columns
+
+    def test_file_not_found_error_returns_empty_df(self, tmp_path):
+        """FileNotFoundError during read returns empty DataFrame (lines 124-127)."""
+        mock_path = tmp_path / "ghost.csv"
+        mock_path.touch()  # exists() passes
+
+        with patch('services.data_service.get_csv_path', return_value=mock_path):
+            with patch('pandas.read_csv', side_effect=FileNotFoundError("gone")):
+                df = load_transactions_from_csv("santander")
+                assert isinstance(df, pd.DataFrame)
+                assert df.empty
+
+    def test_parser_error_returns_empty_df(self, tmp_path):
+        """ParserError returns empty DataFrame (lines 129-134)."""
+        mock_path = tmp_path / "malformed.csv"
+        mock_path.touch()
+
+        with patch('services.data_service.get_csv_path', return_value=mock_path):
+            with patch('pandas.read_csv', side_effect=pd.errors.ParserError("bad csv")):
+                df = load_transactions_from_csv("santander")
+                assert isinstance(df, pd.DataFrame)
+                assert df.empty
+
+    def test_unexpected_exception_returns_empty_df(self, tmp_path):
+        """Unexpected exception returns empty DataFrame (lines 136-141)."""
+        mock_path = tmp_path / "weird.csv"
+        mock_path.touch()
+
+        with patch('services.data_service.get_csv_path', return_value=mock_path):
+            with patch('pandas.read_csv', side_effect=RuntimeError("unexpected")):
+                df = load_transactions_from_csv("santander")
+                assert isinstance(df, pd.DataFrame)
+                assert df.empty

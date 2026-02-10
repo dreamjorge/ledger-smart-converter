@@ -652,5 +652,140 @@ class TestEdgeCases:
         assert clean_date_str("15 ENE 2024") == "15 ENE 2024"
 
 
+class TestParseMxDateInvalidDay:
+    """Tests for invalid day boundary in parse_mx_date (lines 244-246)."""
+
+    def test_parse_day_zero(self):
+        """Day 0 is invalid."""
+        assert parse_mx_date("0/01/2024") is None
+
+    def test_parse_day_32(self):
+        """Day 32 is invalid."""
+        assert parse_mx_date("32/01/2024") is None
+
+    def test_parse_month_zero(self):
+        """Month 0 is invalid."""
+        assert parse_mx_date("15/00/2024") is None
+
+    def test_parse_month_13(self):
+        """Month 13 is invalid."""
+        assert parse_mx_date("15/13/2024") is None
+
+
+class TestExtractTransactionsPDFErrors:
+    """Tests for error handling in extract_transactions_from_pdf (lines 291-293, 317-318)."""
+
+    @patch('pdf_utils.fitz')
+    def test_extract_pdf_open_error(self, mock_fitz):
+        """When fitz.open raises, return empty list."""
+        mock_fitz.open.side_effect = Exception("Corrupted PDF")
+
+        import tempfile
+        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f:
+            temp_path = Path(f.name)
+
+        try:
+            result = extract_transactions_from_pdf(temp_path)
+            assert result == []
+        finally:
+            temp_path.unlink()
+
+    @patch('pdf_utils.fitz')
+    def test_extract_text_layer_exception_continues(self, mock_fitz):
+        """When text extraction raises, OCR is attempted (graceful fallback)."""
+        mock_doc = MagicMock()
+        mock_doc.page_count = 1
+        mock_page = MagicMock()
+        mock_page.get_text.side_effect = Exception("Text extraction failed")
+        mock_doc.__getitem__.return_value = mock_page
+        mock_fitz.open.return_value = mock_doc
+
+        import tempfile
+        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f:
+            temp_path = Path(f.name)
+
+        try:
+            # Should not raise, just return what it can
+            result = extract_transactions_from_pdf(temp_path, use_ocr=False)
+            assert isinstance(result, list)
+        finally:
+            temp_path.unlink()
+
+
+class TestExtractPDFMetadataErrors:
+    """Tests for error handling in extract_pdf_metadata (lines 443-445, 458-459)."""
+
+    @patch('pdf_utils.fitz')
+    def test_metadata_pdf_open_error(self, mock_fitz):
+        """When fitz.open raises, return empty dict."""
+        mock_fitz.open.side_effect = Exception("Corrupted PDF")
+
+        import tempfile
+        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f:
+            temp_path = Path(f.name)
+
+        try:
+            result = extract_pdf_metadata(temp_path)
+            assert result == {}
+        finally:
+            temp_path.unlink()
+
+    @patch('pdf_utils.fitz')
+    def test_metadata_text_extraction_failure(self, mock_fitz):
+        """When page text extraction raises, metadata still returns dict."""
+        mock_doc = MagicMock()
+        mock_doc.page_count = 1
+        mock_page = MagicMock()
+        mock_page.get_text.side_effect = Exception("Page error")
+        mock_doc.__getitem__.return_value = mock_page
+        mock_doc.close = MagicMock()
+        mock_fitz.open.return_value = mock_doc
+
+        import tempfile
+        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f:
+            temp_path = Path(f.name)
+
+        try:
+            result = extract_pdf_metadata(temp_path)
+            assert isinstance(result, dict)
+        finally:
+            temp_path.unlink()
+
+
+class TestCollectPDFLinesOCR:
+    """Tests for OCR path in collect_pdf_lines (lines 388-392)."""
+
+    @patch('pdf_utils.pytesseract')
+    @patch('pdf_utils.cv2')
+    @patch('pdf_utils.fitz')
+    def test_collect_lines_ocr_fallback(self, mock_fitz, mock_cv2, mock_tess):
+        """When text empty, use OCR."""
+        mock_doc = MagicMock()
+        mock_doc.page_count = 1
+        mock_page = MagicMock()
+        mock_page.get_text.return_value = ""  # No text layer
+        mock_doc.load_page.return_value = mock_page
+        mock_doc.close = MagicMock()
+        mock_fitz.open.return_value = mock_doc
+
+        # Mock OCR returning text
+        mock_img = np.zeros((50, 50, 3), dtype=np.uint8)
+        mock_tess.image_to_string.return_value = "12 ENE OXXO 45.50"
+        mock_tess.Output = MagicMock()
+
+        with patch('pdf_utils.render_page', return_value=mock_img):
+            with patch('pdf_utils.preprocess_for_ocr', return_value=mock_img):
+                import tempfile
+                with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f:
+                    temp_path = Path(f.name)
+                try:
+                    result = collect_pdf_lines(temp_path, use_ocr=True)
+                    # OCR path should produce 'ocr' method lines
+                    ocr_lines = [l for l in result if l.get('method') == 'ocr']
+                    assert len(ocr_lines) > 0
+                finally:
+                    temp_path.unlink()
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "--tb=short"])

@@ -383,6 +383,34 @@ if df.empty:
 # Continue with non-empty dataframe
 ```
 
+## CodeGraph Navigation for UI
+
+The UI layer calls services — use CodeGraph to trace data flow without reading all UI code:
+
+```bash
+# Find all UI page functions
+codegraph_search "analytics_page"
+codegraph_search "render_"
+
+# Trace what services a UI page calls
+codegraph_callees "render_analytics_dashboard"
+codegraph_callees "render_bank_analytics"
+
+# Find which UI components call a service function
+codegraph_callers "calculate_categorization_stats"
+codegraph_callers "stage_rule_change"
+
+# Check impact before changing a service (which UI breaks?)
+codegraph_impact "load_transactions_from_csv"
+codegraph_impact "merge_pending_rules"
+
+# Inspect component source for Streamlit widget keys
+codegraph_node "render_bank_analytics"
+codegraph_node "_render_rule_hub"
+```
+
+**Important**: UI is excluded from coverage enforcement. Use `codegraph_callers` to verify services before refactoring.
+
 ## Related Files
 
 - `src/web_app.py` - App router

@@ -719,5 +719,124 @@ rules:
         assert main() == 2
 
 
+class TestPrintSummaryBranches:
+    """Test logging branches in print_pdf_xml_validation_summary."""
+
+    def test_summary_with_many_differences(self, caplog):
+        """More than 3 differences triggers warning branch."""
+        import logging
+        caplog.set_level(logging.WARNING)
+        summary = {
+            "matched": 5,
+            "total_pdf": 9,
+            "total_xml": 5,
+            "pdf_only": [],
+            "xml_only": [],
+            "differences": [
+                {"date": f"2024-01-{i:02d}", "pdf_desc": "A", "xml_desc": "B",
+                 "pdf_amount": 10.0, "xml_amount": 10.0}
+                for i in range(1, 6)  # 5 differences
+            ],
+        }
+        print_pdf_xml_validation_summary(summary)
+        assert "Detected 5 differences" in caplog.text
+
+    def test_summary_with_many_pdf_only(self, caplog):
+        """More than 3 pdf_only entries — pdf-only branch executes."""
+        import logging
+        caplog.set_level(logging.INFO)
+        txn_factory = lambda i: TxnRaw(date=f"2024-01-{i:02d}", description=f"Txn{i}",
+                                        amount=-10.0, rfc="", account_hint="")
+        summary = {
+            "matched": 0,
+            "total_pdf": 5,
+            "total_xml": 0,
+            "pdf_only": [txn_factory(i) for i in range(1, 6)],
+            "xml_only": [],
+            "differences": [],
+        }
+        print_pdf_xml_validation_summary(summary)
+        assert "PDF-only entries: 5" in caplog.text
+
+    def test_summary_with_many_xml_only(self, caplog):
+        """More than 3 xml_only entries — xml-only branch executes."""
+        import logging
+        caplog.set_level(logging.INFO)
+        txn_factory = lambda i: TxnRaw(date=f"2024-01-{i:02d}", description=f"Txn{i}",
+                                        amount=-10.0, rfc="", account_hint="")
+        summary = {
+            "matched": 0,
+            "total_pdf": 0,
+            "total_xml": 5,
+            "pdf_only": [],
+            "xml_only": [txn_factory(i) for i in range(1, 6)],
+            "differences": [],
+        }
+        print_pdf_xml_validation_summary(summary)
+        assert "XML-only entries: 5" in caplog.text
+
+    def test_summary_with_populated_pdf_and_xml_only(self, caplog):
+        """Small pdf_only and xml_only lists log without truncation."""
+        import logging
+        caplog.set_level(logging.DEBUG)
+        txn = TxnRaw(date="2024-01-15", description="SOME TXN", amount=-10.0, rfc="", account_hint="")
+        summary = {
+            "matched": 0,
+            "total_pdf": 1,
+            "total_xml": 1,
+            "pdf_only": [txn],
+            "xml_only": [txn],
+            "differences": [{"date": "2024-01-15", "pdf_desc": "A", "xml_desc": "B",
+                              "pdf_amount": 10.0, "xml_amount": 10.0}],
+        }
+        print_pdf_xml_validation_summary(summary)
+        assert "PDF-only entries: 1" in caplog.text
+        assert "XML-only entries: 1" in caplog.text
+
+
+class TestHSBCMainCLIExtended:
+    """Additional integration tests for main() edge cases."""
+
+    def test_main_returns_2_when_rules_missing(self, tmp_path, fixtures_dir, monkeypatch):
+        """Returns 2 when rules file doesn't exist."""
+        xml_path = fixtures_dir / "valid_cfdi.xml"
+        monkeypatch.setattr(
+            "sys.argv",
+            ["prog", "--xml", str(xml_path), "--rules", str(tmp_path / "nonexistent.yml")],
+        )
+        assert main() == 2
+
+    def test_main_returns_2_when_xml_missing(self, tmp_path, monkeypatch):
+        """Returns 2 when XML file doesn't exist."""
+        rules_path = tmp_path / "rules.yml"
+        rules_path.write_text("defaults: {}\nrules: []\n", encoding="utf-8")
+        monkeypatch.setattr(
+            "sys.argv",
+            ["prog", "--xml", str(tmp_path / "nonexistent.xml"), "--rules", str(rules_path)],
+        )
+        assert main() == 2
+
+    def test_main_returns_3_when_addenda_missing(self, tmp_path, monkeypatch):
+        """Returns 3 when XML has no Addenda."""
+        rules_path = tmp_path / "rules.yml"
+        rules_path.write_text(
+            "defaults:\n  currency: MXN\n  fallback_expense: Expenses:Other:Uncategorized\n  accounts: {}\nrules: []\n",
+            encoding="utf-8",
+        )
+        # Minimal CFDI without Addenda
+        xml_path = tmp_path / "no_addenda.xml"
+        xml_path.write_text(
+            '<?xml version="1.0"?>'
+            '<cfdi:Comprobante xmlns:cfdi="http://www.sat.gob.mx/cfd/4">'
+            '</cfdi:Comprobante>',
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(
+            "sys.argv",
+            ["prog", "--xml", str(xml_path), "--rules", str(rules_path)],
+        )
+        assert main() == 3
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "--tb=short"])
