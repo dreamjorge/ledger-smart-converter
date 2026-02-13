@@ -30,8 +30,27 @@ class DatabaseService:
         sql = self.schema_path.read_text(encoding="utf-8")
         with self._connect() as conn:
             conn.executescript(sql)
+            self._ensure_transactions_columns(conn)
             conn.commit()
         logger.info("initialized sqlite database at %s", self.db_path)
+
+    @staticmethod
+    def _ensure_transactions_columns(conn: sqlite3.Connection) -> None:
+        rows = conn.execute("PRAGMA table_info(transactions)").fetchall()
+        existing = {r["name"] for r in rows}
+        if not existing:
+            return
+
+        alterations = [
+            ("raw_description", "TEXT"),
+            ("normalized_description", "TEXT"),
+            ("transaction_type", "TEXT NOT NULL DEFAULT 'withdrawal'"),
+            ("source_name", "TEXT"),
+            ("destination_name", "TEXT"),
+        ]
+        for col, typ in alterations:
+            if col not in existing:
+                conn.execute(f"ALTER TABLE transactions ADD COLUMN {col} {typ}")
 
     def fetch_one(self, query: str, params: Iterable[Any] = ()) -> Optional[Dict[str, Any]]:
         with self._connect() as conn:
@@ -132,10 +151,10 @@ class DatabaseService:
             cur = conn.execute(
                 """
                 INSERT OR IGNORE INTO transactions (
-                    source_hash, date, amount, currency, merchant, description,
+                    source_hash, date, amount, currency, merchant, description, raw_description, normalized_description,
                     account_id, canonical_account_id, bank_id, statement_period,
                     category, tags, transaction_type, source_name, destination_name, source_file, import_id
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     source_hash,
@@ -144,6 +163,8 @@ class DatabaseService:
                     txn.get("currency", "MXN"),
                     txn.get("merchant"),
                     txn.get("description", ""),
+                    txn.get("raw_description"),
+                    txn.get("normalized_description"),
                     txn["account_id"],
                     txn["canonical_account_id"],
                     txn["bank_id"],
@@ -159,6 +180,27 @@ class DatabaseService:
             )
             conn.commit()
             return cur.rowcount > 0
+
+    def backfill_normalized_descriptions(self, normalizer) -> int:
+        """Backfill missing normalized_description values for existing rows."""
+        updated = 0
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT id, COALESCE(raw_description, description, '') AS raw_desc
+                FROM transactions
+                WHERE normalized_description IS NULL OR normalized_description = ''
+                """
+            ).fetchall()
+            for row in rows:
+                norm = normalizer(row["raw_desc"])
+                conn.execute(
+                    "UPDATE transactions SET raw_description = ?, normalized_description = ? WHERE id = ?",
+                    (row["raw_desc"], norm, row["id"]),
+                )
+                updated += 1
+            conn.commit()
+        return updated
 
     def record_audit_event(
         self,

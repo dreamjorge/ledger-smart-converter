@@ -39,6 +39,8 @@ CREATE TABLE IF NOT EXISTS transactions (
     currency TEXT NOT NULL DEFAULT 'MXN',
     merchant TEXT,
     description TEXT NOT NULL,
+    raw_description TEXT,
+    normalized_description TEXT,
     account_id TEXT NOT NULL,
     canonical_account_id TEXT NOT NULL,
     bank_id TEXT NOT NULL,
@@ -75,11 +77,14 @@ CREATE INDEX IF NOT EXISTS idx_audit_events_entity ON audit_events(entity_type, 
 
 CREATE VIEW IF NOT EXISTS firefly_export AS
 SELECT
+    id,
     COALESCE(transaction_type, 'withdrawal') AS type,
     date,
     printf('%.2f', amount) AS amount,
     currency AS currency_code,
     description,
+    raw_description,
+    normalized_description,
     COALESCE(source_name, account_id) AS source_name,
     COALESCE(destination_name, '') AS destination_name,
     COALESCE(category, '') AS category_name,

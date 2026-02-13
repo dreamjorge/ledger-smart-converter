@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Dict, Iterable, List, Optional
 
 from csv_to_db_migrator import migrate_csvs_to_db
+from description_normalizer import normalize_description
 from services.db_service import DatabaseService
 from services.firefly_export_service import export_firefly_csv_from_db
 from settings import load_settings
@@ -22,6 +23,8 @@ def run_db_pipeline(
     )
 
     db = DatabaseService(db_path=db_path)
+    backfilled_rows = db.backfill_normalized_descriptions(lambda raw: normalize_description(raw))
+    migration_summary["rows_backfilled_pipeline"] = backfilled_rows
     out_dir = export_dir or data_dir
 
     if banks:

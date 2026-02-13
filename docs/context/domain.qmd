@@ -17,7 +17,9 @@ Domain models enforce data validation and provide the canonical transaction repr
 @dataclass(frozen=True)
 class CanonicalTransaction:
     date: str              # ISO format YYYY-MM-DD
-    description: str       # Merchant/description text
+    description: str       # Legacy description field (compatibility)
+    raw_description: str   # Original parsed source text
+    normalized_description: str  # Deterministic normalized text for categorization
     amount: float          # Transaction amount
     bank_id: str          # e.g., "santander_likeu", "hsbc"
     account_id: str       # Account identifier
@@ -26,7 +28,7 @@ class CanonicalTransaction:
     rfc: str = ""         # Mexican tax ID (optional)
 
     @property
-    def id(self) -> str:  # Deterministic hash for deduplication
+    def id(self) -> str:  # Hash prefers normalized_description when present
 ```
 
 ## Validation Rules
@@ -70,7 +72,9 @@ from validation import validate_transaction
 
 txn = CanonicalTransaction(
     date="2024-01-15",
-    description="OXXO STORE",
+    description="OXXO STORE",  # legacy compatibility field
+    raw_description="OXXO STORE 12345",
+    normalized_description="Oxxo Store",
     amount=125.50,
     bank_id="santander_likeu",
     account_id="main",
@@ -87,7 +91,7 @@ if not is_valid:
 
 - **Immutable**: `frozen=True` dataclass
 - **Validated**: Must pass validation before CSV write
-- **Hashed**: ID generated from key fields for deduplication
+- **Hashed**: ID generated from key fields for deduplication, preferring `normalized_description`
 - **Type-safe**: Strong typing with dataclass
 
 ## CodeGraph Navigation for Domain Changes

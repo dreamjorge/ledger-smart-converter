@@ -62,6 +62,12 @@ canonical_accounts:
         for r in service.fetch_all("SELECT canonical_account_id FROM transactions")
     }
     assert canonical_ids == {"cc:santander_likeu", "cc:hsbc"}
+    row = service.fetch_one(
+        "SELECT raw_description, normalized_description FROM transactions WHERE description = ?",
+        ("OXXO QRO",),
+    )
+    assert row["raw_description"] == "OXXO QRO"
+    assert row["normalized_description"] == "Oxxo Qro"
 
 
 def test_migrate_is_idempotent_for_transactions(tmp_path):
@@ -84,3 +90,27 @@ def test_migrate_is_idempotent_for_transactions(tmp_path):
     service = DatabaseService(db_path=db_path)
     tx_count = service.fetch_one("SELECT COUNT(*) AS c FROM transactions")["c"]
     assert tx_count == 1
+
+
+def test_migrate_backfills_missing_normalized_description(tmp_path):
+    data_dir = tmp_path / "data"
+    db_path = tmp_path / "ledger.db"
+
+    _write_firefly_csv(
+        data_dir / "hsbc" / "firefly_hsbc.csv",
+        [
+            'withdrawal,2026-01-20,200.00,MXN,MERPAGO NETFLIX 12345,Liabilities:CC:HSBC,Expenses:Entertainment:DigitalServices,Entertainment,"bucket:subs,merchant:netflix,period:2026-01"',
+        ],
+    )
+    migr.migrate_csvs_to_db(db_path=db_path, data_dir=data_dir)
+
+    service = DatabaseService(db_path=db_path)
+    # Simulate older row without normalized text
+    with service._connect() as conn:
+        conn.execute("UPDATE transactions SET normalized_description = ''")
+        conn.commit()
+
+    summary = migr.migrate_csvs_to_db(db_path=db_path, data_dir=data_dir)
+    assert summary["rows_inserted"] == 0
+    row = service.fetch_one("SELECT normalized_description FROM transactions LIMIT 1")
+    assert row["normalized_description"] == "MercadoPago Netflix"

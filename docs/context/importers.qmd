@@ -91,11 +91,13 @@ python src/generic_importer.py \
 **Workflow**:
 1. Load bank configuration
 2. Call bank-specific importer
-3. Validate transactions
-4. Resolve canonical account id (`config/accounts.yml`) for each canonical transaction
-5. Apply rules + ML categorization
-6. Write CSV (atomic)
-7. Log manifest
+3. Build `raw_description` from parsed source text
+4. Build `normalized_description` via `normalize_description(...)` (`src/description_normalizer.py`)
+5. Validate transactions
+6. Resolve canonical account id (`config/accounts.yml`) for each canonical transaction
+7. Apply rules + ML categorization (normalized text by default; fallback via `LSC_USE_NORMALIZED_TEXT=false`)
+8. Write CSV (atomic)
+9. Log manifest
 
 ## PDF Utilities
 
@@ -155,10 +157,11 @@ PATTERNS = {
 
 After extraction, transactions are categorized:
 
-1. **Rule-based**: `config/rules.yml` regex matching
-2. **ML fallback**: `src/ml_categorizer.py` predictions
-3. **Merchant tags**: Added automatically from description
-4. **Period tags**: `period:YYYY-MM` from closing_day
+1. **Normalization first**: deterministic text cleanup from `src/description_normalizer.py`
+2. **Rule-based**: `config/rules.yml` regex matching against normalized text
+3. **ML fallback**: `src/ml_categorizer.py` predictions
+4. **Merchant tags**: Added automatically from chosen matching text
+5. **Period tags**: `period:YYYY-MM` from closing_day
 
 ## Configuration Schema
 
@@ -329,6 +332,7 @@ codegraph_node "ocr_image"
 - `src/domain/transaction.py` - Canonical transaction model
 - `src/validation.py` - Transaction validation
 - `src/common_utils.py` - Shared utilities (date, amount, period)
+- `src/description_normalizer.py` - Deterministic description normalization
 - `src/pdf_utils.py` - PDF extraction utilities
 - `config/rules.yml` - Bank configuration
 - `tests/test_generic_importer.py` - Integration test

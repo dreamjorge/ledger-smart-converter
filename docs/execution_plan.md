@@ -1,6 +1,6 @@
 # Project Enhancement & Execution Plan
 
-**Status**: Completed (roadmap phases + DB-first runtime integration updated 2026-02-13)
+**Status**: Completed (roadmap phases + DB-first runtime integration + normalized description pipeline updated 2026-02-13)
 **Context**: Deep analysis of Ledger Smart Converter codebase.
 **Goal**: Stabilize current base, correct documentation drift, and execute the roadmap towards a database-backed architecture.
 
@@ -57,6 +57,16 @@ Derived from `docs/plan_mejoras.md`, structured for execution.
 - [x] **Audit Trail**: Added `audit_events` table and wired rule stage/merge + recategorization event recording.
 - [x] **DB-first Runtime Wiring**: Analytics UI now loads transactions via SQLite first (`data/ledger.db`) with CSV fallback, and rule actions write audit events with DB path wiring.
 - [x] **Operational Pipeline Command**: Added one-command migration+export runner (`scripts/run_db_pipeline.py` → `src/db_pipeline.py`).
+
+### Phase 4: Categorization Accuracy - Humanized Normalization (2026-02-13)
+*Goal: Improve rule + ML categorization quality with deterministic text normalization.*
+
+- [x] **Normalizer Module**: Added `src/description_normalizer.py` with deterministic token normalization, abbreviation expansion, accent restoration, acronym preservation, and fintech canonicalization.
+- [x] **Domain + Schema Expansion**: Added `raw_description` and `normalized_description` support in `CanonicalTransaction` and `src/database/schema.sql`, keeping legacy `description` for compatibility.
+- [x] **Importer/ML Integration**: `src/generic_importer.py` and `src/ml_categorizer.py` now use normalized text by default, controlled by `LSC_USE_NORMALIZED_TEXT` (default enabled).
+- [x] **DB Migration + Backfill**: `src/csv_to_db_migrator.py`, `src/db_pipeline.py`, and `DatabaseService.backfill_normalized_descriptions(...)` populate missing normalized text for historical rows.
+- [x] **Export Compatibility**: `export_firefly_csv_from_db(..., use_normalized_description=False)` preserves legacy Firefly CSV behavior by default.
+- [x] **Test Coverage Added**: Added `tests/test_description_normalizer.py`, `tests/test_generic_importer_normalized.py`, `tests/test_ml_categorizer_normalized.py`, and expanded `tests/test_csv_to_db_migrator.py`.
 
 ## 5. Execution Context for Agents
 

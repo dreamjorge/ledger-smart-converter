@@ -138,6 +138,7 @@ def render_import_page(
                     analytics_targets=analytics_csv_targets,
                     bank_label=bank_label,
                     csv_path=out_csv,
+                    bank_id=bank_id,
                 )
                 if copied:
                     st.session_state[copy_feedback_key] = t("copy_success", path=result)

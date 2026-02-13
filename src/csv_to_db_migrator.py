@@ -7,6 +7,7 @@ import pandas as pd
 import yaml
 
 from account_mapping import resolve_canonical_account_id
+from description_normalizer import normalize_description
 from logging_config import get_logger
 from services.db_service import DatabaseService
 from settings import load_settings
@@ -114,12 +115,16 @@ def migrate_csvs_to_db(
                     currency=str(row.get("currency_code", "MXN") or "MXN"),
                 )
                 tags = str(row.get("tags", "") or "")
+                raw_description = str(row.get("description", "")).strip()
+                normalized_description = normalize_description(raw_description, bank_id=bank_id)
                 txn = {
                     "date": str(row.get("date", "")).strip(),
                     "amount": float(row.get("amount", 0.0)),
                     "currency": str(row.get("currency_code", "MXN") or "MXN"),
                     "merchant": _extract_merchant(tags),
-                    "description": str(row.get("description", "")).strip(),
+                    "description": raw_description,
+                    "raw_description": raw_description,
+                    "normalized_description": normalized_description,
                     "account_id": source_name,
                     "canonical_account_id": canonical_id,
                     "bank_id": bank_id,
@@ -140,11 +145,15 @@ def migrate_csvs_to_db(
         except Exception as exc:
             db.update_import_status(import_id=import_id, status="failed", error=str(exc))
             logger.error("failed migrating %s: %s", csv_path, exc)
+    backfilled_rows = db.backfill_normalized_descriptions(
+        lambda raw: normalize_description(raw)
+    )
 
     summary = {
         "files_processed": files_processed,
         "rows_seen": rows_seen,
         "rows_inserted": rows_inserted,
+        "rows_backfilled": backfilled_rows,
     }
     logger.info("migration summary: %s", summary)
     return summary

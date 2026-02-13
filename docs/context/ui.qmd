@@ -106,6 +106,10 @@ st.session_state[nav_key] = t("nav_analytics")
 st.rerun()
 ```
 
+**Copy-to-Analytics robustness**:
+- `render_import_page(...)` now passes both `bank_label` and `bank_id` to `copy_csv_to_analysis(...)`.
+- This avoids false "unknown bank" errors when localized/display labels differ from analytics target keys.
+
 ---
 
 ### Analytics Page

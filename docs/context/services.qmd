@@ -35,6 +35,7 @@ copy_csv_to_analysis(
     analytics_targets: Dict[str, Tuple[str, str]],
     bank_label: str,
     csv_path: Path,
+    bank_id: Optional[str] = None,
 ) -> Tuple[bool, str]
 # Copies CSV into analysis hierarchy
 
@@ -50,6 +51,7 @@ get_csv_last_updated(path: Path) -> Optional[str]
 **Output Path Convention**:
 - Canonical hierarchy is `data/<bank_dir>/...`
 - If no explicit UI mapping exists, `resolve_output_paths()` now falls back to `data/<bank_id>/firefly_<bank_id>.csv`
+- `copy_csv_to_analysis()` supports the same `bank_id` fallback when display labels do not match configured map keys
 
 ### Rule Service
 
@@ -233,9 +235,16 @@ class DatabaseService:
 
     def insert_transaction(self, txn: Dict[str, Any], import_id: Optional[int] = None) -> bool
     # Inserts transaction row with source_hash deduplication
+
+    def backfill_normalized_descriptions(self, normalizer) -> int
+    # Fills missing normalized_description and raw_description in existing rows
 ```
 
 **Schema File**: `src/database/schema.sql` (`accounts`, `imports`, `rules`, `transactions`)
+**Transaction Text Fields**:
+- `description`: legacy compatibility text
+- `raw_description`: original parsed text
+- `normalized_description`: deterministic normalized text for categorization
 
 ### CSV → DB Migration
 
@@ -256,6 +265,8 @@ python scripts/migrate_csv_to_db.py \
 - Inserts/updates canonical accounts
 - Records import runs in `imports`
 - Migrates transactions with `source_hash` deduplication
+- Writes both `raw_description` and `normalized_description`
+- Performs backfill for rows still missing `normalized_description`
 
 ### DB Pipeline (One Command)
 
@@ -273,7 +284,8 @@ python scripts/run_db_pipeline.py \
 
 **Behavior**:
 1. Executes CSV → DB migration
-2. Exports Firefly CSVs back from DB view by bank (`data/<bank_id>/firefly_<bank_id>.csv`)
+2. Runs additional normalized description backfill pass
+3. Exports Firefly CSVs back from DB view by bank (`data/<bank_id>/firefly_<bank_id>.csv`)
 
 ### Firefly Export Service
 
@@ -286,6 +298,7 @@ export_firefly_csv_from_db(
     db_path: Path,
     out_csv: Path,
     bank_id: Optional[str] = None,
+    use_normalized_description: bool = False,
 ) -> int
 # Exports Firefly-compatible CSV from SQL view `firefly_export`
 ```

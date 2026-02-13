@@ -9,6 +9,7 @@ Generic Importer for Firefly III
 """
 
 import argparse
+import os
 import re
 import xml.etree.ElementTree as ET
 from collections import defaultdict
@@ -22,6 +23,7 @@ import yaml
 
 # Local modules
 import common_utils as cu
+from description_normalizer import normalize_description
 from account_mapping import resolve_canonical_account_id
 from domain.transaction import CanonicalTransaction
 from errors import ConfigError, ValidationError
@@ -31,6 +33,7 @@ from validation import validate_tags, validate_transaction
 from date_utils import parse_spanish_date as parse_es_date
 
 LOGGER = get_logger("generic_importer")
+USE_NORMALIZED_TEXT = os.getenv("LSC_USE_NORMALIZED_TEXT", "true").strip().lower() not in {"0", "false", "no"}
 
 @dataclass(frozen=True)
 class TxnRaw:
@@ -170,14 +173,19 @@ class GenericImporter:
         warning_count = 0
         
         for t in txns:
-            clean_desc = cu.clean_description(t.description)
+            raw_desc = (t.description or "").strip()
+            normalized_desc = normalize_description(raw_desc, bank_id=self.bank_id)
+            legacy_desc = cu.clean_description(raw_desc)
+            text_for_matching = normalized_desc if (USE_NORMALIZED_TEXT and normalized_desc) else legacy_desc
             canonical = CanonicalTransaction(
                 date=t.date,
-                description=clean_desc,
+                description=legacy_desc,
                 amount=float(t.amount),
                 bank_id=self.bank_id,
                 account_id=self.acc_name,
                 canonical_account_id=resolve_canonical_account_id(self.bank_id, self.acc_name),
+                raw_description=raw_desc,
+                normalized_description=normalized_desc,
                 source=t.source,
                 rfc=t.rfc,
             )
@@ -189,7 +197,7 @@ class GenericImporter:
                     raise ValidationError(f"Invalid transaction {canonical.id}: {record_errors}")
                 continue
 
-            expense, tags, merchant = cu.classify(clean_desc, self.compiled_rules, self.merchant_aliases, self.fallback_expense)
+            expense, tags, merchant = cu.classify(text_for_matching, self.compiled_rules, self.merchant_aliases, self.fallback_expense)
             tags = set(tags)
             tags.add(self.bank_cfg["card_tag"])
             period = cu.get_statement_period(t.date, self.closing_day)
@@ -209,20 +217,20 @@ class GenericImporter:
             # HSBC special inference if it's HSBC
             if self.bank_id == "hsbc":
                 from import_hsbc_cfdi_firefly import infer_kind
-                kind = infer_kind(clean_desc, t.amount, t.rfc)
+                kind = infer_kind(text_for_matching, t.amount, t.rfc)
                 if kind == "charge":
-                    row = self._make_withdrawal(t, clean_desc, expense, category, tags)
+                    row = self._make_withdrawal(t, legacy_desc, expense, category, tags)
                 elif kind == "payment":
-                    row = self._make_transfer(t, clean_desc, self.pay_asset, self.acc_name, tags, "pago")
+                    row = self._make_transfer(t, legacy_desc, self.pay_asset, self.acc_name, tags, "pago")
                 else: # refund/cashback
                     src = "Income:Cashback" if kind == "cashback" else "Income:Other"
-                    row = self._make_transfer(t, clean_desc, src, self.acc_name, tags, kind)
+                    row = self._make_transfer(t, legacy_desc, src, self.acc_name, tags, kind)
             else:
                 # Standard Logic
                 if t.amount < 0: # Charge
-                    row = self._make_withdrawal(t, clean_desc, expense, category, tags)
+                    row = self._make_withdrawal(t, legacy_desc, expense, category, tags)
                 else: # Payment
-                    row = self._make_transfer(t, clean_desc, self.pay_asset, self.acc_name, tags, "pago")
+                    row = self._make_transfer(t, legacy_desc, self.pay_asset, self.acc_name, tags, "pago")
 
             if row:
                 out_rows.append(row)
@@ -230,7 +238,8 @@ class GenericImporter:
                     ua = unknown_agg[merchant]
                     ua["count"] += 1
                     ua["total"] += abs(t.amount)
-                    if len(ua["examples"]) < 5: ua["examples"].add(clean_desc)
+                    if len(ua["examples"]) < 5:
+                        ua["examples"].add(normalized_desc or legacy_desc)
                     
         return out_rows, self._format_unknown(unknown_agg), warning_count
 

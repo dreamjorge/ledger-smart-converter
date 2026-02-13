@@ -281,6 +281,24 @@ class TestCopyCsvToAnalysisEdgeCases:
         assert ok is False
         assert msg == "unknown_bank"
 
+    def test_uses_bank_id_fallback_for_unknown_bank_label(self, tmp_path):
+        """Test fallback copy path when bank_label is not mapped but bank_id is known."""
+        src = tmp_path / "src.csv"
+        src.write_text("a,b\n1,2\n", encoding="utf-8")
+
+        ok, result = imp.copy_csv_to_analysis(
+            data_dir=tmp_path,
+            analytics_targets={},
+            bank_label="Santander LikeU (ES)",
+            csv_path=src,
+            bank_id="santander_likeu",
+        )
+
+        assert ok is True
+        copied = Path(result)
+        assert copied == tmp_path / "santander_likeu" / "firefly_santander_likeu.csv"
+        assert copied.exists()
+
     def test_returns_false_for_missing_source(self, tmp_path):
         """Test that False is returned when source file doesn't exist."""
         ok, msg = imp.copy_csv_to_analysis(

@@ -7,11 +7,13 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
 from logging_config import get_logger
+from description_normalizer import normalize_description
 
 logger = get_logger(__name__)
 
 MODEL_DIR = Path("config/ml_models")
 MODEL_PATH = MODEL_DIR / "categorizer_v1.joblib"
+USE_NORMALIZED_TEXT = os.getenv("LSC_USE_NORMALIZED_TEXT", "true").strip().lower() not in {"0", "false", "no"}
 
 class TransactionCategorizer:
     def __init__(self):
@@ -37,8 +39,15 @@ class TransactionCategorizer:
                     if 'type' in df.columns:
                         df = df[df['type'] == 'withdrawal']
                     
-                    if 'description' in df.columns and 'destination_name' in df.columns:
-                        dfs.append(df[['description', 'destination_name']])
+                    text_col = None
+                    if USE_NORMALIZED_TEXT and "normalized_description" in df.columns:
+                        text_col = "normalized_description"
+                    elif "description" in df.columns:
+                        text_col = "description"
+
+                    if text_col and 'destination_name' in df.columns:
+                        trimmed = df[[text_col, 'destination_name']].rename(columns={text_col: "description"})
+                        dfs.append(trimmed)
                 except Exception as e:
                     logger.error(f"Error loading {p}: {e}")
         
@@ -56,7 +65,8 @@ class TransactionCategorizer:
         y = data['destination_name']
         
         self.pipeline.fit(X, y)
-        self.classes_ = self.pipeline.named_steps['clf'].classes_.tolist()
+        classes_raw = self.pipeline.named_steps['clf'].classes_
+        self.classes_ = classes_raw.tolist() if hasattr(classes_raw, "tolist") else list(classes_raw)
         self.is_trained = True
         return True
 
@@ -84,7 +94,8 @@ class TransactionCategorizer:
         if not self.is_trained:
             return []
         
-        probas = self.pipeline.predict_proba([description])[0]
+        text = normalize_description(description) if USE_NORMALIZED_TEXT else description
+        probas = self.pipeline.predict_proba([text])[0]
         results = zip(self.classes_, probas)
         sorted_results = sorted(results, key=lambda x: x[1], reverse=True)
         

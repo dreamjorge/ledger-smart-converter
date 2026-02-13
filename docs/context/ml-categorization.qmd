@@ -18,6 +18,7 @@ Machine learning category predictions and smart merchant matching for automated 
 **Algorithm**: sklearn `LogisticRegression` inside a `Pipeline`
 **Features**: `TfidfVectorizer(ngram_range=(1, 2), max_features=1000)` on transaction descriptions
 **Training Data**: Existing Firefly CSV exports under `data/**/*.csv` (filtered to filenames containing `firefly`)
+**Feature Flag**: `LSC_USE_NORMALIZED_TEXT` (default enabled)
 
 ### Key Functions
 
@@ -44,13 +45,13 @@ class TransactionCategorizer:
 ### Training Process
 
 **Data Source**: historical CSV transaction files (not `rules.yml`)
-**Required Columns**: `description`, `destination_name`
+**Required Columns**: `destination_name` plus `normalized_description` (preferred) or `description` (fallback)
 **Filter**: only rows with `type == "withdrawal"` are used when that column exists
 
 **Training**:
 1. Discover CSV files from `data/`
 2. Keep import CSVs with `firefly` in filename
-3. Build training frame from `description` + `destination_name`
+3. Build training frame from normalized text (`normalized_description` when available, else `description`) + `destination_name`
 4. Train `TfidfVectorizer + LogisticRegression`
 5. Persist model with `joblib`
 
@@ -69,7 +70,7 @@ if not engine.load_model():
     train_global_model()
     engine.load_model()
 
-# For each transaction
+# For each transaction (input will be normalized internally when feature flag is enabled)
 predictions = engine.predict("OXXO STORE 123")
 
 if predictions:
@@ -204,13 +205,15 @@ categorization_rules:
 
 **Process**:
 ```python
+match_text = normalize_description(raw_description)
+
 for rule in categorization_rules:
     pattern = re.compile(rule["regex"], re.IGNORECASE)
-    if pattern.match(description):
+    if pattern.match(match_text):
         return rule["expense_account"], rule["bucket_tag"]
 
 # No match → try ML prediction
-ml_predictions = ml_engine.predict(description)
+ml_predictions = ml_engine.predict(match_text)
 if ml_predictions and ml_predictions[0][1] > 0.3:
     return ml_predictions[0][0], extract_tag(ml_predictions[0][0])
 
@@ -358,9 +361,10 @@ else:
 ## Testing
 
 **ML Model**:
-- Trained on rules at startup
-- Predictions validated manually
-- No automated tests (model quality depends on rules)
+- Trained on historical Firefly CSV labels (not directly from rules)
+- Automated tests for normalized training/prediction paths:
+  - `tests/test_ml_categorizer.py`
+  - `tests/test_ml_categorizer_normalized.py`
 
 **Smart Matching**:
 - `tests/test_generic_importer.py` includes determinism test
