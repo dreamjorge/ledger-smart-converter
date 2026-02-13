@@ -1,5 +1,6 @@
 from typing import Any, Dict, Optional
 import pandas as pd
+from services.db_service import DatabaseService
 
 
 def is_categorized(destination_name) -> bool:
@@ -208,3 +209,50 @@ def calculate_categorization_stats(
         "category_spending": category_spending,
         "monthly_spending_trends": monthly_spending_trends,
     }
+
+
+def calculate_categorization_stats_from_db(
+    db_path,
+    bank_id: Optional[str] = None,
+    period: Optional[str] = None,
+    start_date: Optional[pd.Timestamp] = None,
+    end_date: Optional[pd.Timestamp] = None,
+) -> Dict[str, Any]:
+    db = DatabaseService(db_path=db_path)
+
+    query = """
+        SELECT
+            date,
+            amount,
+            COALESCE(transaction_type, 'withdrawal') AS type,
+            destination_name,
+            category AS category_name,
+            tags
+        FROM transactions
+        WHERE 1=1
+    """
+    params = []
+    if bank_id:
+        query += " AND bank_id = ?"
+        params.append(bank_id)
+    if start_date is not None:
+        query += " AND date >= ?"
+        params.append(pd.to_datetime(start_date).strftime("%Y-%m-%d"))
+    if end_date is not None:
+        query += " AND date <= ?"
+        params.append(pd.to_datetime(end_date).strftime("%Y-%m-%d"))
+    if period and start_date is None and end_date is None:
+        query += " AND tags LIKE ?"
+        params.append(f"%period:{period}%")
+    query += " ORDER BY date"
+
+    rows = db.fetch_all(query, tuple(params))
+    if not rows:
+        return calculate_categorization_stats(pd.DataFrame())
+
+    df = pd.DataFrame(rows)
+    if "date" in df.columns:
+        df["date"] = pd.to_datetime(df["date"], errors="coerce")
+    if "amount" in df.columns:
+        df["amount"] = pd.to_numeric(df["amount"], errors="coerce").fillna(0.0)
+    return calculate_categorization_stats(df)

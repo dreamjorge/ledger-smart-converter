@@ -1,4 +1,5 @@
 import hashlib
+import json
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
@@ -133,8 +134,8 @@ class DatabaseService:
                 INSERT OR IGNORE INTO transactions (
                     source_hash, date, amount, currency, merchant, description,
                     account_id, canonical_account_id, bank_id, statement_period,
-                    category, tags, source_file, import_id
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    category, tags, transaction_type, source_name, destination_name, source_file, import_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     source_hash,
@@ -149,9 +150,31 @@ class DatabaseService:
                     txn.get("statement_period"),
                     txn.get("category"),
                     txn.get("tags"),
+                    txn.get("transaction_type", "withdrawal"),
+                    txn.get("source_name", txn.get("account_id")),
+                    txn.get("destination_name"),
                     txn["source_file"],
                     import_id,
                 ),
             )
             conn.commit()
             return cur.rowcount > 0
+
+    def record_audit_event(
+        self,
+        event_type: str,
+        entity_type: str,
+        entity_id: Optional[str] = None,
+        payload: Optional[Dict[str, Any]] = None,
+    ) -> int:
+        payload_json = json.dumps(payload or {}, ensure_ascii=False)
+        with self._connect() as conn:
+            cur = conn.execute(
+                """
+                INSERT INTO audit_events (event_type, entity_type, entity_id, payload_json)
+                VALUES (?, ?, ?, ?)
+                """,
+                (event_type, entity_type, entity_id, payload_json),
+            )
+            conn.commit()
+            return int(cur.lastrowid)

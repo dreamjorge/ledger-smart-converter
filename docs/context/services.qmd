@@ -74,9 +74,19 @@ stage_rule_change(
 merge_pending_rules(
     rules_path: Path,
     pending_path: Path,
-    backup_dir: Path
+    backup_dir: Path,
+    db_path: Optional[Path] = None
 ) -> Tuple[bool, Dict]
 # Merge pending to main, create backup
+
+record_recategorization_event(
+    db_path: Path,
+    transaction_source_hash: str,
+    old_category: str,
+    new_category: str,
+    reason: str = ""
+) -> int
+# Persist recategorization audit event
 ```
 
 **Safe Workflow**:
@@ -91,6 +101,11 @@ merge_pending_rules(
 - Checks if regex already exists
 - Prevents duplicate merchant rules
 - Returns conflict details for resolution
+
+**Audit Trail**:
+- `stage_rule_change(..., db_path=...)` logs `rule_staged` in DB `audit_events`
+- `merge_pending_rules(..., db_path=...)` logs `rules_merged`
+- `record_recategorization_event(...)` logs `recategorization` with payload metadata
 
 ### Analytics Service
 
@@ -109,6 +124,15 @@ calculate_categorization_stats(
     end_date: Optional[datetime] = None
 ) -> Dict
 # Calculate metrics for dashboard
+
+calculate_categorization_stats_from_db(
+    db_path: Path,
+    bank_id: Optional[str] = None,
+    period: Optional[str] = None,
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None
+) -> Dict
+# SQL-backed stats from `transactions` table
 ```
 
 **Stats Returned**:
@@ -221,6 +245,21 @@ python scripts/migrate_csv_to_db.py \
 - Inserts/updates canonical accounts
 - Records import runs in `imports`
 - Migrates transactions with `source_hash` deduplication
+
+### Firefly Export Service
+
+**File**: `src/services/firefly_export_service.py`
+
+**Key Function**:
+
+```python
+export_firefly_csv_from_db(
+    db_path: Path,
+    out_csv: Path,
+    bank_id: Optional[str] = None,
+) -> int
+# Exports Firefly-compatible CSV from SQL view `firefly_export`
+```
 
 ## Service Patterns
 

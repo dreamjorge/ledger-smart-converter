@@ -52,9 +52,9 @@ Derived from `docs/plan_mejoras.md`, structured for execution.
 ### Phase 3: Advanced Features (Weeks 5+)
 *Goal: Leverage DB for features.*
 
-- [ ] **Firefly III Exporter**: Generate Firefly-compatible CSVs (or API calls) strictly from the DB views.
-- [ ] **Advanced Analytics**: Rewrite `AnalyticsService` to use SQL queries instead of Pandas for performance and complexity handling.
-- [ ] **Audit Trail**: Record rule changes and re-categorization events in a DB table.
+- [x] **Firefly III Exporter**: Implemented `src/services/firefly_export_service.py` using SQL view `firefly_export`.
+- [x] **Advanced Analytics**: Added SQL-backed `calculate_categorization_stats_from_db(...)` in `src/services/analytics_service.py`.
+- [x] **Audit Trail**: Added `audit_events` table and wired rule stage/merge + recategorization event recording.
 
 ## 5. Execution Context for Agents
 

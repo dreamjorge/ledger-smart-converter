@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
 import yaml
+from services.db_service import DatabaseService
 
 
 def _load_yaml(path: Path) -> Dict[str, Any]:
@@ -55,6 +56,7 @@ def stage_rule_change(
     regex_pattern: str,
     expense_account: str,
     bucket_tag: str,
+    db_path: Path = None,
 ) -> Tuple[bool, Dict[str, Any]]:
     config = _load_yaml(rules_path)
     existing = config.get("rules", [])
@@ -75,10 +77,29 @@ def stage_rule_change(
         "pending_rules": pending_rules,
     }
     _write_yaml_atomic(pending_path, payload)
+    if db_path:
+        db = DatabaseService(db_path=Path(db_path))
+        db.initialize()
+        db.record_audit_event(
+            event_type="rule_staged",
+            entity_type="rule",
+            entity_id=candidate.get("name", ""),
+            payload={
+                "merchant_name": merchant_name,
+                "regex_pattern": regex_pattern,
+                "expense_account": expense_account,
+                "bucket_tag": bucket_tag,
+            },
+        )
     return True, {"status": "staged", "pending_count": len(pending_rules)}
 
 
-def merge_pending_rules(rules_path: Path, pending_path: Path, backup_dir: Path) -> Tuple[bool, Dict[str, Any]]:
+def merge_pending_rules(
+    rules_path: Path,
+    pending_path: Path,
+    backup_dir: Path,
+    db_path: Path = None,
+) -> Tuple[bool, Dict[str, Any]]:
     if not pending_path.exists():
         return False, {"status": "no_pending"}
 
@@ -111,6 +132,18 @@ def merge_pending_rules(rules_path: Path, pending_path: Path, backup_dir: Path) 
     config["rules"] = working
     _write_yaml_atomic(rules_path, config)
     pending_path.unlink(missing_ok=True)
+    if db_path:
+        db = DatabaseService(db_path=Path(db_path))
+        db.initialize()
+        db.record_audit_event(
+            event_type="rules_merged",
+            entity_type="ruleset",
+            entity_id=str(rules_path),
+            payload={
+                "merged_count": len(merged),
+                "backup_path": str(backup_path),
+            },
+        )
     return True, {
         "status": "merged",
         "merged_count": len(merged),
@@ -123,3 +156,24 @@ def get_pending_count(pending_path: Path) -> int:
         return 0
     pending = _load_yaml(pending_path)
     return len(pending.get("pending_rules", []))
+
+
+def record_recategorization_event(
+    db_path: Path,
+    transaction_source_hash: str,
+    old_category: str,
+    new_category: str,
+    reason: str = "",
+) -> int:
+    db = DatabaseService(db_path=Path(db_path))
+    db.initialize()
+    return db.record_audit_event(
+        event_type="recategorization",
+        entity_type="transaction",
+        entity_id=transaction_source_hash,
+        payload={
+            "old_category": old_category,
+            "new_category": new_category,
+            "reason": reason,
+        },
+    )

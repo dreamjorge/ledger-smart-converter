@@ -45,6 +45,9 @@ CREATE TABLE IF NOT EXISTS transactions (
     statement_period TEXT,
     category TEXT,
     tags TEXT,
+    transaction_type TEXT NOT NULL DEFAULT 'withdrawal',
+    source_name TEXT,
+    destination_name TEXT,
     source_file TEXT NOT NULL,
     import_id INTEGER,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -57,3 +60,29 @@ CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date);
 CREATE INDEX IF NOT EXISTS idx_transactions_bank_id ON transactions(bank_id);
 CREATE INDEX IF NOT EXISTS idx_transactions_canonical_account ON transactions(canonical_account_id);
 CREATE INDEX IF NOT EXISTS idx_transactions_period ON transactions(statement_period);
+
+CREATE TABLE IF NOT EXISTS audit_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_type TEXT NOT NULL,
+    entity_type TEXT NOT NULL,
+    entity_id TEXT,
+    payload_json TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_events_type ON audit_events(event_type);
+CREATE INDEX IF NOT EXISTS idx_audit_events_entity ON audit_events(entity_type, entity_id);
+
+CREATE VIEW IF NOT EXISTS firefly_export AS
+SELECT
+    COALESCE(transaction_type, 'withdrawal') AS type,
+    date,
+    printf('%.2f', amount) AS amount,
+    currency AS currency_code,
+    description,
+    COALESCE(source_name, account_id) AS source_name,
+    COALESCE(destination_name, '') AS destination_name,
+    COALESCE(category, '') AS category_name,
+    COALESCE(tags, '') AS tags,
+    bank_id
+FROM transactions;

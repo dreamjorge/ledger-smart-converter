@@ -126,6 +126,9 @@ def migrate_csvs_to_db(
                     "statement_period": _extract_period(tags),
                     "category": str(row.get("category_name", "")).strip() or None,
                     "tags": tags or None,
+                    "transaction_type": str(row.get("type", "withdrawal") or "withdrawal"),
+                    "source_name": source_name,
+                    "destination_name": str(row.get("destination_name", "")).strip() or None,
                     "source_file": str(csv_path),
                 }
                 if db.insert_transaction(txn, import_id=import_id):

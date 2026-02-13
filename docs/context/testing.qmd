@@ -36,9 +36,9 @@ codegraph_node "parse_mx_date"
 
 ## Test Statistics
 
-**Total Tests Collected**: 532 (after Phase 2 updates on 2026-02-13)
-**Current Test Files**: 25 (`tests/test_*.py`)
-**Latest Local Run**: 532 passed (`python -m pytest tests/ -q`)
+**Total Tests Collected**: 536 (after Phase 3 updates on 2026-02-13)
+**Current Test Files**: 28 (`tests/test_*.py`)
+**Latest Local Run**: 536 passed (`python -m pytest tests/ -q`)
 **Coverage Policy**: 85% minimum (`pytest --cov=src --cov-fail-under=85`)
 **Coverage Areas**: Analytics, services, importers (HSBC/LikeU/generic), PDF utils, ML categorizer, smart matching, validation, logging, settings, UI configuration/import smoke tests
 
@@ -51,11 +51,13 @@ codegraph_node "parse_mx_date"
 ```text
 tests/
 ├── test_csv_to_db_migrator.py
+├── test_analytics_service_db.py
 ├── test_account_mapping.py
 ├── test_analytics_service.py
 ├── test_common_utils.py
 ├── test_data_service.py
 ├── test_db_service.py
+├── test_firefly_export_service.py
 ├── test_date_utils.py
 ├── test_errors.py
 ├── test_generic_importer.py
@@ -69,6 +71,7 @@ tests/
 ├── test_ml_categorizer.py
 ├── test_pdf_utils.py
 ├── test_rule_service.py
+├── test_rule_service_audit.py
 ├── test_settings.py
 ├── test_smart_matching.py
 ├── test_ui_analytics_components.py
