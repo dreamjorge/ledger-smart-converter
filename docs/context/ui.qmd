@@ -106,6 +106,8 @@ st.session_state[nav_key] = t("nav_analytics")
 st.rerun()
 ```
 
+Do not set `st.session_state["bank_select"]` from `import_page.py` after widgets are rendered in `web_app.py`; Streamlit raises `StreamlitAPIException` for post-instantiation widget-state writes.
+
 **Copy-to-Analytics robustness**:
 - `render_import_page(...)` now passes both `bank_label` and `bank_id` to `copy_csv_to_analysis(...)`.
 - This avoids false "unknown bank" errors when localized/display labels differ from analytics target keys.
