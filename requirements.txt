@@ -10,5 +10,6 @@ plotly
 watchdog
 scikit-learn
 rapidfuzz
+python-dotenv
 pytest
 pytest-cov

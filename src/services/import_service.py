@@ -36,7 +36,7 @@ def resolve_output_paths(
 ) -> Tuple[Path, Path, Path]:
     analytics_target = analytics_targets.get(bank_label)
     if not analytics_target:
-        analytics_target = (bank_id.split("_")[0], f"firefly_{bank_id}.csv")
+        analytics_target = (bank_id, f"firefly_{bank_id}.csv")
     dest_dir, dest_name = analytics_target
     out_csv = data_dir / dest_dir / dest_name
     out_csv.parent.mkdir(parents=True, exist_ok=True)

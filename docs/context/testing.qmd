@@ -36,10 +36,11 @@ codegraph_node "parse_mx_date"
 
 ## Test Statistics
 
-**Total Tests**: 521
-**Test Files**: 18+
-**Coverage**: 89.20% (threshold: 85%)
-**Coverage Areas**: Analytics, data service, import service, validation, rules, healthcheck, UI imports, HSBC importer, LikeU importer, PDF utils, ML categorizer
+**Total Tests Collected**: 532 (after Phase 2 updates on 2026-02-13)
+**Current Test Files**: 25 (`tests/test_*.py`)
+**Latest Local Run**: 532 passed (`python -m pytest tests/ -q`)
+**Coverage Policy**: 85% minimum (`pytest --cov=src --cov-fail-under=85`)
+**Coverage Areas**: Analytics, services, importers (HSBC/LikeU/generic), PDF utils, ML categorizer, smart matching, validation, logging, settings, UI configuration/import smoke tests
 
 ## Test Structure
 
@@ -47,18 +48,33 @@ codegraph_node "parse_mx_date"
 
 **Location**: `tests/`
 
-```
+```text
 tests/
-├── test_analytics_service.py      # 24 tests - Analytics calculations
-├── test_common_utils.py            # 2 tests - Utility functions
-├── test_data_service.py            # 11 tests - CSV loading
-├── test_generic_importer.py        # 1 test - Import determinism
-├── test_healthcheck.py             # 1 test - Dependency validation
-├── test_import_service.py          # 2 tests - Import workflow
-├── test_rule_service.py            # 2 tests - Rule staging/merging
-├── test_settings.py                # 1 test - Environment config
-├── test_ui_pages_imports.py        # 1 test - UI module imports
-└── test_validation.py              # 10 tests - Transaction/tag validation
+├── test_csv_to_db_migrator.py
+├── test_account_mapping.py
+├── test_analytics_service.py
+├── test_common_utils.py
+├── test_data_service.py
+├── test_db_service.py
+├── test_date_utils.py
+├── test_errors.py
+├── test_generic_importer.py
+├── test_generic_importer_branches.py
+├── test_healthcheck.py
+├── test_import_hsbc_cfdi_firefly.py
+├── test_import_likeu_firefly.py
+├── test_import_service.py
+├── test_logging_config.py
+├── test_merge_suggestions.py
+├── test_ml_categorizer.py
+├── test_pdf_utils.py
+├── test_rule_service.py
+├── test_settings.py
+├── test_smart_matching.py
+├── test_ui_analytics_components.py
+├── test_ui_pages_imports.py
+├── test_validation.py
+└── test_web_app_config.py
 ```
 
 ## Key Test Suites
@@ -364,25 +380,21 @@ def test_with_temp_file(tmp_path):
 
 **Well Tested** (✅):
 - Analytics service (24 tests)
-- Data service (11 tests)
-- Validation (10 tests)
+- Data service
+- Validation
+- Common utilities/date parsing
+- Importers (HSBC/LikeU/generic)
+- PDF extraction utilities
+- ML categorizer and smart matching
 
 **Moderately Tested** (⚠️):
-- Import service (2 tests)
-- Rule service (2 tests)
-- Common utils (2 tests)
+- Rule service workflows
+- Import service command/path orchestration
+- UI analytics components
 
 **Minimally Tested** (⚠️):
-- Generic importer (1 test)
-- Healthcheck (1 test)
-- UI pages (1 import test)
-
-**Not Tested** (❌):
-- ML categorizer
-- Smart matching
-- PDF utils
-- Specific bank importers (HSBC, Santander)
-- UI rendering logic
+- End-to-end Streamlit rendering behavior
+- Some CLI argument/error path combinations
 
 ### Adding New Tests
 

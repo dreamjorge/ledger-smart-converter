@@ -169,6 +169,27 @@ def test_process_hsbc_infer_kind_branches(tmp_path, monkeypatch):
     assert rows[2]["source_name"] == "Income:Cashback"
 
 
+def test_process_populates_canonical_account_id(tmp_path, monkeypatch):
+    importer = gi.GenericImporter(_write_rules(tmp_path, "canon_bank", "xlsx"), "canon_bank")
+    txns = [gi.TxnRaw("2026-01-10", "DESC", -100.0, "")]
+
+    captured = {}
+
+    def _capture_validate(canonical_txn):
+        captured["canonical_account_id"] = canonical_txn.canonical_account_id
+        return []
+
+    monkeypatch.setattr(gi, "validate_transaction", _capture_validate)
+    monkeypatch.setattr(gi, "validate_tags", lambda _t: [])
+    monkeypatch.setattr(gi, "resolve_canonical_account_id", lambda *_a, **_k: "cc:canon_bank")
+    monkeypatch.setattr(gi.cu, "classify", lambda *_a: ("Expenses:Other:Uncategorized", [], "m"))
+    monkeypatch.setattr(gi.cu, "get_statement_period", lambda *_a: "2026-01")
+
+    rows, _, _ = importer.process(txns, strict=False)
+    assert len(rows) == 1
+    assert captured["canonical_account_id"] == "cc:canon_bank"
+
+
 def test_main_dry_run_and_write_modes(tmp_path, monkeypatch):
     rules_path = _write_rules(tmp_path, "main_bank", "xlsx")
     out_csv = tmp_path / "out.csv"

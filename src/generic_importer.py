@@ -22,6 +22,7 @@ import yaml
 
 # Local modules
 import common_utils as cu
+from account_mapping import resolve_canonical_account_id
 from domain.transaction import CanonicalTransaction
 from errors import ConfigError, ValidationError
 from logging_config import build_run_log, get_logger, write_json_atomic
@@ -176,6 +177,7 @@ class GenericImporter:
                 amount=float(t.amount),
                 bank_id=self.bank_id,
                 account_id=self.acc_name,
+                canonical_account_id=resolve_canonical_account_id(self.bank_id, self.acc_name),
                 source=t.source,
                 rfc=t.rfc,
             )

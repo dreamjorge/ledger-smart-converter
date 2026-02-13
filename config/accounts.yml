@@ -1,0 +1,14 @@
+version: 1
+canonical_accounts:
+  cc:santander_likeu:
+    bank_ids:
+      - santander_likeu
+      - santander
+    account_ids:
+      - "Liabilities:CC:Santander LikeU"
+
+  cc:hsbc:
+    bank_ids:
+      - hsbc
+    account_ids:
+      - "Liabilities:CC:HSBC"

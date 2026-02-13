@@ -21,6 +21,7 @@ class CanonicalTransaction:
     amount: float          # Transaction amount
     bank_id: str          # e.g., "santander_likeu", "hsbc"
     account_id: str       # Account identifier
+    canonical_account_id: str  # Canonical account id, e.g. "cc:santander_likeu"
     source: str = "data"  # Data source type
     rfc: str = ""         # Mexican tax ID (optional)
 
@@ -34,6 +35,7 @@ class CanonicalTransaction:
 **Amount**: Must be valid float
 **Bank ID**: Must match configured bank
 **Account ID**: Required, non-empty
+**Canonical Account ID**: Required, non-empty (`cc:<bank_id>` fallback when unmapped)
 
 **Validator**: `src/validation.py`
 
@@ -72,6 +74,7 @@ txn = CanonicalTransaction(
     amount=125.50,
     bank_id="santander_likeu",
     account_id="main",
+    canonical_account_id="cc:santander_likeu",
     rfc="ABC123456DEF"
 )
 
@@ -115,6 +118,7 @@ codegraph_node "CanonicalTransaction"
 
 - `src/validation.py` - Validation logic
 - `src/errors.py` - Error types
+- `src/account_mapping.py` - Bank/account to canonical account resolver
 - `src/services/import_service.py` - Uses domain model
 - `tests/test_validation.py` - Validation tests
 

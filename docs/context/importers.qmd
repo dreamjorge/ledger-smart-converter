@@ -20,18 +20,24 @@ Bank-specific parsers that extract transactions from PDF, XML, or XLSX files and
 **Key Functions**:
 
 ```python
-def process_hsbc_cfdi(xml_path: Path, pdf_path: Optional[Path]) -> List[Dict]:
-    """Extract transactions from HSBC CFDI files."""
-    # 1. Parse XML for structured data
-    # 2. If XML missing, fallback to PDF OCR
-    # 3. Return list of transaction dicts
+def main() -> int:
+    """CLI entrypoint for HSBC import flow."""
+
+def extract_movimientos(addenda: ET.Element) -> List[TxnRaw]:
+    """Extract TxnRaw entries from Addenda movement nodes."""
+
+def apply_xml_reference_to_pdf(
+    pdf_txns: List[TxnRaw],
+    xml_txns: List[TxnRaw]
+) -> Tuple[List[TxnRaw], Dict[str, Any]]:
+    """Merge OCR PDF transactions with XML metadata matches."""
 ```
 
 **Data Extraction**:
-- Date: From XML `<Fecha>` tag or PDF regex
-- Amount: From XML `<Total>` tag or PDF patterns
-- Description: Merchant name from XML or OCR
-- RFC: From XML `<Emisor>` RfcEmisor attribute
+- Date: XML `fecha` attribute or PDF OCR date parsing (`parse_mx_date`)
+- Amount: XML `importe` attribute or parsed OCR amount
+- Description: XML `descripcion` attribute or OCR line capture
+- RFC: XML `RFCenajenante` when present
 
 **Configuration**: Uses `config/rules.yml` HSBC section
 
@@ -46,16 +52,15 @@ def process_hsbc_cfdi(xml_path: Path, pdf_path: Optional[Path]) -> List[Dict]:
 **Key Functions**:
 
 ```python
-def process_likeu_statements(xlsx_path: Path, pdf_path: Optional[Path]) -> List[Dict]:
-    """Extract transactions from Santander LikeU files."""
-    # 1. Parse XLSX with pandas
-    # 2. Clean and validate dates
-    # 3. Extract amounts
-    # 4. Return transaction dicts
+def main() -> int:
+    """CLI entrypoint for LikeU XLSX/PDF import flow."""
+
+def find_header_row(df: pd.DataFrame) -> int:
+    """Locate FECHA/CONCEPTO/IMPORTE header row in raw XLSX."""
 ```
 
 **Data Extraction**:
-- Date: Column parsing with date validation
+- Date: `date_utils.parse_spanish_date` from FECHA column (or OCR-parsed ISO date)
 - Amount: Numeric column with Mexican formatting
 - Description: Merchant/description column
 - Period: Calculated from closing_day config
@@ -87,9 +92,10 @@ python src/generic_importer.py \
 1. Load bank configuration
 2. Call bank-specific importer
 3. Validate transactions
-4. Apply rules + ML categorization
-5. Write CSV (atomic)
-6. Log manifest
+4. Resolve canonical account id (`config/accounts.yml`) for each canonical transaction
+5. Apply rules + ML categorization
+6. Write CSV (atomic)
+7. Log manifest
 
 ## PDF Utilities
 

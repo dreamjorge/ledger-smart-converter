@@ -15,71 +15,67 @@ Machine learning category predictions and smart merchant matching for automated 
 
 ### Model Architecture
 
-**Algorithm**: sklearn Multinomial Naive Bayes
-**Features**: TfidfVectorizer on merchant names
-**Training Data**: Categorization rules from `config/rules.yml`
+**Algorithm**: sklearn `LogisticRegression` inside a `Pipeline`
+**Features**: `TfidfVectorizer(ngram_range=(1, 2), max_features=1000)` on transaction descriptions
+**Training Data**: Existing Firefly CSV exports under `data/**/*.csv` (filtered to filenames containing `firefly`)
 
 ### Key Functions
 
 ```python
-def train_global_model() -> MLCategorizer:
-    """Train ML model from rules configuration."""
-    # 1. Load rules.yml
-    # 2. Extract merchant→category mappings
-    # 3. Train TfidfVectorizer + MultinomialNB
-    # 4. Return trained model
+def train_global_model() -> str:
+    """Train model from Firefly CSV history and persist joblib artifact."""
+    # 1. Discover firefly CSVs in data/
+    # 2. Train TransactionCategorizer from withdrawal rows
+    # 3. Save to config/ml_models/categorizer_v1.joblib
+    # 4. Return status message
 
-class MLCategorizer:
+class TransactionCategorizer:
     def predict(self, description: str) -> List[Tuple[str, float]]:
-        """Predict category for merchant description.
+        """Predict destination account labels from a transaction description.
 
         Returns:
-            List of (category, confidence) tuples, sorted by confidence
+            List of (destination_name, confidence) tuples, sorted by confidence
         """
-        # 1. Vectorize description
-        # 2. Get prediction probabilities
-        # 3. Return top predictions with confidence scores
+        # 1. Return [] when model is not trained
+        # 2. Run predict_proba against pipeline
+        # 3. Keep predictions above 0.1 probability
 ```
 
 ### Training Process
 
-**Data Source**: `config/rules.yml` categorization_rules section
-
-**Format**:
-```yaml
-categorization_rules:
-  - merchant: "OXXO"
-    regex: "OXXO.*"
-    expense_account: "Expenses:Food:Groceries"
-    bucket_tag: "groceries"
-```
+**Data Source**: historical CSV transaction files (not `rules.yml`)
+**Required Columns**: `description`, `destination_name`
+**Filter**: only rows with `type == "withdrawal"` are used when that column exists
 
 **Training**:
-1. Extract all (merchant, expense_account) pairs
-2. Fit TfidfVectorizer on merchant names
-3. Train MultinomialNB classifier
-4. Cache model in memory
+1. Discover CSV files from `data/`
+2. Keep import CSVs with `firefly` in filename
+3. Build training frame from `description` + `destination_name`
+4. Train `TfidfVectorizer + LogisticRegression`
+5. Persist model with `joblib`
 
 **Retraining Triggers**:
-- On app startup
-- After merging pending rules
-- After clearing Streamlit cache
+- On web app startup when no persisted model is available
+- Manual retraining by calling `train_global_model()` (CLI or code path)
 
 ### Prediction Usage
 
 **In Categorization Flow**:
 ```python
-from ml_categorizer import train_global_model
+from ml_categorizer import TransactionCategorizer, train_global_model
 
-ml_engine = train_global_model()
+engine = TransactionCategorizer()
+if not engine.load_model():
+    train_global_model()
+    engine.load_model()
 
 # For each transaction
-predictions = ml_engine.predict("OXXO STORE 123")
+predictions = engine.predict("OXXO STORE 123")
 
 if predictions:
-    category, confidence = predictions[0]
+    destination_name, confidence = predictions[0]
     if confidence > 0.3:  # Confidence threshold
-        assign_category(category)
+        assign_destination(destination_name)
 ```
 
 **In UI Rule Hub**:
@@ -100,9 +96,9 @@ if predictions:
 - Probabilistic output (confidence scores)
 
 **Limitations**:
-- Requires rules for training
-- New merchants need rules or manual categorization
-- Case-sensitive without preprocessing
+- Requires enough labeled CSV history (`len(data) >= 5`)
+- Predictions are account labels, not normalized category IDs
+- Model quality depends on prior categorizations in CSVs
 
 **Typical Confidence Ranges**:
 - > 0.7: High confidence, likely correct

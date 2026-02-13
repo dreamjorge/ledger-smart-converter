@@ -1,6 +1,6 @@
 # Project Enhancement & Execution Plan
 
-**Status**: Draft
+**Status**: In Progress (stabilization tranche updated 2026-02-13)
 **Context**: Deep analysis of Ledger Smart Converter codebase.
 **Goal**: Stabilize current base, correct documentation drift, and execute the roadmap towards a database-backed architecture.
 
@@ -14,19 +14,19 @@ Immediate priority is **stabilization** (fixing bugs/docs), followed by **standa
 
 These issues break functionality or development workflows and must be fixed first.
 
-- [ ] **Fix `requirements.txt`**: Add `python-dotenv` (required for local dev env vars).
-- [ ] **Fix `src/web_app.py`**: Missing `from pathlib import Path` import causing crash on CSS load.
-- [ ] **Update `src/settings.py`**: Explicitly load `.env` file using `load_dotenv()` to ensure environment variables are picked up locally.
-- [ ] **Fix ML Documentation**: `ml-categorization.qmd` claims Naive Bayes, code uses `LogisticRegression`. Update code or docs to match.
-- [ ] **Standardize Class Names**: Model class is `TransactionCategorizer` in code, often referred to as `MLCategorizer` in docs.
+- [x] **Fix `requirements.txt`**: Added `python-dotenv`.
+- [x] **Fix `src/web_app.py`**: `from pathlib import Path` is present (verified).
+- [x] **Update `src/settings.py`**: Added explicit `.env` loading through `load_dotenv()`.
+- [x] **Fix ML Documentation**: `ml-categorization.qmd` now reflects `LogisticRegression` implementation.
+- [x] **Standardize Class Names**: QMD context now consistently references `TransactionCategorizer`.
 
 ## 3. Documentation Synchronization
 
 The QMD context files are the "brain" for agents. They must be accurate.
 
-- [ ] **`docs/context/testing.qmd`**: Update test counts (currently says 55 tests/8 files; reality ~22 files).
-- [ ] **`docs/context/ml-categorization.qmd`**: Correct algorithm description and class names.
-- [ ] **`docs/context/importers.qmd`**: Verify listed functions match `src/` signature.
+- [x] **`docs/context/testing.qmd`**: Updated counts and coverage notes to current repo state.
+- [x] **`docs/context/ml-categorization.qmd`**: Corrected algorithm, training data source, and class names.
+- [x] **`docs/context/importers.qmd`**: Updated key function signatures to match current code.
 
 ## 4. Strategic Roadmap
 
@@ -35,17 +35,19 @@ Derived from `docs/plan_mejoras.md`, structured for execution.
 ### Phase 1: Foundation & Standardization (Weeks 1-2)
 *Goal: Solidify data consistency before DB migration.*
 
-- [ ] **Canonical Account Model**:
-    - Create `config/accounts.yml` to map bank-specific IDs (e.g., "santander_likeu") to canonical IDs (e.g., `cc:santander_likeu`).
-    - Update `Transaction` domain model to include `canonical_account_id`.
-- [ ] **Unify Output Paths**: Ensure all importers output to a consistently structured `data/` hierarchy (already mostly done, needs verification).
+- [x] **Canonical Account Model**:
+    - Created `config/accounts.yml` with canonical mappings for current banks.
+    - Updated `CanonicalTransaction` model to include `canonical_account_id`.
+    - Added resolver module `src/account_mapping.py` and wired it into `src/generic_importer.py`.
+    - Added/updated tests: `tests/test_account_mapping.py`, `tests/test_validation.py`, `tests/test_generic_importer_branches.py`.
+- [x] **Unify Output Paths**: Standardized fallback output hierarchy in `src/services/import_service.py` to `data/<bank_id>/...` and updated tests.
 
 ### Phase 2: Persistence Layer (Weeks 3-4)
 *Goal: Move from fragile CSVs to robust SQLite.*
 
-- [ ] **Design Schema**: Create `src/database/schema.sql` (Transactions, Accounts, Rules, Imports).
-- [ ] **Database Service**: Implement `src/services/db_service.py` with SQLite integration.
-- [ ] **Migration Script**: Create `scripts/migrate_csv_to_db.py` to load existing CSV data.
+- [x] **Design Schema**: Created `src/database/schema.sql` with `transactions`, `accounts`, `rules`, `imports` tables.
+- [x] **Database Service**: Implemented `src/services/db_service.py` (schema init, account upsert, import audit, transaction insert/dedup).
+- [x] **Migration Script**: Created `scripts/migrate_csv_to_db.py` (wrapper) + `src/csv_to_db_migrator.py` (core migration logic).
 
 ### Phase 3: Advanced Features (Weeks 5+)
 *Goal: Leverage DB for features.*

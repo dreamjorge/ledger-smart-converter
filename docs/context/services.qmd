@@ -22,20 +22,34 @@ Business logic layer that orchestrates imports, rules, analytics, and data acces
 **Key Functions**:
 
 ```python
-resolve_output_paths(bank_id: str, target_mapping: Dict) -> Dict
-# Returns output CSV paths for a bank
+resolve_output_paths(
+    data_dir: Path,
+    bank_label: str,
+    bank_id: str,
+    analytics_targets: Dict[str, Tuple[str, str]],
+) -> Tuple[Path, Path, Path]
+# Returns (out_csv, out_unknown, out_suggestions)
 
-copy_csv_to_analysis(csv_path: Path, bank_id: str) -> bool
-# Atomic copy to analysis directory
+copy_csv_to_analysis(
+    data_dir: Path,
+    analytics_targets: Dict[str, Tuple[str, str]],
+    bank_label: str,
+    csv_path: Path,
+) -> Tuple[bool, str]
+# Copies CSV into analysis hierarchy
 
-get_csv_last_updated(csv_path: Path) -> str
-# Returns formatted last modified timestamp
+get_csv_last_updated(path: Path) -> Optional[str]
+# Returns formatted last modified timestamp or None
 ```
 
 **Responsibilities**:
 - Map bank IDs to output paths
 - Atomic CSV file operations
 - Track file timestamps
+
+**Output Path Convention**:
+- Canonical hierarchy is `data/<bank_dir>/...`
+- If no explicit UI mapping exists, `resolve_output_paths()` now falls back to `data/<bank_id>/firefly_<bank_id>.csv`
 
 ### Rule Service
 
@@ -149,6 +163,64 @@ BANK_FILE_MAP = {
 - Returns empty DataFrame on missing file
 - Logs errors but doesn't crash
 - Validates date column parsing
+
+### Database Service
+
+**File**: `src/services/db_service.py`
+
+**Key Functions**:
+
+```python
+class DatabaseService:
+    def initialize(self) -> None
+    # Creates/updates SQLite schema from src/database/schema.sql
+
+    def upsert_account(
+        self,
+        account_id: str,
+        display_name: str,
+        account_type: str = "credit_card",
+        bank_id: Optional[str] = None,
+        closing_day: Optional[int] = None,
+        currency: str = "MXN",
+    ) -> None
+    # Creates or updates canonical account metadata
+
+    def record_import(
+        self,
+        bank_id: str,
+        source_file: str,
+        status: str,
+        row_count: int = 0,
+        error: Optional[str] = None,
+    ) -> int
+    # Inserts import audit entry and returns import_id
+
+    def insert_transaction(self, txn: Dict[str, Any], import_id: Optional[int] = None) -> bool
+    # Inserts transaction row with source_hash deduplication
+```
+
+**Schema File**: `src/database/schema.sql` (`accounts`, `imports`, `rules`, `transactions`)
+
+### CSV → DB Migration
+
+**Files**:
+- `src/csv_to_db_migrator.py` (core migration logic)
+- `scripts/migrate_csv_to_db.py` (CLI wrapper)
+
+**CLI**:
+```bash
+python scripts/migrate_csv_to_db.py \
+  --db data/ledger.db \
+  --data-dir data \
+  --accounts config/accounts.yml
+```
+
+**Behavior**:
+- Discovers `data/**/firefly*.csv`
+- Inserts/updates canonical accounts
+- Records import runs in `imports`
+- Migrates transactions with `source_hash` deduplication
 
 ## Service Patterns
 
@@ -269,4 +341,6 @@ codegraph_node "calculate_categorization_stats"
 - `src/domain/transaction.py` - Domain models used by services
 - `src/ui/pages/*.py` - UI calls services
 - `config/rules.yml` - Configuration loaded by services
+- `src/database/schema.sql` - SQLite schema
+- `src/csv_to_db_migrator.py` - CSV migration orchestration
 - `tests/test_*_service.py` - Service tests

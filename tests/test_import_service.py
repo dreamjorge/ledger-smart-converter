@@ -113,9 +113,9 @@ class TestResolveOutputPathsEdgeCases:
             analytics_targets={},
         )
 
-        # Should use first part of bank_id as fallback directory
-        assert out_csv == tmp_path / "hsbc" / "firefly_hsbc_credit.csv"
-        assert out_unknown == tmp_path / "hsbc" / "unknown_merchants.csv"
+        # Should use full bank_id as fallback directory for consistent hierarchy
+        assert out_csv == tmp_path / "hsbc_credit" / "firefly_hsbc_credit.csv"
+        assert out_unknown == tmp_path / "hsbc_credit" / "unknown_merchants.csv"
 
     def test_creates_parent_directory(self, tmp_path):
         """Test that parent directory is created."""
