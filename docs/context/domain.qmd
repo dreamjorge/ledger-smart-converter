@@ -87,6 +87,30 @@ if not is_valid:
 - **Hashed**: ID generated from key fields for deduplication
 - **Type-safe**: Strong typing with dataclass
 
+## CodeGraph Navigation for Domain Changes
+
+**Before changing `CanonicalTransaction` or validators, always check impact:**
+
+```bash
+# See everything affected by a Transaction field change
+codegraph_impact "CanonicalTransaction"
+
+# Find all callers of validate_transaction
+codegraph_callers "validate_transaction"
+
+# Check what validate_transaction itself calls
+codegraph_callees "validate_transaction"
+
+# Get full Transaction model source
+codegraph_node "CanonicalTransaction"
+```
+
+**Workflow for adding a new field:**
+1. `codegraph_impact "CanonicalTransaction"` → see affected importers/services
+2. Add field to dataclass + validator
+3. Update all callers found in step 1
+4. Run `pytest tests/test_validation.py`
+
 ## Related Files
 
 - `src/validation.py` - Validation logic

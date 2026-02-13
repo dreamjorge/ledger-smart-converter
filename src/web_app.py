@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import streamlit as st
 import yaml
 
@@ -100,16 +102,6 @@ def get_ml_engine():
 
 
 ML_ENGINE = get_ml_engine()
-
-
-def get_responsive_columns(mobile_cols=1, desktop_cols=2):
-    """Helper to create responsive column layouts.
-
-    Returns number of columns based on viewport (simplified approach).
-    Streamlit doesn't have native viewport detection, so we use desktop_cols by default
-    and rely on CSS to stack columns on mobile.
-    """
-    return desktop_cols
 
 
 def build_bank_map(banks_cfg, t_func):

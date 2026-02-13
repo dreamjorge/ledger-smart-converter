@@ -286,6 +286,38 @@ logger.info(f"Extracted {len(txns)} transactions")
 logger.warning(f"Skipped {skipped} invalid rows")
 ```
 
+## CodeGraph Navigation for Importers
+
+Use CodeGraph to explore importer internals and dependencies before modifying:
+
+```bash
+# Discover all importer functions
+codegraph_search "import_hsbc_cfdi"
+codegraph_search "import_likeu"
+codegraph_search "pdf_utils"
+
+# Trace entry points (what calls main importers)
+codegraph_callers "extract_movimientos"
+codegraph_callers "find_header_row"
+codegraph_callers "extract_transactions_from_pdf"
+
+# Find what an importer depends on (mocking targets for tests)
+codegraph_callees "main"   # run on specific importer file context
+
+# Check blast radius before changing shared utilities
+codegraph_impact "parse_mx_date"      # used by both importers
+codegraph_impact "parse_amount_str"   # used by pdf_utils and importers
+
+# Get full source for debugging
+codegraph_node "extract_movimientos"
+codegraph_node "ocr_image"
+```
+
+**Before adding a new bank importer:**
+1. `codegraph_search "import_likeu"` — use LikeU as template
+2. `codegraph_callers "generic_importer"` — see registration pattern
+3. `codegraph_impact "common_utils"` — understand shared utilities
+
 ## Related Files
 
 - `src/domain/transaction.py` - Canonical transaction model

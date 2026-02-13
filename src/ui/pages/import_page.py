@@ -13,6 +13,10 @@ def _load_csv_if_exists(path):
     return None
 
 
+def _results_key(bank_id: str) -> str:
+    return f"import_results_{bank_id}"
+
+
 def render_import_page(
     *,
     t: Callable,
@@ -56,7 +60,6 @@ def render_import_page(
     uploaded_main = None
     uploaded_pdf = None
 
-    # Responsive columns: stack on mobile, side-by-side on desktop
     col1, col2 = st.columns([1, 1])
     with col1:
         if bank_cfg.get("type") == "xlsx":
@@ -65,6 +68,12 @@ def render_import_page(
             uploaded_main = st.file_uploader(t("select_xml"), type=["xml", "csv", "xlsx"], help=t("help_xml"), key="main_uploader")
     with col2:
         uploaded_pdf = st.file_uploader(t("select_pdf"), type=["pdf"], help=t("help_pdf"), key="pdf_uploader")
+
+    # Clear cached results when a new file is uploaded
+    results_key = _results_key(bank_id)
+    if uploaded_main is not None and st.session_state.get(f"{results_key}_file_name") != uploaded_main.name:
+        st.session_state.pop(results_key, None)
+        st.session_state[f"{results_key}_file_name"] = uploaded_main.name
 
     force_pdf_ocr = False
     if uploaded_pdf:
@@ -93,64 +102,83 @@ def render_import_page(
                     pdf_path=pdf_path,
                     force_pdf_ocr=force_pdf_ocr,
                 )
-                if res.returncode == 0:
-                    st.success(t("process_complete"))
-                    st.info(
-                        f"""
-                    {t('next_steps_title')}
-                    {t('next_step_1')}
-                    {t('next_step_2')}
-                    {t('next_step_3')}
-                    {t('next_step_4')}
-                    """
-                    )
-                    if st.button(t("copy_to_analysis")):
-                        copied, result = imp.copy_csv_to_analysis(
-                            data_dir=data_dir,
-                            analytics_targets=analytics_csv_targets,
-                            bank_label=bank_label,
-                            csv_path=out_csv,
-                        )
-                        if copied:
-                            st.session_state[copy_feedback_key] = t("copy_success", path=result)
-                            st.session_state[nav_key] = t("nav_analytics")
-                            st.session_state[bank_key] = bank_label
-                            st.experimental_rerun()
-                        elif result == "missing_src":
-                            st.warning(t("copy_error_missing"))
-                        else:
-                            st.warning(t("copy_error_unknown_bank"))
+                # Store results in session_state so they persist across re-runs
+                st.session_state[results_key] = {
+                    "returncode": res.returncode,
+                    "stdout": res.stdout,
+                    "stderr": res.stderr,
+                    "out_csv": str(out_csv),
+                    "out_unknown": str(out_unknown),
+                    "out_suggestions": str(out_suggestions),
+                    "pdf_path": str(pdf_path) if pdf_path else None,
+                }
 
-                    with st.expander(t("view_logs"), expanded=pdf_path is not None):
-                        st.code(res.stdout, language="text")
+    # Render persisted results (survives re-runs from other widget interactions)
+    results = st.session_state.get(results_key)
+    if results:
+        out_csv = Path(results["out_csv"])
+        out_unknown = Path(results["out_unknown"])
+        out_suggestions = Path(results["out_suggestions"])
+        had_pdf = bool(results.get("pdf_path"))
 
-                    tab1, tab2, tab3 = st.tabs([t("tab_csv"), t("tab_unknown"), t("tab_suggestions")])
-                    with tab1:
-                        df_csv = _load_csv_if_exists(out_csv)
-                        if df_csv is not None:
-                            st.dataframe(df_csv, width="stretch")
-                            with open(out_csv, "rb") as f:
-                                st.download_button(t("download_csv"), f, "firefly_import.csv", "text/csv")
-                        else:
-                            st.warning(t("no_csv"))
-                    with tab2:
-                        df_unk = _load_csv_if_exists(out_unknown)
-                        if df_unk is not None:
-                            st.dataframe(df_unk, width="stretch")
-                        else:
-                            st.info(t("no_unknown"))
-                    with tab3:
-                        if out_suggestions.exists():
-                            with open(out_suggestions, "r", encoding="utf-8") as f:
-                                sugg_content = f.read()
-                            st.code(sugg_content, language="yaml")
-                            st.download_button(t("download_suggestions"), sugg_content, "suggestions.yml", "text/yaml")
-                        else:
-                            st.info(t("no_suggestions"))
+        if results["returncode"] == 0:
+            st.success(t("process_complete"))
+            st.info(
+                f"""
+            {t('next_steps_title')}
+            {t('next_step_1')}
+            {t('next_step_2')}
+            {t('next_step_3')}
+            {t('next_step_4')}
+            """
+            )
+            if st.button(t("copy_to_analysis"), key=f"copy_btn_{bank_id}"):
+                copied, result = imp.copy_csv_to_analysis(
+                    data_dir=data_dir,
+                    analytics_targets=analytics_csv_targets,
+                    bank_label=bank_label,
+                    csv_path=out_csv,
+                )
+                if copied:
+                    st.session_state[copy_feedback_key] = t("copy_success", path=result)
+                    st.session_state[nav_key] = t("nav_analytics")
+                    st.session_state[bank_key] = bank_label
+                    st.rerun()
+                elif result == "missing_src":
+                    st.warning(t("copy_error_missing"))
                 else:
-                    st.error(t("error_processing"))
-                    st.error(res.stderr)
-                    st.code(res.stdout, language="text")
+                    st.warning(t("copy_error_unknown_bank"))
+
+            with st.expander(t("view_logs"), expanded=had_pdf):
+                st.code(results["stdout"], language="text")
+
+            tab1, tab2, tab3 = st.tabs([t("tab_csv"), t("tab_unknown"), t("tab_suggestions")])
+            with tab1:
+                df_csv = _load_csv_if_exists(out_csv)
+                if df_csv is not None:
+                    st.dataframe(df_csv, width="stretch")
+                    with open(out_csv, "rb") as f:
+                        st.download_button(t("download_csv"), f, "firefly_import.csv", "text/csv")
+                else:
+                    st.warning(t("no_csv"))
+            with tab2:
+                df_unk = _load_csv_if_exists(out_unknown)
+                if df_unk is not None:
+                    st.dataframe(df_unk, width="stretch")
+                else:
+                    st.info(t("no_unknown"))
+            with tab3:
+                if out_suggestions.exists():
+                    with open(out_suggestions, "r", encoding="utf-8") as f:
+                        sugg_content = f.read()
+                    st.code(sugg_content, language="yaml")
+                    st.download_button(t("download_suggestions"), sugg_content, "suggestions.yml", "text/yaml")
+                else:
+                    st.info(t("no_suggestions"))
+        else:
+            st.error(t("error_processing"))
+            st.error(results["stderr"])
+            st.code(results["stdout"], language="text")
 
     st.markdown("---")
     st.caption(f"{t('working_dir')}: {root_dir}")

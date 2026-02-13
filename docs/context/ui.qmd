@@ -23,373 +23,365 @@ Streamlit-based web interface for importing statements, viewing analytics, and c
 
 **Responsibilities**:
 - Session state initialization
-- Tab-based navigation
+- Tab-based navigation (Import / Analytics)
 - Language switching (English/Spanish)
-- ML model loading
+- Bank selection (top-bar dropdown, not sidebar)
+- ML model loading and caching
 - Page rendering delegation
 
 **Key Setup**:
 ```python
-st.set_page_config(
-    page_title="Ledger Smart Converter",
-    page_icon="💰",
-    layout="wide"
-)
+@st.cache_resource
+def get_ml_engine():
+    engine = ml.TransactionCategorizer()
+    if engine.load_model():
+        return engine
+    ml.train_global_model()
+    engine.load_model()
+    return engine
 
-# Load ML model (cached)
-ml_engine = load_ml_model()
+ML_ENGINE = get_ml_engine()
 
-# Tabs
-tab1, tab2 = st.tabs([t("import"), t("analytics")])
+# Two-tab navigation
+tab_import, tab_analytics = st.tabs([t("nav_import"), t("nav_analytics")])
+with tab_import:
+    render_import_page(...)
+with tab_analytics:
+    render_analytics_dashboard(...)
 ```
+
+**Bank/language controls** live in the top bar (3 columns: title, language, bank).
+Sidebar is info-only (rules status, welcome text).
+
+---
 
 ### Import Page
 
 **File**: `src/ui/pages/import_page.py`
 
-**Function**: `render_import_interface(...)`
+**Entry function**: `render_import_page(...)`
 
 **Features**:
-1. Bank selection dropdown
-2. File upload (PDF/XML/XLSX)
-3. Optional companion file upload
-4. Processing options:
-   - Strict validation toggle
-   - Dry-run mode toggle
-5. Import button with progress
-6. Results display with download
+1. Quick-start expander (bank-specific tips)
+2. Dual file uploaders: main statement + optional PDF
+3. OCR checkbox (shown when PDF uploaded)
+4. Process button → `imp.run_import_script()`
+5. Results: success banner, Copy-to-Analytics button, logs expander, 3 result tabs (CSV / Unknown / Suggestions)
+6. Download buttons for CSV and suggestions YAML
 
-**Workflow**:
+#### Session State Pattern — Persistent Results
+
+Results are stored in `st.session_state` so they survive re-runs from widget interactions:
+
 ```python
-def render_import_interface(*, t, config_dir, ml_engine):
-    # 1. Bank selector
-    bank_id = st.selectbox(...)
+RESULTS_KEY = f"import_results_{bank_id}"
 
-    # 2. File upload
-    uploaded = st.file_uploader(...)
+# After successful run:
+st.session_state[RESULTS_KEY] = {
+    "returncode": res.returncode,
+    "stdout": res.stdout,
+    "stderr": res.stderr,
+    "out_csv": str(out_csv),
+    "out_unknown": str(out_unknown),
+    "out_suggestions": str(out_suggestions),
+    "pdf_path": str(pdf_path) if pdf_path else None,
+}
 
-    # 3. Process button
-    if st.button("Import"):
-        # Save temp file
-        # Call importer
-        # Display results
-        # Offer CSV download
+# On every re-run, render from session state:
+results = st.session_state.get(RESULTS_KEY)
+if results:
+    _render_import_results(results, ...)
 ```
 
-**State Management**:
-- Uses `st.session_state` for results
-- Caches ML model with `@st.cache_resource`
-- Stores uploaded files in temp directory
+**Auto-clear**: When the user uploads a different file, cached results for that bank are cleared:
+```python
+if uploaded_main is not None and st.session_state.get(f"{RESULTS_KEY}_file_name") != uploaded_main.name:
+    st.session_state.pop(RESULTS_KEY, None)
+    st.session_state[f"{RESULTS_KEY}_file_name"] = uploaded_main.name
+```
+
+**Navigation after copy**: Use `st.rerun()` (not the deprecated `st.experimental_rerun()`):
+```python
+st.session_state[nav_key] = t("nav_analytics")
+st.rerun()
+```
+
+---
 
 ### Analytics Page
 
 **File**: `src/ui/pages/analytics_page.py`
 
-**Function**: `render_analytics_dashboard(...)`
+**Entry function**: `render_analytics_dashboard(*, t, tc, config_dir, copy_feedback_key, ml_engine)`
 
-**Features**:
+**Structure**:
+- Loads both bank CSVs via `data_service`
+- Creates tabs dynamically (Santander, HSBC, and/or Comparison) based on which CSVs exist
+- Delegates to `render_bank_analytics()` per bank
+- Delegates to `render_comparison()` for side-by-side view
+
+#### render_bank_analytics
+
+**Signature**: `render_bank_analytics(df, bank_name, bank_id, t, tc, config_dir, ml_engine)`
+
+> **Note**: `stats` is NOT a parameter. Stats are computed *inside* this function after
+> applying date/period filters, so they always match the current filter state.
+
+**Workflow inside `render_bank_analytics`**:
+1. Show last-updated timestamp
+2. Render date range pickers + period selector
+3. Apply filters to `df` → `df_filtered_for_display`
+4. Call `calculate_categorization_stats(df, period=..., start_date=..., end_date=...)`
+5. Call reusable component functions from `analytics_components.py`
+6. Call `_render_drilldown()`
+7. Call `_render_rule_hub()`
+
+**Do not** pre-compute stats in the caller and pass them — they will be recomputed inside.
 
 #### Dashboard Sections
 
-1. **Metrics Row** (`_render_metrics`)
-   - Total transactions
-   - Total spent
-   - Categorization coverage %
-   - Category field populated %
-   - Withdrawal count
-
-2. **Charts** (`_render_charts`)
-   - Categorization pie chart (categorized vs uncategorized)
-   - Transaction type bar chart
-   - Category spending pie chart
-
-3. **Category Deep Dive** (`_render_category_deep_dive`)
-   - Top 10 categories by transaction count (horizontal bar)
-   - Top 10 categories by spending (horizontal bar)
-   - Category summary table
-
-4. **Monthly Trends** (`_render_monthly_spending_trends`)
-   - Multi-line chart showing spending over time by category
-   - Date parsing and aggregation
-
-5. **Transaction Drilldown** (`_render_drilldown`)
-   - Category selector dropdown
-   - Filtered transaction table
-   - Date, description, amount, destination, tags columns
-
-6. **Rule Hub** (`_render_rule_hub`, expandable)
-   - Merchant search with fuzzy matching
-   - ML prediction display
-   - Category selector (9 common categories)
-   - Expense account suggestion
-   - Regex pattern editor
-   - Stage rule button
-   - Apply pending rules button
-   - ML retraining on apply
+| Section | Function | Source |
+|---------|----------|--------|
+| Metrics (5 cards) | `render_metrics(t, stats)` | `analytics_components.py` |
+| Charts (3 charts) | `render_charts(t, stats, tc)` | `analytics_components.py` |
+| Category deep dive | `render_category_deep_dive(t, tc, stats)` | `analytics_components.py` |
+| Monthly trends | `render_monthly_spending_trends(t, tc, stats)` | `analytics_components.py` |
+| Transaction drilldown | `_render_drilldown(t, tc, stats, df_filtered, bank_id)` | inline |
+| Rule Hub | `_render_rule_hub(t, tc, df_filtered, bank_name, bank_id, config_dir, ml_engine)` | inline |
 
 #### Filtering System
 
-**Period Filter**:
+**Period Filter** (from `period:YYYY-MM` tags):
 ```python
-# Extract available periods from tags
-periods = set()
-for tag_str in df["tags"].dropna():
-    for tag in tag_str.split(","):
-        if tag.startswith("period:"):
-            periods.add(tag.split(":")[1])
-
-# Period selector
-selected_period = st.selectbox(
-    "Filter by Period",
-    ["All"] + sorted(periods, reverse=True)
-)
+periods = {tag.split(":")[1] for tag_str in df["tags"].dropna()
+           for tag in str(tag_str).split(",") if tag.startswith("period:")}
+selected_period = st.selectbox("Filter", [t("all")] + sorted(periods, reverse=True))
 ```
 
-**Date Range Filter**:
+**Date Range Filter** (overrides period filter when both dates set):
 ```python
-start_date = st.date_input("Start Date", value=None)
-end_date = st.date_input("End Date", value=None)
-
-# Filter dataframe
-if start_date and end_date:
-    df_filtered = df[
-        (df["date"] >= pd.to_datetime(start_date)) &
-        (df["date"] <= pd.to_datetime(end_date))
-    ]
+start_date_filter = st.date_input(t("start_date_filter"), value=None)
+end_date_filter = st.date_input(t("end_date_filter"), value=None)
+date_range_active = start_date_filter and end_date_filter and start_date_filter <= end_date_filter
 ```
 
-**Priority**: Date range filter disables period filter when active
+**Priority**: Date range filter disables period selector when active.
 
 #### Rule Correction Workflow
 
 **Sequence**:
-1. User searches for merchant (fuzzy search)
-2. System shows ML prediction with confidence
-3. User selects/confirms category
-4. System generates expense account suggestion
-5. User reviews/edits regex pattern
-6. User clicks "Stage Rule Change"
-   - Rule saved to `config/rules.pending.yml`
-   - Conflict detection runs
-   - Pending count shown
-7. User clicks "Apply Pending Rules" when ready
-   - Backup created in `config/backups/`
-   - Rules merged to `config/rules.yml`
-   - ML model retrained
-   - Cache cleared
-   - Success notification
+1. Expand "Rule Hub" section
+2. Optional fuzzy merchant search (smart_matching)
+3. ML prediction shown with confidence score (wrapped in try/except — never crashes page)
+4. Select category from dropdown
+5. Edit expense account and regex pattern
+6. "Stage Rule Change" → `rulesvc.stage_rule_change()`
+7. "Apply Pending Rules" → `rulesvc.merge_pending_rules()` → `ml.train_global_model()` → `st.cache_resource.clear()`
 
-**Code Flow**:
+**ML prediction (safe pattern)**:
 ```python
-# Merchant search with fuzzy matching
-if search_term:
-    matches = sm.find_similar_merchants(
-        search_term,
-        merchant_list,
-        threshold=50
-    )
-
-# ML prediction
-ml_predictions = ml_engine.predict(selected_merchant)
-if ml_predictions:
-    top_cat, confidence = ml_predictions[0]
-    st.success(f"ML suggests: {top_cat} ({confidence:.0%})")
-
-# Stage rule
-if st.button("Stage Rule Change"):
-    ok, result = rulesvc.stage_rule_change(...)
-    if ok:
-        st.success(f"Staged. Pending: {result['pending_count']}")
-
-# Apply rules
-if st.button("Apply Pending Rules"):
-    ok, result = rulesvc.merge_pending_rules(...)
-    if ok:
-        ml.train_global_model()  # Retrain
-        st.cache_resource.clear()
-        st.balloons()
+ml_predictions = []
+suggested_cat_hub = None
+try:
+    ml_predictions = ml_engine.predict(selected_merchant) or []
+    if ml_predictions:
+        top_cat, confidence = ml_predictions[0]
+        if confidence > 0.3:
+            st.success(t("ml_prediction", cat=top_cat, conf=confidence))
+            if ":" in top_cat:
+                suggested_cat_hub = top_cat.split(":")[-1]
+except Exception:
+    st.caption("ML prediction unavailable")
 ```
 
-### Bank-Specific Tabs
+#### render_comparison
 
-**Structure**:
-```python
-if not df_sant.empty and not df_hsbc.empty:
-    tabs = ["Santander", "HSBC", "Comparison"]
-    selected_tabs = st.tabs(tabs)
+Renders side-by-side Santander vs HSBC breakdown:
+- 3-column metrics (totals + combined)
+- Two pie charts (spending by category per bank)
+- Grouped bar chart (combined category spending)
+- Two coverage pies
 
-    with selected_tabs[0]:
-        render_bank_analytics(df_sant, ...)
+**Signature**: `render_comparison(df_sant, df_hsbc, *, t, tc=None)`
 
-    with selected_tabs[1]:
-        render_bank_analytics(df_hsbc, ...)
+---
 
-    with selected_tabs[2]:
-        render_comparison(df_sant, df_hsbc, ...)
-```
+## Session State Keys Reference
+
+| Key | Type | Set by | Purpose |
+|-----|------|--------|---------|
+| `lang` | `str` | `web_app.py` | Current language (`"en"` or `"es"`) |
+| `bank_select` | `str` | `web_app.py` | Selected bank display name |
+| `nav_page` | `str` | `import_page.py` | Navigate to tab after copy |
+| `copy_feedback` | `str` | `import_page.py` | Success message for analytics tab |
+| `import_results_{bank_id}` | `dict` | `import_page.py` | Persisted import run output |
+| `import_results_{bank_id}_file_name` | `str` | `import_page.py` | Last uploaded filename (for cache invalidation) |
+
+---
 
 ## Translation System
 
 **File**: `src/translations.py`
 
-**Functions**:
+**Functions** (defined in `web_app.py`):
 ```python
 def t(key: str, **kwargs) -> str:
-    """Translate UI text."""
-    lang = st.session_state.get("language", "en")
-    return TRANSLATIONS[lang].get(key, key).format(**kwargs)
+    """Translate UI text. Returns key itself if not found."""
+    lang = st.session_state.lang
+    text = TRANSLATIONS[lang].get(key, key)
+    return text.format(**kwargs) if kwargs else text
 
 def tc(category: str) -> str:
-    """Translate category name."""
-    lang = st.session_state.get("language", "en")
-    return CATEGORY_TRANSLATIONS[lang].get(category, category)
+    """Translate category name (e.g. 'groceries' → 'Abarrotes')."""
+    return t(f"cat_{category.lower()}")
 ```
 
-**Usage**:
+**Usage**: Always use `t()` for user-visible strings. Never hardcode English text directly in UI.
+
+**Languages**: English (`en`), Spanish (`es`)
+
+---
+
+## Shared Components
+
+**File**: `src/ui/components/analytics_components.py`
+
 ```python
-st.header(t("analytics_title"))
-st.metric(t("metric_total_txns"), stats["total"])
-st.selectbox(t("select_category"), options=categories)
+render_metrics(t, stats)
+# → 5 st.metric cards (total, spent, categorized%, category%, withdrawals)
+
+render_charts(t, stats, tc)
+# → 3 Plotly charts (coverage pie, type bar, spending pie)
+
+render_category_deep_dive(t, tc, stats)
+# → Top-10 bars (count + spending) + summary table
+
+render_monthly_spending_trends(t, tc, stats)
+# → Multi-line spending trend chart
 ```
 
-**Languages**: English, Spanish
+These are called from `render_bank_analytics` (not from the comparison view).
 
-## Plotly Charts
+---
 
-**Configuration**:
+## Plotly Chart Conventions
+
+All charts use consistent dark-theme settings:
 ```python
-fig = px.pie(
-    names=[...],
-    values=[...],
-    hole=0.6,
-    template="plotly_dark",
-    color_discrete_sequence=["#6366f1", "#475569"]
-)
-
-fig.update_layout(
-    font_family="Outfit",
-    title_font_size=20,
-    margin=dict(t=80, b=40, l=40, r=40)
-)
-
+fig = px.pie(names=[...], values=[...], hole=0.6,
+             template="plotly_dark",
+             color_discrete_sequence=px.colors.qualitative.Set2)
+fig.update_traces(textposition="inside", textinfo="percent+label")
+fig.update_layout(showlegend=False, height=400, font_family="Outfit")
 st.plotly_chart(fig, use_container_width=True)
 ```
 
-**Chart Types Used**:
-- `px.pie()` - Categorization, spending share
-- `px.bar()` - Transaction types, category counts/spending
-- `px.line()` - Monthly spending trends
+**Chart types used**:
+- `px.pie()` — Categorization coverage, spending share
+- `px.bar()` — Transaction types, category counts/spending (horizontal)
+- `px.line()` — Monthly spending trends
+- `go.Figure()` with `go.Bar()` — Grouped bank comparison
 
-## Session State Variables
-
-**Common Keys**:
-```python
-st.session_state["language"]        # "en" or "es"
-st.session_state["import_results"]  # Last import output
-st.session_state["copy_feedback"]   # Success messages
-```
-
-## Data Loading
-
-**From Services**:
-```python
-from services import data_service
-
-df_sant = data_service.load_transactions_from_csv("santander_likeu")
-df_hsbc = data_service.load_transactions_from_csv("hsbc")
-```
-
-**Analytics Calculation**:
-```python
-from services.analytics_service import calculate_categorization_stats
-
-stats = calculate_categorization_stats(
-    df,
-    period=selected_period,
-    start_date=start_date,
-    end_date=end_date
-)
-```
-
-## Running the App
-
-### Local Development
-```bash
-./scripts/run_web.sh
-
-# Or directly:
-streamlit run src/web_app.py
-```
-
-### Server Deployment
-```bash
-streamlit run src/web_app.py \
-    --server.address 0.0.0.0 \
-    --server.port 8501
-```
-
-### Configuration
-`.streamlit/config.toml`:
-```toml
-[theme]
-primaryColor = "#6366f1"
-backgroundColor = "#0f172a"
-secondaryBackgroundColor = "#1e293b"
-textColor = "#f1f5f9"
-font = "sans serif"
-
-[server]
-maxUploadSize = 200
-```
+---
 
 ## UI Development Patterns
 
-### Don't Mutate State Directly
+### Persistent results across re-runs
 ```python
-# Bad
-st.session_state.results = new_results
+# Store after long operation
+st.session_state["my_results"] = result_dict
 
-# Good
-results = process_data()
-st.session_state["results"] = results
-st.rerun()  # If needed
+# Render from state (runs every re-run)
+if results := st.session_state.get("my_results"):
+    _render_results(results)
 ```
 
-### Cache Expensive Operations
+### Safe navigation (rerun to switch tab)
 ```python
-@st.cache_resource
-def load_ml_model():
-    return ml.train_global_model()
-
-@st.cache_data
-def load_static_config():
-    return yaml.safe_load(...)
+st.session_state[nav_key] = t("nav_analytics")
+st.rerun()   # not st.experimental_rerun()
 ```
 
-### Show Progress for Long Operations
+### Wrap external calls that may fail
 ```python
-with st.spinner(t("processing")):
-    result = long_operation()
-
-st.progress(0.5, text="Halfway done")
+try:
+    predictions = ml_engine.predict(text)
+except Exception:
+    st.caption("Prediction unavailable")
+    predictions = []
 ```
 
-### Handle Empty States
+### Cache expensive operations
+```python
+@st.cache_resource          # for objects (ML model, DB connections)
+def get_ml_engine(): ...
+
+@st.cache_data              # for data (config files, static CSV)
+def get_banks_config(): ...
+```
+
+### Handle empty states early
 ```python
 if df.empty:
     st.warning(t("no_data"))
     return
-
-# Continue with non-empty dataframe
 ```
+
+---
+
+## Running the App
+
+```bash
+# Development
+streamlit run src/web_app.py
+
+# Or via script
+./scripts/run_web.sh
+```
+
+**URL**: `http://localhost:8501`
+
+---
+
+## CodeGraph Navigation for UI
+
+The UI layer calls services — use CodeGraph to trace data flow without reading all UI code:
+
+```bash
+# Find all UI page functions
+codegraph_search "analytics_page"
+codegraph_search "render_"
+
+# Trace what services a UI page calls
+codegraph_callees "render_analytics_dashboard"
+codegraph_callees "render_bank_analytics"
+
+# Find which UI components call a service function
+codegraph_callers "calculate_categorization_stats"
+codegraph_callers "stage_rule_change"
+
+# Check impact before changing a service (which UI breaks?)
+codegraph_impact "load_transactions_from_csv"
+codegraph_impact "merge_pending_rules"
+
+# Inspect component source for Streamlit widget keys
+codegraph_node "render_bank_analytics"
+codegraph_node "_render_rule_hub"
+```
+
+**Important**: UI is excluded from coverage enforcement. Use `codegraph_callers` to verify services before refactoring.
+
+---
 
 ## Related Files
 
-- `src/web_app.py` - App router
-- `src/translations.py` - i18n support
-- `src/services/data_service.py` - Data loading
+- `src/web_app.py` - App router, CSS theme, ML caching
+- `src/ui/pages/import_page.py` - Import workflow
+- `src/ui/pages/analytics_page.py` - Analytics dashboard + Rule Hub
+- `src/ui/components/analytics_components.py` - Reusable chart/metric components
+- `src/translations.py` - Bilingual string dictionary
+- `src/services/data_service.py` - CSV loading
 - `src/services/analytics_service.py` - Stats calculation
 - `src/services/rule_service.py` - Rule staging/merging
 - `src/ml_categorizer.py` - ML predictions
-- `src/smart_matching.py` - Fuzzy search
-- `.streamlit/config.toml` - Streamlit config
+- `src/smart_matching.py` - Fuzzy merchant search

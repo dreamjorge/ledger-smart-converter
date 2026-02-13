@@ -492,5 +492,57 @@ rules:
         assert main() == 2
 
 
+class TestLikeUMainCLIExtended:
+    """Additional integration tests for main() edge cases."""
+
+    def test_main_returns_2_when_rules_missing(self, tmp_path, fixtures_dir, monkeypatch):
+        """Returns 2 when rules file doesn't exist."""
+        xlsx_path = fixtures_dir / "valid_statement.xlsx"
+        monkeypatch.setattr(
+            "sys.argv",
+            ["prog", "--xlsx", str(xlsx_path), "--rules", str(tmp_path / "nonexistent.yml")],
+        )
+        assert main() == 2
+
+    def test_main_returns_2_when_xlsx_missing(self, tmp_path, monkeypatch):
+        """Returns 2 when XLSX file doesn't exist."""
+        rules_path = tmp_path / "rules.yml"
+        rules_path.write_text(
+            "defaults:\n  currency: MXN\n  fallback_expense: Expenses:Other:Uncategorized\n  accounts: {}\nrules: []\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setattr(
+            "sys.argv",
+            ["prog", "--xlsx", str(tmp_path / "nonexistent.xlsx"), "--rules", str(rules_path)],
+        )
+        assert main() == 2
+
+    def test_main_returns_3_when_column_missing(self, tmp_path, monkeypatch):
+        """Returns 3 when required column is missing from XLSX."""
+        import openpyxl
+        rules_path = tmp_path / "rules.yml"
+        rules_path.write_text(
+            "defaults:\n  currency: MXN\n  fallback_expense: Expenses:Other:Uncategorized\n  accounts: {}\nrules: []\n",
+            encoding="utf-8",
+        )
+        # Create XLSX without required 'importe' column
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        # Header row without 'importe'
+        ws.append(["", ""])
+        ws.append(["", ""])
+        ws.append(["", ""])
+        ws.append(["FECHA", "CONCEPTO"])  # Missing IMPORTE
+        ws.append(["15/ene/24", "OXXO"])
+        xlsx_path = tmp_path / "missing_col.xlsx"
+        wb.save(str(xlsx_path))
+
+        monkeypatch.setattr(
+            "sys.argv",
+            ["prog", "--xlsx", str(xlsx_path), "--rules", str(rules_path)],
+        )
+        assert main() == 3
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "--tb=short"])

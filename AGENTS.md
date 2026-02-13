@@ -48,6 +48,21 @@ Use QMD files as the primary context source before reading broad code areas.
 2. Prefer QMD + CodeGraph before full-source scanning.
 3. If task spans layers, load only the minimal set (for example: `importers.qmd` + `services.qmd`).
 4. Treat QMD paths above as canonical; do not invent alternative locations.
+5. **MANDATORY: After completing any code change, update the relevant QMD file(s) to reflect the new state.** If you added a function, changed a signature, introduced a pattern, or refactored a module — the matching QMD must be updated in the same commit. Stale context is worse than no context.
+
+#### What "keeping context updated" means in practice
+
+| Change Made | QMD to Update |
+|-------------|---------------|
+| New/renamed/removed function in `src/ui/` | `ui.qmd` |
+| New service method or changed signature | `services.qmd` |
+| New bank importer or PDF parsing change | `importers.qmd` |
+| Domain model field added/removed | `domain.qmd` |
+| ML pipeline change, new category, rule schema | `ml-categorization.qmd` |
+| New test pattern, fixture, or coverage change | `testing.qmd` |
+| Cross-cutting refactor (multiple layers) | All affected QMDs |
+
+**Minimum update per change**: function name, signature, and a one-line description of the change. For larger changes, update the relevant section fully.
 
 **Render QMD to HTML (optional):**
 ```bash
@@ -55,45 +70,45 @@ quarto render docs/context/<file>.qmd
 quarto render docs/project-index.qmd
 ```
 
-## 🔍 CodeGraph (Semantic Code Navigation)
+## 🔍 CodeGraph Context Configuration (Authoritative)
 
-**`.codegraph/` exists** — use these tools instead of grep/glob for symbol lookups:
+CodeGraph is the canonical symbol/dependency navigator for this repo. Use it before broad grep/glob scans.
 
-| Tool | Use For | Example |
-|------|---------|---------|
-| `codegraph_search` | Find symbols by name (functions, classes, types) | `codegraph_search "parse_date"` |
-| `codegraph_context` | Get relevant code context for a task | `codegraph_context "Add PDF parsing"` |
-| `codegraph_callers` | Find what calls a function | `codegraph_callers "extract_transactions_from_pdf"` |
-| `codegraph_callees` | Find what a function calls | `codegraph_callees "process_hsbc_cfdi"` |
-| `codegraph_impact` | See what's affected before changing a symbol | `codegraph_impact "parse_es_date"` |
-| `codegraph_node` | Get details + source code for a symbol | `codegraph_node "TransactionCategorizer"` |
+### CodeGraph Availability + Index Health
 
-### CodeGraph Best Practices for Analysis Tasks
-
-**Before refactoring or adding tests**:
-1. Use `codegraph_search` to find all related symbols
-2. Use `codegraph_callers` to understand dependencies
-3. Use `codegraph_impact` to assess change blast radius
-4. Use `codegraph_callees` to map function call graph
-
-**Example workflow for adding tests**:
 ```bash
-# 1. Find all functions in module
-codegraph_search "pdf_utils"
+# Verify index directory exists
+ls -la .codegraph
 
-# 2. Check what calls critical functions
-codegraph_callers "extract_transactions_from_pdf"
-
-# 3. Understand dependencies before mocking
-codegraph_callees "ocr_image"
-
-# 4. Check impact before changing signature
-codegraph_impact "parse_mx_date"
+# Rebuild index after large refactors or stale results
+codegraph init -i
 ```
 
-**Reinitialize if stale** (after large refactors):
+### Canonical CodeGraph Commands
+
+| Command | Use For | Example |
+|---------|---------|---------|
+| `codegraph_search` | Find symbols by name (functions, classes, classes/types) | `codegraph_search "parse_date"` |
+| `codegraph_context` | Retrieve focused context for a task | `codegraph_context "Add PDF parsing"` |
+| `codegraph_callers` | Find callers of a symbol | `codegraph_callers "extract_transactions_from_pdf"` |
+| `codegraph_callees` | Find dependencies called by a symbol | `codegraph_callees "process_hsbc_cfdi"` |
+| `codegraph_impact` | Estimate blast radius before refactors | `codegraph_impact "parse_es_date"` |
+| `codegraph_node` | Get symbol details + source snippet | `codegraph_node "TransactionCategorizer"` |
+
+### Required Usage Order for Analysis Tasks
+
+1. `codegraph_search` to discover target symbols.
+2. `codegraph_callers` to understand entry points and dependency direction.
+3. `codegraph_callees` to identify collaborators/mock boundaries.
+4. `codegraph_impact` before signature or behavior changes.
+5. `codegraph_node` for precise implementation details.
+
+**Example (test planning):**
 ```bash
-codegraph init -i
+codegraph_search "pdf_utils"
+codegraph_callers "extract_transactions_from_pdf"
+codegraph_callees "ocr_image"
+codegraph_impact "parse_mx_date"
 ```
 
 ## 📊 Full Project Overview
@@ -221,7 +236,7 @@ Example: "Analyze project status and create improvement plan"
 **Run Tests**: `python -m pytest tests/ -v` (see `docs/context/testing.qmd`)
 **Quick Run**: `python -m pytest tests/ -q`
 **CI**: `.github/workflows/ci.yml` runs on push/PR
-**Current**: 227 tests passing ✅
+**Current**: 521 tests passing ✅
 
 ### ⚠️ CRITICAL: Test-Driven Development Policy
 
@@ -340,6 +355,7 @@ python src/generic_importer.py --bank <name> --data <file> --out <csv>
 - ❌ Don't hardcode paths → use `settings.py` config
 - ❌ Don't use `print()` → use structured logging
 - ❌ Don't mutate dataframes in place → create filtered copies
+- ❌ **Don't leave QMD context files stale** → update the matching QMD in the same commit as the code change; outdated context misleads future agents
 
 ## Recent Enhancements (2026-02-06)
 

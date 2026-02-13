@@ -374,6 +374,38 @@ else:
 - `tests/test_analytics_service.py` validates categorization detection
 - `is_categorized()` function tested with multiple cases
 
+## CodeGraph Navigation for ML & Categorization
+
+Use CodeGraph to understand the categorization pipeline before adding rules or retraining:
+
+```bash
+# Discover all categorization functions
+codegraph_search "ml_categorizer"
+codegraph_search "train_global_model"
+codegraph_search "smart_matching"
+
+# Trace who calls the ML model (to understand training trigger points)
+codegraph_callers "train_global_model"
+codegraph_callers "predict"
+
+# Find what the ML model depends on (rules loading)
+codegraph_callees "train_global_model"
+codegraph_callees "TransactionCategorizer"
+
+# Check blast radius of rule changes
+codegraph_impact "stage_rule_change"
+codegraph_impact "merge_pending_rules"
+
+# Get full source for model architecture
+codegraph_node "TransactionCategorizer"
+codegraph_node "find_similar_merchants"
+```
+
+**Before retraining / adding rules:**
+1. `codegraph_callers "train_global_model"` — find all retraining triggers
+2. `codegraph_callees "train_global_model"` — understand training data sources
+3. Add rule to `config/rules.pending.yml` → merge → retrain automatically
+
 ## Related Files
 
 - `src/ml_categorizer.py` - ML model
