@@ -13,7 +13,7 @@
 | ML/Categories | `docs/context/ml-categorization.qmd` | `src/ml_categorizer.py`, `config/rules.yml` |
 | Testing | `docs/context/testing.qmd` | `tests/` |
 
-**See also:** `AGENTS.md` for complete agent guide, `docs/context/README.md` for QMD usage guide
+**See also:** `AGENTS.md` for complete agent guide, `docs/context/README.md` for QMD usage guide, and the `skills/` directory for specialized assistant workflows.
 
 ---
 

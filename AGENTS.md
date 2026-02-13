@@ -140,15 +140,15 @@ codegraph init -i
 
 For complex tasks, delegate to specialized subagents in parallel:
 
-| Subagent | Assigned Tasks | Key Files | QMD Context | CodeGraph Focus |
+| Subagent | Assigned Tasks | Key Files | QMD Context | Skill Reference |
 |---|---|---|---|---|
-| **Import Agent** | New bank parsers, file ingestion debug | `src/import_*.py`, `src/generic_importer.py` | `importers.qmd` | `codegraph_search "import_.*_firefly"` |
-| **Validation Agent** | Domain model changes, contract validation | `src/domain/transaction.py`, `src/validation.py`, `src/errors.py` | `domain.qmd` | `codegraph_impact "Transaction"` |
-| **ML/Rules Agent** | Categorization rules, model retraining | `src/ml_categorizer.py`, `src/smart_matching.py`, `config/rules.yml` | `ml-categorization.qmd` | `codegraph_callees "train_global_model"` |
-| **OCR Agent** | PDF extraction, Tesseract debugging | `src/pdf_utils.py`, `src/pdf_feedback.py` | `importers.qmd` (PDF section) | `codegraph_callers "extract_transactions_from_pdf"` |
-| **Analytics Agent** | Dashboard metrics, data queries | `src/services/analytics_service.py`, `src/ui/pages/analytics_page.py` | `ui.qmd`, `services.qmd` | `codegraph_search "analytics"` |
-| **Testing Agent** | TDD workflow, coverage enforcement | `tests/`, `.github/workflows/ci.yml` | `testing.qmd` | `codegraph_search "test_"` |
-| **Architecture Agent** | Codebase analysis, refactoring, improvement planning | All modules | All QMDs + `docs/plan_mejoras.md` | All CodeGraph tools |
+| **Import Agent** | New bank parsers, file ingestion debug | `src/import_*.py`, `src/generic_importer.py` | `importers.qmd` | [Bank Importer](file:///d:/Repositories/credit_cards/skills/bank-importer/SKILL.md) |
+| **Validation Agent** | Domain model changes, contract validation | `src/domain/transaction.py`, `src/validation.py`, `src/errors.py` | `domain.qmd` | [Domain Model](file:///d:/Repositories/credit_cards/skills/domain-model/SKILL.md) |
+| **ML/Rules Agent** | Categorization rules, model retraining | `src/ml_categorizer.py`, `src/smart_matching.py`, `config/rules.yml` | `ml-categorization.qmd` | [Categorization](file:///d:/Repositories/credit_cards/skills/categorization/SKILL.md) |
+| **OCR Agent** | PDF extraction, Tesseract debugging | `src/pdf_utils.py`, `src/pdf_feedback.py` | `importers.qmd` | [OCR Debug](file:///d:/Repositories/credit_cards/skills/ocr-debug/SKILL.md) |
+| **Analytics Agent** | Dashboard metrics, data queries | `src/services/analytics_service.py`, `src/ui/pages/analytics_page.py` | `ui.qmd`, `services.qmd` | [Analytics](file:///d:/Repositories/credit_cards/skills/analytics/SKILL.md) |
+| **Testing Agent** | TDD workflow, coverage enforcement | `tests/`, `.github/workflows/ci.yml` | `testing.qmd` | [Testing](file:///d:/Repositories/credit_cards/skills/testing/SKILL.md) |
+| **Architecture Agent** | Codebase analysis, refactoring, improvement planning | All modules | All QMDs | [Main Skill](file:///d:/Repositories/credit_cards/SKILL.md) |
 
 ### Parallel Delegation Pattern
 
