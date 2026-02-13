@@ -68,6 +68,13 @@ Derived from `docs/plan_mejoras.md`, structured for execution.
 - [x] **Export Compatibility**: `export_firefly_csv_from_db(..., use_normalized_description=False)` preserves legacy Firefly CSV behavior by default.
 - [x] **Test Coverage Added**: Added `tests/test_description_normalizer.py`, `tests/test_generic_importer_normalized.py`, `tests/test_ml_categorizer_normalized.py`, and expanded `tests/test_csv_to_db_migrator.py`.
 
+### Phase 5: Operational Hardening + Big-Picture Docs (2026-02-13)
+*Goal: reduce migration noise from self-generated files and improve shared project understanding.*
+
+- [x] **Migration Discovery Guardrail**: `discover_firefly_csvs(...)` now skips generated export shadow files (for known banks) when preferred source CSV exists in the same bank directory.
+- [x] **Pipeline Coverage Expansion**: Added regression tests for discovery filtering and explicit bank export selection in DB pipeline.
+- [x] **Big-Picture Documentation**: Added `docs/big_picture_roadmap.md` with architecture map, operating model, and forward roadmap for both human developers and agents.
+
 ## 5. Execution Context for Agents
 
 When working on these tasks, Agents should:

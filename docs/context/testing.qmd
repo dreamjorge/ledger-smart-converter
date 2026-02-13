@@ -36,9 +36,9 @@ codegraph_node "parse_mx_date"
 
 ## Test Statistics
 
-**Total Tests Collected**: 549 (after normalized-description rollout on 2026-02-13)
+**Total Tests Collected**: 553 (after pipeline hardening additions on 2026-02-13)
 **Current Test Files**: 32 (`tests/test_*.py`)
-**Latest Local Run**: 549 passed (`.venv\\Scripts\\python.exe -m pytest tests/ -q`)
+**Latest Local Run**: 553 passed (`.venv\\Scripts\\python.exe -m pytest tests/ -q`)
 **Coverage Policy**: 85% minimum (`pytest --cov=src --cov-fail-under=85`)
 **Coverage Areas**: Analytics, services, importers (HSBC/LikeU/generic), PDF utils, ML categorizer, smart matching, validation, logging, settings, UI configuration/import smoke tests
 

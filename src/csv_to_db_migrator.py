@@ -16,10 +16,40 @@ logger = get_logger("csv_to_db_migrator")
 
 PERIOD_RX = re.compile(r"\bperiod:(\d{4}-\d{2})\b", re.IGNORECASE)
 MERCHANT_RX = re.compile(r"\bmerchant:([a-z0-9_]+)\b", re.IGNORECASE)
+PREFERRED_SOURCE_CSV_BY_BANK = {
+    "santander": "firefly_likeu.csv",
+    "santander_likeu": "firefly_santander_likeu.csv",
+    "hsbc": "firefly_hsbc.csv",
+}
 
 
 def discover_firefly_csvs(data_dir: Path) -> List[Path]:
-    return sorted([p for p in data_dir.glob("**/firefly*.csv") if p.is_file()])
+    candidates = sorted([p for p in data_dir.glob("**/firefly*.csv") if p.is_file()])
+    by_bank: Dict[str, List[Path]] = {}
+    for csv_path in candidates:
+        bank_id = _infer_bank_id_from_csv(csv_path, data_dir)
+        by_bank.setdefault(bank_id, []).append(csv_path)
+
+    selected: List[Path] = []
+    for bank_id, paths in by_bank.items():
+        sibling_names = {p.name for p in paths}
+        for csv_path in paths:
+            if _is_generated_export_shadow(csv_path, bank_id, sibling_names):
+                continue
+            selected.append(csv_path)
+    return sorted(selected)
+
+
+def _is_generated_export_shadow(csv_path: Path, bank_id: str, sibling_names: set) -> bool:
+    generated_name = f"firefly_{bank_id}.csv"
+    preferred_name = PREFERRED_SOURCE_CSV_BY_BANK.get(bank_id)
+    if not preferred_name:
+        return False
+    if csv_path.name != generated_name:
+        return False
+    if preferred_name == generated_name:
+        return False
+    return preferred_name in sibling_names
 
 
 def _infer_bank_id_from_csv(csv_path: Path, data_dir: Path) -> str:

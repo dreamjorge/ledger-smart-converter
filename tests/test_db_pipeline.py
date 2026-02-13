@@ -47,3 +47,35 @@ canonical_accounts:
     exported = export_dir / "santander_likeu" / "firefly_santander_likeu.csv"
     assert exported.exists()
     assert "OXXO QRO" in exported.read_text(encoding="utf-8")
+
+
+def test_run_db_pipeline_honors_requested_banks(tmp_path):
+    data_dir = tmp_path / "data"
+    db_path = tmp_path / "ledger.db"
+    export_dir = tmp_path / "exports"
+
+    _write_firefly_csv(
+        data_dir / "santander_likeu" / "firefly_santander_likeu.csv",
+        [
+            'withdrawal,2026-01-15,100.00,MXN,OXXO QRO,Liabilities:CC:Santander LikeU,Expenses:Food:Groceries,Food,"bucket:groceries,merchant:oxxo,period:2026-01"',
+        ],
+    )
+    _write_firefly_csv(
+        data_dir / "hsbc" / "firefly_hsbc.csv",
+        [
+            'withdrawal,2026-01-20,200.00,MXN,NETFLIX,Liabilities:CC:HSBC,Expenses:Entertainment:DigitalServices,Entertainment,"bucket:subs,merchant:netflix,period:2026-01"',
+        ],
+    )
+
+    summary = run_db_pipeline(
+        db_path=db_path,
+        data_dir=data_dir,
+        export_dir=export_dir,
+        banks=[" hsbc ", ""],
+    )
+
+    assert summary["migration"]["rows_inserted"] == 2
+    assert len(summary["exports"]) == 1
+    assert summary["exports"][0]["bank_id"] == "hsbc"
+    assert (export_dir / "hsbc" / "firefly_hsbc.csv").exists()
+    assert not (export_dir / "santander_likeu" / "firefly_santander_likeu.csv").exists()

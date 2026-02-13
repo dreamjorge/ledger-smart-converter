@@ -114,3 +114,27 @@ def test_migrate_backfills_missing_normalized_description(tmp_path):
     assert summary["rows_inserted"] == 0
     row = service.fetch_one("SELECT normalized_description FROM transactions LIMIT 1")
     assert row["normalized_description"] == "MercadoPago Netflix"
+
+
+def test_discover_firefly_csvs_skips_generated_shadow_when_preferred_exists(tmp_path):
+    data_dir = tmp_path / "data"
+    sant = data_dir / "santander"
+    sant.mkdir(parents=True, exist_ok=True)
+    (sant / "firefly_likeu.csv").write_text("x", encoding="utf-8")
+    (sant / "firefly_santander.csv").write_text("x", encoding="utf-8")
+
+    found = migr.discover_firefly_csvs(data_dir)
+    names = [p.name for p in found]
+    assert "firefly_likeu.csv" in names
+    assert "firefly_santander.csv" not in names
+
+
+def test_discover_firefly_csvs_keeps_generated_when_no_preferred_exists(tmp_path):
+    data_dir = tmp_path / "data"
+    bank = data_dir / "nubank"
+    bank.mkdir(parents=True, exist_ok=True)
+    (bank / "firefly_nubank.csv").write_text("x", encoding="utf-8")
+
+    found = migr.discover_firefly_csvs(data_dir)
+    names = [p.name for p in found]
+    assert names == ["firefly_nubank.csv"]

@@ -262,6 +262,7 @@ python scripts/migrate_csv_to_db.py \
 
 **Behavior**:
 - Discovers `data/**/firefly*.csv`
+- Skips generated export-shadow files for known banks when preferred source CSV exists (prevents duplicate rescans)
 - Inserts/updates canonical accounts
 - Records import runs in `imports`
 - Migrates transactions with `source_hash` deduplication
