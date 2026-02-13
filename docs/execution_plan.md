@@ -56,6 +56,7 @@ Derived from `docs/plan_mejoras.md`, structured for execution.
 - [x] **Advanced Analytics**: Added SQL-backed `calculate_categorization_stats_from_db(...)` in `src/services/analytics_service.py`.
 - [x] **Audit Trail**: Added `audit_events` table and wired rule stage/merge + recategorization event recording.
 - [x] **DB-first Runtime Wiring**: Analytics UI now loads transactions via SQLite first (`data/ledger.db`) with CSV fallback, and rule actions write audit events with DB path wiring.
+- [x] **Operational Pipeline Command**: Added one-command migration+export runner (`scripts/run_db_pipeline.py` → `src/db_pipeline.py`).
 
 ## 5. Execution Context for Agents
 

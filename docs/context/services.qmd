@@ -257,6 +257,24 @@ python scripts/migrate_csv_to_db.py \
 - Records import runs in `imports`
 - Migrates transactions with `source_hash` deduplication
 
+### DB Pipeline (One Command)
+
+**Files**:
+- `src/db_pipeline.py` (pipeline orchestration)
+- `scripts/run_db_pipeline.py` (CLI wrapper)
+
+**CLI**:
+```bash
+python scripts/run_db_pipeline.py \
+  --db data/ledger.db \
+  --data-dir data \
+  --accounts config/accounts.yml
+```
+
+**Behavior**:
+1. Executes CSV → DB migration
+2. Exports Firefly CSVs back from DB view by bank (`data/<bank_id>/firefly_<bank_id>.csv`)
+
 ### Firefly Export Service
 
 **File**: `src/services/firefly_export_service.py`
@@ -336,10 +354,10 @@ if ok:
 
 ### Analytics Dashboard
 ```python
-from services.data_service import load_transactions_from_csv
+from services.data_service import load_transactions
 from services.analytics_service import calculate_categorization_stats
 
-df = load_transactions_from_csv("santander_likeu")
+df = load_transactions("santander_likeu", prefer_db=True)
 
 # All time stats
 stats = calculate_categorization_stats(df)
@@ -393,4 +411,6 @@ codegraph_node "calculate_categorization_stats"
 - `config/rules.yml` - Configuration loaded by services
 - `src/database/schema.sql` - SQLite schema
 - `src/csv_to_db_migrator.py` - CSV migration orchestration
+- `src/db_pipeline.py` - one-command migration+export pipeline
+- `src/services/firefly_export_service.py` - DB view to Firefly CSV export
 - `tests/test_*_service.py` - Service tests
