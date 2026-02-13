@@ -1,6 +1,6 @@
 # Project Enhancement & Execution Plan
 
-**Status**: In Progress (stabilization tranche updated 2026-02-13)
+**Status**: Completed (roadmap phases + DB-first runtime integration updated 2026-02-13)
 **Context**: Deep analysis of Ledger Smart Converter codebase.
 **Goal**: Stabilize current base, correct documentation drift, and execute the roadmap towards a database-backed architecture.
 
@@ -55,6 +55,7 @@ Derived from `docs/plan_mejoras.md`, structured for execution.
 - [x] **Firefly III Exporter**: Implemented `src/services/firefly_export_service.py` using SQL view `firefly_export`.
 - [x] **Advanced Analytics**: Added SQL-backed `calculate_categorization_stats_from_db(...)` in `src/services/analytics_service.py`.
 - [x] **Audit Trail**: Added `audit_events` table and wired rule stage/merge + recategorization event recording.
+- [x] **DB-first Runtime Wiring**: Analytics UI now loads transactions via SQLite first (`data/ledger.db`) with CSV fallback, and rule actions write audit events with DB path wiring.
 
 ## 5. Execution Context for Agents
 

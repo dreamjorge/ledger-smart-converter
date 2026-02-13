@@ -11,6 +11,7 @@ from pathlib import Path
 from logging_config import get_logger
 from errors import ConfigError, ParseError
 from settings import load_settings
+from services.db_service import DatabaseService
 
 logger = get_logger("data_service")
 
@@ -139,6 +140,56 @@ def load_transactions_from_csv(bank_id: str) -> pd.DataFrame:
             exc_info=True
         )
         return pd.DataFrame()
+
+
+def load_transactions_from_db(bank_id: str, db_path: Optional[Path] = None) -> pd.DataFrame:
+    """Load transaction data for a given bank from SQLite."""
+    if not isinstance(bank_id, str) or not bank_id:
+        logger.error(f"Invalid bank_id: {bank_id!r}")
+        raise ValueError(f"bank_id must be a non-empty string, got: {bank_id!r}")
+
+    settings = load_settings()
+    effective_db = Path(db_path) if db_path else (settings.data_dir / "ledger.db")
+    if not effective_db.exists():
+        logger.info(f"SQLite DB not found at {effective_db}; returning empty DataFrame")
+        return pd.DataFrame()
+
+    try:
+        db = DatabaseService(db_path=effective_db)
+        rows = db.fetch_all(
+            """
+            SELECT
+                date,
+                amount,
+                description,
+                COALESCE(transaction_type, 'withdrawal') AS type,
+                destination_name,
+                category AS category_name,
+                tags
+            FROM transactions
+            WHERE bank_id = ?
+            ORDER BY date
+            """,
+            (bank_id,),
+        )
+        if not rows:
+            return pd.DataFrame()
+        df = pd.DataFrame(rows)
+        if "date" in df.columns:
+            df["date"] = pd.to_datetime(df["date"], errors="coerce")
+        return df
+    except Exception as exc:
+        logger.error(f"Failed loading DB transactions for '{bank_id}': {exc}", exc_info=True)
+        return pd.DataFrame()
+
+
+def load_transactions(bank_id: str, prefer_db: bool = True, db_path: Optional[Path] = None) -> pd.DataFrame:
+    """Load transactions from preferred source (DB first, CSV fallback)."""
+    if prefer_db:
+        df_db = load_transactions_from_db(bank_id, db_path=db_path)
+        if not df_db.empty:
+            return df_db
+    return load_transactions_from_csv(bank_id)
 
 
 def load_all_bank_data() -> Dict[str, pd.DataFrame]:

@@ -193,6 +193,7 @@ def main():
             t=t,
             tc=tc,
             config_dir=CONFIG_DIR,
+            data_dir=DATA_DIR,
             copy_feedback_key=COPY_FEEDBACK_KEY,
             ml_engine=ML_ENGINE,
         )

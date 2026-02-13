@@ -67,7 +67,8 @@ stage_rule_change(
     merchant_name: str,
     regex_pattern: str,
     expense_account: str,
-    bucket_tag: str
+    bucket_tag: str,
+    db_path: Optional[Path] = None
 ) -> Tuple[bool, Dict]
 # Stage a new rule, detect conflicts
 
@@ -170,6 +171,12 @@ get_csv_path(bank_id: str) -> Optional[Path]
 load_transactions_from_csv(bank_id: str) -> pd.DataFrame
 # Load and parse CSV with date conversion
 
+load_transactions_from_db(bank_id: str, db_path: Optional[Path] = None) -> pd.DataFrame
+# Load transactions from SQLite `transactions` table
+
+load_transactions(bank_id: str, prefer_db: bool = True, db_path: Optional[Path] = None) -> pd.DataFrame
+# DB-first loader with CSV fallback
+
 load_all_bank_data() -> Dict[str, pd.DataFrame]
 # Load all banks at once
 ```
@@ -187,6 +194,10 @@ BANK_FILE_MAP = {
 - Returns empty DataFrame on missing file
 - Logs errors but doesn't crash
 - Validates date column parsing
+
+**Default Runtime Source**:
+- UI analytics now uses `load_transactions(..., prefer_db=True)` and `data/ledger.db`.
+- When DB is missing or has no rows for a bank, service falls back to CSV.
 
 ### Database Service
 

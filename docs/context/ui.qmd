@@ -112,17 +112,17 @@ st.rerun()
 
 **File**: `src/ui/pages/analytics_page.py`
 
-**Entry function**: `render_analytics_dashboard(*, t, tc, config_dir, copy_feedback_key, ml_engine)`
+**Entry function**: `render_analytics_dashboard(*, t, tc, config_dir, data_dir, copy_feedback_key, ml_engine)`
 
 **Structure**:
-- Loads both bank CSVs via `data_service`
+- Loads bank transactions via `data_service.load_transactions(..., prefer_db=True)` using `data/ledger.db` when available (CSV fallback otherwise)
 - Creates tabs dynamically (Santander, HSBC, and/or Comparison) based on which CSVs exist
 - Delegates to `render_bank_analytics()` per bank
 - Delegates to `render_comparison()` for side-by-side view
 
 #### render_bank_analytics
 
-**Signature**: `render_bank_analytics(df, bank_name, bank_id, t, tc, config_dir, ml_engine)`
+**Signature**: `render_bank_analytics(df, bank_name, bank_id, t, tc, config_dir, data_dir, ml_engine)`
 
 > **Note**: `stats` is NOT a parameter. Stats are computed *inside* this function after
 > applying date/period filters, so they always match the current filter state.
@@ -147,7 +147,7 @@ st.rerun()
 | Category deep dive | `render_category_deep_dive(t, tc, stats)` | `analytics_components.py` |
 | Monthly trends | `render_monthly_spending_trends(t, tc, stats)` | `analytics_components.py` |
 | Transaction drilldown | `_render_drilldown(t, tc, stats, df_filtered, bank_id)` | inline |
-| Rule Hub | `_render_rule_hub(t, tc, df_filtered, bank_name, bank_id, config_dir, ml_engine)` | inline |
+| Rule Hub | `_render_rule_hub(t, tc, df_filtered, bank_name, bank_id, config_dir, data_dir, ml_engine)` | inline |
 
 #### Filtering System
 
@@ -175,8 +175,8 @@ date_range_active = start_date_filter and end_date_filter and start_date_filter 
 3. ML prediction shown with confidence score (wrapped in try/except — never crashes page)
 4. Select category from dropdown
 5. Edit expense account and regex pattern
-6. "Stage Rule Change" → `rulesvc.stage_rule_change()`
-7. "Apply Pending Rules" → `rulesvc.merge_pending_rules()` → `ml.train_global_model()` → `st.cache_resource.clear()`
+6. "Stage Rule Change" → `rulesvc.stage_rule_change(..., db_path=data_dir / "ledger.db")`
+7. "Apply Pending Rules" → `rulesvc.merge_pending_rules(..., db_path=data_dir / "ledger.db")` → `ml.train_global_model()` → `st.cache_resource.clear()`
 
 **ML prediction (safe pattern)**:
 ```python
@@ -380,7 +380,7 @@ codegraph_node "_render_rule_hub"
 - `src/ui/pages/analytics_page.py` - Analytics dashboard + Rule Hub
 - `src/ui/components/analytics_components.py` - Reusable chart/metric components
 - `src/translations.py` - Bilingual string dictionary
-- `src/services/data_service.py` - CSV loading
+- `src/services/data_service.py` - DB-first transaction loading + CSV fallback
 - `src/services/analytics_service.py` - Stats calculation
 - `src/services/rule_service.py` - Rule staging/merging
 - `src/ml_categorizer.py` - ML predictions
