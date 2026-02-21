@@ -1,9 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <cfdi:Comprobante xmlns:cfdi="http://www.sat.gob.mx/cfd/4">
   <cfdi:Addenda>
-    <!-- Movimiento with missing required fields -->
-    <MovimientosDelCliente descripcion="INCOMPLETE" importe="-100.00"/>
-    <!-- Valid movimiento -->
-    <MovimientosDelCliente fecha="2024-01-15T10:00:00" descripcion="VALID ENTRY" importe="-50.00"/>
+    <MovimientosDelCliente fecha="2024-01-15T12:00:00" importe="-500.00"/> <!-- Missing descripcion -->
+    <MovimientosDelCliente descripcion="SU PAGO" importe="750.00"/> <!-- Missing fecha -->
+    <MovimientosDelCliente fecha="2024-01-25T12:00:00" descripcion="OXXO"/> <!-- Missing importe -->
   </cfdi:Addenda>
 </cfdi:Comprobante>

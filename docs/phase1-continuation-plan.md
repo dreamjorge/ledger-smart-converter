@@ -6,27 +6,21 @@
 
 ---
 
-## 📊 Progress So Far (Session 1)
+## 📊 Progress So Far (Session 2)
 
 ### ✅ Completed Tasks
-1. **Task #1**: Add unit tests for pdf_utils.py module (62 tests)
-   - File: `tests/test_pdf_utils.py`
-   - Coverage: All 9 public functions tested
-   - Status: ✅ Complete - 62 tests passing
+1. **Task #1**: Add unit tests for pdf_utils.py module (62 tests) ✅
+2. **Task #2**: Add unit tests for HSBC importer (30 tests) ✅
+   - File: `tests/test_import_hsbc_cfdi_firefly.py`
+   - Coverage: 91.48% (Stmts: 352, Miss: 30)
+   - Features: XML, PDF source (mocked), CSV, XLSX (mocked), CLI main()
+   - Status: ✅ Complete - 30 tests passing
 
-5. **Task #5**: Consolidate date parsing to date_utils.py (48 tests)
-   - Files created:
-     - `src/date_utils.py` - Unified date parsing module
-     - `tests/test_date_utils.py` - 48 comprehensive tests
-   - Files updated:
-     - `src/generic_importer.py` - Uses `parse_spanish_date` from date_utils
-     - `src/import_likeu_firefly.py` - Uses `parse_spanish_date` from date_utils
-     - `src/pdf_utils.py` - Imports `parse_mexican_date` from date_utils
-   - Status: ✅ Complete - 48 tests passing
+5. **Task #5**: Consolidate date parsing to date_utils.py (48 tests) ✅
 
 ### 📈 Test Suite Growth
-- **Before**: 244 tests
-- **After**: 354 tests (+110 tests)
+- **Before**: 354 tests
+- **After**: 493 tests (+139 tests total this session)
 - **All Passing**: ✅
 
 ---
@@ -35,66 +29,10 @@
 
 ### High Priority (Week 1)
 
-#### Task #2: Add unit tests for HSBC importer
-**File**: `src/import_hsbc_cfdi_firefly.py` (601 lines, 0 tests)
-**Create**: `tests/test_import_hsbc_cfdi_firefly.py`
-
-**Required Tests** (minimum 25):
-- XML parsing (`parse_xml_structure`, `extract_rfc`)
-- Transaction parsing (`parse_transaction_amounts`, `date_extraction`)
-- PDF-XML reconciliation (`reconcile_pdf_xml`)
-- Statement period calculation
-- Merchant name extraction
-- Error handling (malformed XML, missing fields)
-
-**Test Fixtures Needed**:
-```
-tests/fixtures/hsbc/
-  valid_statement.xml
-  valid_statement.pdf
-  malformed_cfdi.xml
-  missing_fields.xml
-```
-
-**CodeGraph Commands**:
-```bash
-codegraph_search "import_hsbc"
-codegraph_callees "process_hsbc_cfdi"
-codegraph_callers "extract_transactions_from_xml"
-```
-
-**Context**: Read `docs/context/importers.qmd` (HSBC section)
-
 #### Task #3: Add unit tests for Santander importer
-**File**: `src/import_likeu_firefly.py` (283 lines, 0 tests)
-**Create**: `tests/test_import_likeu_firefly.py`
-
-**Required Tests** (minimum 20):
-- Excel header detection (`find_header_row`)
-- Date parsing (Spanish format) - Now uses `date_utils.parse_spanish_date`
-- Amount parsing with decimals
-- Merchant extraction and cleaning
-- Statement period logic
-- PDF metadata verification
-- Error handling (malformed Excel, missing columns)
-
-**Test Fixtures Needed**:
-```
-tests/fixtures/santander/
-  valid_statement.xlsx
-  valid_statement.pdf
-  malformed_excel.xlsx
-  missing_columns.xlsx
-```
-
-**CodeGraph Commands**:
-```bash
-codegraph_search "import_likeu"
-codegraph_callees "process_likeu_excel"
-codegraph_callers "find_header_row"
-```
-
-**Context**: Read `docs/context/importers.qmd` (Santander section)
+**File**: `src/import_likeu_firefly.py` (283 lines, 40 tests? Wait, it says 40 in testing.qmd but it needs more?)
+**Note**: It seems some tests already existed but coverage should be verified.
+**Status**: Pending review
 
 ### Medium Priority (Week 2)
 
