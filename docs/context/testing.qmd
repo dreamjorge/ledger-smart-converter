@@ -36,9 +36,9 @@ codegraph_node "parse_mx_date"
 
 ## Test Statistics
 
-**Total Tests**: 521
-**Test Files**: 18+
-**Coverage**: 89.20% (threshold: 85%)
+**Total Tests**: 525
+**Test Files**: 22+
+**Coverage**: 93.18% for HSBC (threshold: 85%)
 **Coverage Areas**: Analytics, data service, import service, validation, rules, healthcheck, UI imports, HSBC importer, LikeU importer, PDF utils, ML categorizer
 
 ## Test Structure
@@ -50,15 +50,27 @@ codegraph_node "parse_mx_date"
 ```
 tests/
 ├── test_analytics_service.py      # 24 tests - Analytics calculations
-├── test_common_utils.py            # 2 tests - Utility functions
-├── test_data_service.py            # 11 tests - CSV loading
-├── test_generic_importer.py        # 1 test - Import determinism
-├── test_healthcheck.py             # 1 test - Dependency validation
-├── test_import_service.py          # 2 tests - Import workflow
-├── test_rule_service.py            # 2 tests - Rule staging/merging
+├── test_common_utils.py            # 40 tests - Utility functions
+├── test_data_service.py            # 19 tests - CSV loading
+├── test_date_utils.py              # 48 tests - Date parsing
+├── test_errors.py                  # 14 tests - Custom exceptions
+├── test_generic_importer.py        # 18 tests - Generic import logic
+├── test_generic_importer_branches.py # 5 tests - Branch coverage
+├── test_healthcheck.py             # 4 tests - Dependency validation
+├── test_import_hsbc_cfdi_firefly.py # 62 tests - HSBC XML/PDF/CSV (93% coverage)
+├── test_import_likeu_firefly.py     # 40 tests - Santander Excel/PDF
+├── test_import_service.py          # 18 tests - Import workflow
+├── test_logging_config.py          # 20 tests - Structured logging
+├── test_merge_suggestions.py       # 15 tests - Rule merging
+├── test_ml_categorizer.py          # 6 tests - ML predictions
+├── test_pdf_utils.py               # 62 tests - PDF/OCR utilities
+├── test_rule_service.py            # 24 tests - Rule staging/merging
 ├── test_settings.py                # 1 test - Environment config
+├── test_smart_matching.py          # 23 tests - Merchant fuzzy matching
+├── test_ui_analytics_components.py # 23 tests - Analytics UI logic
 ├── test_ui_pages_imports.py        # 1 test - UI module imports
-└── test_validation.py              # 10 tests - Transaction/tag validation
+├── test_validation.py              # 10 tests - Transaction/tag validation
+└── test_web_app_config.py          # 8 tests - Web UI configuration
 ```
 
 ## Key Test Suites

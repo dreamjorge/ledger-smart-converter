@@ -1,0 +1,26 @@
+version: 1
+banks:
+  hsbc:
+    name: "Liabilities:CC:HSBC"
+    account_key: "hsbc_credit_card"
+    payment_asset_key: "hsbc_payment_asset"
+    card_tag: "card:hsbc"
+    fallback_name: "Liabilities:CC:HSBC"
+    fallback_asset: "Assets:HSBC Débito"
+
+defaults:
+  currency: MXN
+  accounts:
+    hsbc_credit_card:
+      name: Liabilities:CC:HSBC
+      closing_day: 20
+    hsbc_payment_asset: Assets:HSBC Débito
+  fallback_expense: Expenses:Other:Uncategorized
+
+rules:
+- name: Groceries
+  any_regex:
+  - OXXO
+  set:
+    expense: Expenses:Food:Groceries
+    tags: [bucket:groceries]

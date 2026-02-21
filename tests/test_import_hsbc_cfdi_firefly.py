@@ -7,6 +7,8 @@ and error handling for the HSBC bank importer.
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from collections import defaultdict
+from unittest.mock import patch, MagicMock
+import pandas as pd
 import pytest
 
 # Import module under test
@@ -836,6 +838,116 @@ class TestHSBCMainCLIExtended:
             ["prog", "--xml", str(xml_path), "--rules", str(rules_path)],
         )
         assert main() == 3
+
+
+# ============================================================================
+# Additional CLI Source Tests
+# ============================================================================
+
+def test_main_csv_source(tmp_path, fixtures_dir):
+    rules_path = fixtures_dir / "rules.yml"
+    csv_file = tmp_path / "test.csv"
+    df = pd.DataFrame({
+        "fecha": ["2024-01-15"],
+        "descripcion": ["CSV TXN"],
+        "importe": ["-100.00"]
+    })
+    df.to_csv(csv_file, index=False)
+    
+    test_args = [
+        "import_hsbc_cfdi_firefly.py",
+        "--csv", str(csv_file),
+        "--rules", str(rules_path),
+        "--out", str(tmp_path / "out.csv")
+    ]
+    
+    with patch("sys.argv", test_args):
+        exit_code = main()
+    
+    assert exit_code == 0
+    assert (tmp_path / "out.csv").exists()
+    content = (tmp_path / "out.csv").read_text()
+    assert "CSV TXN" in content
+
+@patch("pandas.read_excel")
+def test_main_xlsx_source(mock_read_excel, tmp_path, fixtures_dir):
+    rules_path = fixtures_dir / "rules.yml"
+    xlsx_file = tmp_path / "test.xlsx"
+    xlsx_file.touch()
+    
+    mock_read_excel.return_value = pd.DataFrame({
+        "fecha": ["2024-01-15"],
+        "descripcion": ["XLSX TXN"],
+        "importe": ["-100.00"]
+    })
+    
+    test_args = [
+        "import_hsbc_cfdi_firefly.py",
+        "--xml", str(xlsx_file),
+        "--rules", str(rules_path),
+        "--out", str(tmp_path / "out.csv")
+    ]
+    
+    with patch("sys.argv", test_args):
+        exit_code = main()
+    
+    assert exit_code == 0
+    assert (tmp_path / "out.csv").exists()
+    content = (tmp_path / "out.csv").read_text()
+    assert "XLSX TXN" in content
+
+@patch("pdf_utils.extract_pdf_metadata")
+@patch("pdf_utils.extract_transactions_from_pdf")
+@patch("pdf_utils.parse_mx_date")
+def test_main_pdf_source(mock_parse_date, mock_extract_txns, mock_meta, tmp_path, fixtures_dir):
+    rules_path = fixtures_dir / "rules.yml"
+    mock_meta.return_value = {"cutoff_date": "2024-01-31"}
+    mock_extract_txns.return_value = [
+        {"raw_date": "15 ENE", "description": "PDF TXN", "amount": -100.0}
+    ]
+    mock_parse_date.return_value = "2024-01-15"
+    
+    pdf_file = tmp_path / "statement.pdf"
+    pdf_file.write_text("fake pdf")
+    
+    test_args = [
+        "import_hsbc_cfdi_firefly.py",
+        "--pdf", str(pdf_file),
+        "--pdf-source",
+        "--rules", str(rules_path),
+        "--out", str(tmp_path / "out.csv")
+    ]
+    
+    with patch("sys.argv", test_args):
+        exit_code = main()
+        
+    assert exit_code == 0
+    assert (tmp_path / "out.csv").exists()
+    content = (tmp_path / "out.csv").read_text()
+    assert "PDF TXN" in content
+
+@patch("pdf_utils.extract_pdf_metadata")
+def test_main_xml_and_pdf_reconcile(mock_meta, tmp_path, fixtures_dir):
+    xml_path = fixtures_dir / "valid_cfdi.xml"
+    rules_path = fixtures_dir / "rules.yml"
+    mock_meta.return_value = {"cutoff_date": "2024-01-31"}
+    
+    pdf_file = tmp_path / "statement.pdf"
+    pdf_file.write_text("fake pdf")
+    
+    test_args = [
+        "import_hsbc_cfdi_firefly.py",
+        "--xml", str(xml_path),
+        "--pdf", str(pdf_file),
+        "--rules", str(rules_path),
+        "--out", str(tmp_path / "out.csv")
+    ]
+    
+    with patch("sys.argv", test_args):
+        exit_code = main()
+        
+    assert exit_code == 0
+    assert (tmp_path / "out.csv").exists()
 
 
 if __name__ == "__main__":

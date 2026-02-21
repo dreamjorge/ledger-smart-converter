@@ -16,15 +16,21 @@ Bank-specific parsers that extract transactions from PDF, XML, or XLSX files and
 **Input Formats**:
 - XML files (CFDI electronic invoices)
 - PDF files (fallback with OCR)
+- CSV/XLSX (manual exports)
 
 **Key Functions**:
 
 ```python
-def process_hsbc_cfdi(xml_path: Path, pdf_path: Optional[Path]) -> List[Dict]:
-    """Extract transactions from HSBC CFDI files."""
-    # 1. Parse XML for structured data
-    # 2. If XML missing, fallback to PDF OCR
-    # 3. Return list of transaction dicts
+def extract_movimientos(addenda: ET.Element) -> List[TxnRaw]:
+    """Extract transactions from HSBC CFDI Addenda."""
+    # Parses MovimientosDelCliente and MovimientoDelClienteFiscal tags
+
+def infer_kind(description: str, amount: float, rfc: str) -> str:
+    """Infer transaction kind (charge, payment, refund, cashback)."""
+    # Uses regex hints and RFC presence
+
+def apply_xml_reference_to_pdf(pdf_txns: List[TxnRaw], xml_txns: List[TxnRaw]) -> Tuple[List[TxnRaw], Dict[str, Any]]:
+    """Merge PDF OCR data with XML structured metadata."""
 ```
 
 **Data Extraction**:
