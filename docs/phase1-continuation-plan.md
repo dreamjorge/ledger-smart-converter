@@ -10,17 +10,17 @@
 
 ### ✅ Completed Tasks
 1. **Task #1**: Add unit tests for pdf_utils.py module (62 tests) ✅
-2. **Task #2**: Add unit tests for HSBC importer (30 tests) ✅
+2. **Task #2**: Add unit tests for HSBC importer (62 tests) ✅
    - File: `tests/test_import_hsbc_cfdi_firefly.py`
-   - Coverage: 91.48% (Stmts: 352, Miss: 30)
+   - Coverage: 93.18% (Stmts: 352, Miss: 24)
    - Features: XML, PDF source (mocked), CSV, XLSX (mocked), CLI main()
-   - Status: ✅ Complete - 30 tests passing
+   - Status: ✅ Complete - 62 tests passing
 
 5. **Task #5**: Consolidate date parsing to date_utils.py (48 tests) ✅
 
 ### 📈 Test Suite Growth
 - **Before**: 354 tests
-- **After**: 493 tests (+139 tests total this session)
+- **After**: 525 tests (+171 tests total since session 1)
 - **All Passing**: ✅
 
 ---

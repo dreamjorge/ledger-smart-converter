@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<cfdi:Comprobante xmlns:cfdi="http://www.sat.gob.mx/cfd/4">
-  <cfdi:Receptor Rfc="RFC123456789" Nombre="JUAN PEREZ"/>
-  <!-- Missing Addenda -->
+<cfdi:Comprobante xmlns:cfdi="http://www.sat.gob.mx/cfd/4" Version="4.0">
+  <cfdi:Emisor Rfc="HSB000101ABC"/>
+  <!-- Missing Addenda section -->
 </cfdi:Comprobante>

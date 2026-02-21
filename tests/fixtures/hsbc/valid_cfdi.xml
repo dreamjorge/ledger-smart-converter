@@ -1,9 +1,14 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<cfdi:Comprobante xmlns:cfdi="http://www.sat.gob.mx/cfd/4">
+<cfdi:Comprobante xmlns:cfdi="http://www.sat.gob.mx/cfd/4"
+                   Version="4.0"
+                   Fecha="2024-01-15T10:30:00">
+  <cfdi:Emisor Rfc="HSB000101ABC" Nombre="HSBC MEXICO SA"/>
+  <cfdi:Receptor Rfc="XAXX010101000" Nombre="PUBLICO EN GENERAL"/>
   <cfdi:Addenda>
-    <DatosGenerales numerodecuenta="12345678" nombredelCliente="JUAN PEREZ" periodo="2024-01-01 AL 2024-01-31"/>
-    <MovimientosDelCliente fecha="2024-01-15T12:00:00" descripcion="OXXO GAS" importe="-500.00"/>
-    <MovimientoDelClienteFiscal fecha="2024-01-20T12:00:00" descripcion="RESTAURANTE EL TACO" RFCenajenante="TACO123456" importe="-250.00"/>
-    <MovimientosDelCliente fecha="2024-01-25T12:00:00" descripcion="SU PAGO GRACIAS" importe="750.00"/>
+    <DatosGenerales numerodecuenta="1234567890" periodo="2024-01"/>
+    <MovimientosDelCliente fecha="2024-01-12T08:00:00" descripcion="OXXO REFORMA" importe="-45.50"/>
+    <MovimientosDelCliente fecha="2024-01-13T09:15:00" descripcion="WALMART INSURGENTES" importe="-234.00"/>
+    <MovimientoDelClienteFiscal fecha="2024-01-14T11:30:00" descripcion="AMAZON MEXICO" importe="-567.89" RFCenajenante="AMZ850101ABC"/>
+    <MovimientoDelClienteFiscal fecha="2024-01-15T14:00:00" descripcion="PAGO TARJETA GRACIAS" importe="1500.00" RFCenajenante=""/>
   </cfdi:Addenda>
 </cfdi:Comprobante>

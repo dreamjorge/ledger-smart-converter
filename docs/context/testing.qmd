@@ -36,9 +36,9 @@ codegraph_node "parse_mx_date"
 
 ## Test Statistics
 
-**Total Tests**: 493
+**Total Tests**: 525
 **Test Files**: 22+
-**Coverage**: 91.48% for HSBC (threshold: 85%)
+**Coverage**: 93.18% for HSBC (threshold: 85%)
 **Coverage Areas**: Analytics, data service, import service, validation, rules, healthcheck, UI imports, HSBC importer, LikeU importer, PDF utils, ML categorizer
 
 ## Test Structure
@@ -57,7 +57,7 @@ tests/
 ├── test_generic_importer.py        # 18 tests - Generic import logic
 ├── test_generic_importer_branches.py # 5 tests - Branch coverage
 ├── test_healthcheck.py             # 4 tests - Dependency validation
-├── test_import_hsbc_cfdi_firefly.py # 30 tests - HSBC XML/PDF/CSV (91% coverage)
+├── test_import_hsbc_cfdi_firefly.py # 62 tests - HSBC XML/PDF/CSV (93% coverage)
 ├── test_import_likeu_firefly.py     # 40 tests - Santander Excel/PDF
 ├── test_import_service.py          # 18 tests - Import workflow
 ├── test_logging_config.py          # 20 tests - Structured logging
