@@ -8,10 +8,11 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
 from logging_config import get_logger
 from description_normalizer import normalize_description
+from settings import load_settings as _load_settings
 
 logger = get_logger(__name__)
 
-MODEL_DIR = Path("config/ml_models")
+MODEL_DIR = _load_settings().config_dir / "ml_models"
 MODEL_PATH = MODEL_DIR / "categorizer_v1.joblib"
 USE_NORMALIZED_TEXT = os.getenv("LSC_USE_NORMALIZED_TEXT", "true").strip().lower() not in {"0", "false", "no"}
 

@@ -195,8 +195,8 @@ class DatabaseService:
             for row in rows:
                 norm = normalizer(row["raw_desc"])
                 conn.execute(
-                    "UPDATE transactions SET raw_description = ?, normalized_description = ? WHERE id = ?",
-                    (row["raw_desc"], norm, row["id"]),
+                    "UPDATE transactions SET normalized_description = ? WHERE id = ?",
+                    (norm, row["id"]),
                 )
                 updated += 1
             conn.commit()

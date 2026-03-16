@@ -172,6 +172,10 @@ def calculate_categorization_stats(
 
 
         if not withdrawals_df.empty:
+            withdrawals_df["date"] = pd.to_datetime(withdrawals_df["date"], errors="coerce")
+            withdrawals_df = withdrawals_df[withdrawals_df["date"].notna()]
+
+        if not withdrawals_df.empty:
             withdrawals_df["year_month"] = withdrawals_df["date"].dt.to_period("M")
 
             monthly_trends = withdrawals_df.groupby(["year_month", "main_category"])["amount"].sum().reset_index()

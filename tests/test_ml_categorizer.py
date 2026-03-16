@@ -1,8 +1,11 @@
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 import ml_categorizer as ml
+
+pytestmark = pytest.mark.slow
 
 
 def test_train_from_csvs_returns_false_when_no_files_exist(tmp_path):

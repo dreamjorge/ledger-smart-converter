@@ -1,8 +1,11 @@
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 import ml_categorizer as ml
+
+pytestmark = pytest.mark.slow
 
 
 def test_train_prefers_normalized_description_when_available(tmp_path, monkeypatch):

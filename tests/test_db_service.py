@@ -99,3 +99,18 @@ def test_record_import_and_link_transactions(tmp_path):
     )
     assert inserted is True
     assert row["import_id"] == import_id
+
+
+def test_record_audit_event(tmp_path):
+    db = DatabaseService(db_path=tmp_path / "ledger.db")
+    db.initialize()
+    event_id = db.record_audit_event(
+        event_type="test_event",
+        entity_type="transaction",
+        entity_id="abc123",
+        payload={"key": "value"},
+    )
+    assert event_id > 0
+    row = db.fetch_one("SELECT * FROM audit_events WHERE id = ?", (event_id,))
+    assert row["event_type"] == "test_event"
+    assert row["entity_id"] == "abc123"
