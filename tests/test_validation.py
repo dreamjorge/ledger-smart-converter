@@ -9,6 +9,7 @@ def test_validate_transaction_happy_path():
         amount=-250.00,
         bank_id="santander_likeu",
         account_id="Liabilities:CC:Santander LikeU",
+        canonical_account_id="cc:santander_likeu",
     )
     assert validate_transaction(txn) == []
 
@@ -20,6 +21,7 @@ def test_validate_transaction_invalid_date():
         amount=100.0,
         bank_id="santander_likeu",
         account_id="Liabilities:CC:Santander LikeU",
+        canonical_account_id="cc:santander_likeu",
     )
     assert "invalid_date" in validate_transaction(txn)
 
@@ -36,6 +38,7 @@ def test_validate_transaction_empty_description():
         amount=-100.0,
         bank_id="santander_likeu",
         account_id="Liabilities:CC:Santander LikeU",
+        canonical_account_id="cc:santander_likeu",
     )
     assert "missing_description" in validate_transaction(txn)
 
@@ -47,6 +50,7 @@ def test_validate_transaction_whitespace_only_description():
         amount=-100.0,
         bank_id="santander_likeu",
         account_id="Liabilities:CC:Santander LikeU",
+        canonical_account_id="cc:santander_likeu",
     )
     assert "missing_description" in validate_transaction(txn)
 
@@ -58,6 +62,7 @@ def test_validate_transaction_none_amount():
         amount=None,
         bank_id="santander_likeu",
         account_id="Liabilities:CC:Santander LikeU",
+        canonical_account_id="cc:santander_likeu",
     )
     assert "missing_amount" in validate_transaction(txn)
 
@@ -69,6 +74,7 @@ def test_validate_transaction_empty_bank_id():
         amount=-50.0,
         bank_id="",
         account_id="Liabilities:CC:Santander LikeU",
+        canonical_account_id="cc:santander_likeu",
     )
     assert "missing_bank_id" in validate_transaction(txn)
 
@@ -80,6 +86,7 @@ def test_validate_transaction_empty_account_id():
         amount=-50.0,
         bank_id="santander_likeu",
         account_id="",
+        canonical_account_id="cc:santander_likeu",
     )
     assert "missing_account_id" in validate_transaction(txn)
 
@@ -91,6 +98,7 @@ def test_validate_transaction_multiple_errors():
         amount=None,
         bank_id="",
         account_id="",
+        canonical_account_id="",
     )
     errors = validate_transaction(txn)
     assert "invalid_date" in errors
@@ -98,4 +106,17 @@ def test_validate_transaction_multiple_errors():
     assert "missing_amount" in errors
     assert "missing_bank_id" in errors
     assert "missing_account_id" in errors
-    assert len(errors) == 5
+    assert "missing_canonical_account_id" in errors
+    assert len(errors) == 6
+
+
+def test_validate_transaction_empty_canonical_account_id():
+    txn = CanonicalTransaction(
+        date="2026-02-01",
+        description="OXXO",
+        amount=-50.0,
+        bank_id="santander_likeu",
+        account_id="Liabilities:CC:Santander LikeU",
+        canonical_account_id="",
+    )
+    assert "missing_canonical_account_id" in validate_transaction(txn)

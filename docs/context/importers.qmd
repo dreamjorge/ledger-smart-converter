@@ -3,20 +3,27 @@ title: "Bank Importers Context"
 format: html
 ---
 
-## Purpose
+## Overview
 
-Bank-specific parsers that extract transactions from PDF, XML, or XLSX files and convert to canonical format.
+The ingestion layer handles the parsing of bank-specific statement formats (XLSX, XML, PDF) and transforms them into a canonical transaction format for categorization and export.
 
-## Importer Files
+## Importer Architecture
+
+The system uses a tiered approach to importing:
+
+1. **Bank-Specific Parsers**: Handlers for unique file formats (e.g., HSBC CFDI XML, Santander LikeU XLSX).
+2. **Generic Importer CLI**: A unified entry point (`src/generic_importer.py`) that orchestrates the parsing, normalization, and validation.
+3. **PDF Utilities**: Shared logic for OCR and text extraction from statement PDFs.
+
+## Supported Banks
 
 ### HSBC CFDI Importer
 
 **File**: `src/import_hsbc_cfdi_firefly.py`
 
 **Input Formats**:
-- XML files (CFDI electronic invoices)
-- PDF files (fallback with OCR)
-- CSV/XLSX (manual exports)
+- XML files (CFDI Addenda)
+- PDF files (OCR fallback)
 
 **Key Functions**:
 
@@ -34,10 +41,10 @@ def apply_xml_reference_to_pdf(pdf_txns: List[TxnRaw], xml_txns: List[TxnRaw]) -
 ```
 
 **Data Extraction**:
-- Date: From XML `<Fecha>` tag or PDF regex
-- Amount: From XML `<Total>` tag or PDF patterns
-- Description: Merchant name from XML or OCR
-- RFC: From XML `<Emisor>` RfcEmisor attribute
+- Date: XML `fecha` attribute or PDF OCR date parsing (`parse_mx_date`)
+- Amount: XML `importe` attribute or parsed OCR amount
+- Description: XML `descripcion` attribute or OCR line capture
+- RFC: XML `RFCenajenante` when present
 
 **Configuration**: Uses `config/rules.yml` HSBC section
 
@@ -52,16 +59,15 @@ def apply_xml_reference_to_pdf(pdf_txns: List[TxnRaw], xml_txns: List[TxnRaw]) -
 **Key Functions**:
 
 ```python
-def process_likeu_statements(xlsx_path: Path, pdf_path: Optional[Path]) -> List[Dict]:
-    """Extract transactions from Santander LikeU files."""
-    # 1. Parse XLSX with pandas
-    # 2. Clean and validate dates
-    # 3. Extract amounts
-    # 4. Return transaction dicts
+def main() -> int:
+    """CLI entrypoint for LikeU XLSX/PDF import flow."""
+
+def find_header_row(df: pd.DataFrame) -> int:
+    """Locate FECHA/CONCEPTO/IMPORTE header row in raw XLSX."""
 ```
 
 **Data Extraction**:
-- Date: Column parsing with date validation
+- Date: `date_utils.parse_spanish_date` from FECHA column (or OCR-parsed ISO date)
 - Amount: Numeric column with Mexican formatting
 - Description: Merchant/description column
 - Period: Calculated from closing_day config
@@ -92,10 +98,13 @@ python src/generic_importer.py \
 **Workflow**:
 1. Load bank configuration
 2. Call bank-specific importer
-3. Validate transactions
-4. Apply rules + ML categorization
-5. Write CSV (atomic)
-6. Log manifest
+3. Build `raw_description` from parsed source text
+4. Build `normalized_description` via `normalize_description(...)` (`src/description_normalizer.py`)
+5. Validate transactions
+6. Resolve canonical account id (`config/accounts.yml`) for each canonical transaction
+7. Apply rules + ML categorization (normalized text by default; fallback via `LSC_USE_NORMALIZED_TEXT=false`)
+8. Write CSV (atomic)
+9. Log manifest
 
 ## PDF Utilities
 
@@ -155,10 +164,11 @@ PATTERNS = {
 
 After extraction, transactions are categorized:
 
-1. **Rule-based**: `config/rules.yml` regex matching
-2. **ML fallback**: `src/ml_categorizer.py` predictions
-3. **Merchant tags**: Added automatically from description
-4. **Period tags**: `period:YYYY-MM` from closing_day
+1. **Normalization first**: deterministic text cleanup from `src/description_normalizer.py`
+2. **Rule-based**: `config/rules.yml` regex matching against normalized text
+3. **ML fallback**: `src/ml_categorizer.py` predictions
+4. **Merchant tags**: Added automatically from chosen matching text
+5. **Period tags**: `period:YYYY-MM` from closing_day
 
 ## Configuration Schema
 
@@ -329,6 +339,7 @@ codegraph_node "ocr_image"
 - `src/domain/transaction.py` - Canonical transaction model
 - `src/validation.py` - Transaction validation
 - `src/common_utils.py` - Shared utilities (date, amount, period)
+- `src/description_normalizer.py` - Deterministic description normalization
 - `src/pdf_utils.py` - PDF extraction utilities
 - `config/rules.yml` - Bank configuration
 - `tests/test_generic_importer.py` - Integration test

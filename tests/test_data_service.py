@@ -4,7 +4,13 @@ from pathlib import Path
 from unittest.mock import patch, mock_open
 import io
 
-from services.data_service import get_csv_path, load_transactions_from_csv, load_all_bank_data
+from services.data_service import (
+    get_csv_path,
+    load_transactions_from_csv,
+    load_all_bank_data,
+    load_transactions,
+)
+from services.db_service import DatabaseService
 from settings import load_settings
 
 # Get the expected data directory path from settings (same as data_service uses)
@@ -216,3 +222,51 @@ class TestLoadTransactionsCsvErrorPaths:
                 df = load_transactions_from_csv("santander")
                 assert isinstance(df, pd.DataFrame)
                 assert df.empty
+
+
+class TestLoadTransactionsPreferredSource:
+    """Test DB-first transaction loading behavior."""
+
+    def test_load_transactions_prefers_db_when_present(self, tmp_path):
+        db_path = tmp_path / "ledger.db"
+        db = DatabaseService(db_path=db_path)
+        db.initialize()
+        db.upsert_account(
+            account_id="cc:hsbc",
+            display_name="Liabilities:CC:HSBC",
+            bank_id="hsbc",
+            currency="MXN",
+        )
+        db.insert_transaction(
+            {
+                "date": "2026-01-20",
+                "amount": 200.0,
+                "currency": "MXN",
+                "merchant": "merchant:netflix",
+                "description": "NETFLIX",
+                "account_id": "Liabilities:CC:HSBC",
+                "canonical_account_id": "cc:hsbc",
+                "bank_id": "hsbc",
+                "statement_period": "2026-01",
+                "category": "Entertainment",
+                "tags": "bucket:subs,merchant:netflix,period:2026-01",
+                "source_file": "data/hsbc/firefly_hsbc.csv",
+                "transaction_type": "withdrawal",
+                "source_name": "Liabilities:CC:HSBC",
+                "destination_name": "Expenses:Entertainment:DigitalServices",
+            }
+        )
+
+        with patch("services.data_service.load_transactions_from_csv") as mock_csv:
+            df = load_transactions("hsbc", prefer_db=True, db_path=db_path)
+            assert len(df) == 1
+            assert df.iloc[0]["description"] == "NETFLIX"
+            mock_csv.assert_not_called()
+
+    def test_load_transactions_falls_back_to_csv_when_db_missing(self):
+        with patch("services.data_service.load_transactions_from_csv") as mock_csv:
+            mock_csv.return_value = pd.DataFrame({"description": ["csv"]})
+            df = load_transactions("santander_likeu", prefer_db=True, db_path=Path("/nonexistent/db.sqlite"))
+            assert len(df) == 1
+            assert df.iloc[0]["description"] == "csv"
+            mock_csv.assert_called_once_with("santander_likeu")

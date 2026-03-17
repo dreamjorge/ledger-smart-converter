@@ -17,15 +17,18 @@ Domain models enforce data validation and provide the canonical transaction repr
 @dataclass(frozen=True)
 class CanonicalTransaction:
     date: str              # ISO format YYYY-MM-DD
-    description: str       # Merchant/description text
-    amount: float          # Transaction amount
+    description: str       # Legacy description field (compatibility)
+    raw_description: str   # Original parsed source text
+    normalized_description: str  # Deterministic normalized text for categorization
+    amount: Optional[float]  # Transaction amount
     bank_id: str          # e.g., "santander_likeu", "hsbc"
     account_id: str       # Account identifier
+    canonical_account_id: str  # Canonical account id, e.g. "cc:santander_likeu"
     source: str = "data"  # Data source type
     rfc: str = ""         # Mexican tax ID (optional)
 
     @property
-    def id(self) -> str:  # Deterministic hash for deduplication
+    def id(self) -> str:  # Hash prefers normalized_description when present
 ```
 
 ## Validation Rules
@@ -34,6 +37,7 @@ class CanonicalTransaction:
 **Amount**: Must be valid float
 **Bank ID**: Must match configured bank
 **Account ID**: Required, non-empty
+**Canonical Account ID**: Required, non-empty (`cc:<bank_id>` fallback when unmapped)
 
 **Validator**: `src/validation.py`
 
@@ -68,10 +72,13 @@ from validation import validate_transaction
 
 txn = CanonicalTransaction(
     date="2024-01-15",
-    description="OXXO STORE",
+    description="OXXO STORE",  # legacy compatibility field
+    raw_description="OXXO STORE 12345",
+    normalized_description="Oxxo Store",
     amount=125.50,
     bank_id="santander_likeu",
     account_id="main",
+    canonical_account_id="cc:santander_likeu",
     rfc="ABC123456DEF"
 )
 
@@ -84,7 +91,7 @@ if not is_valid:
 
 - **Immutable**: `frozen=True` dataclass
 - **Validated**: Must pass validation before CSV write
-- **Hashed**: ID generated from key fields for deduplication
+- **Hashed**: ID generated from key fields for deduplication, preferring `normalized_description`
 - **Type-safe**: Strong typing with dataclass
 
 ## CodeGraph Navigation for Domain Changes
@@ -115,6 +122,7 @@ codegraph_node "CanonicalTransaction"
 
 - `src/validation.py` - Validation logic
 - `src/errors.py` - Error types
+- `src/account_mapping.py` - Bank/account to canonical account resolver
 - `src/services/import_service.py` - Uses domain model
 - `tests/test_validation.py` - Validation tests
 

@@ -20,6 +20,8 @@ def validate_transaction(txn: CanonicalTransaction) -> List[str]:
         errors.append("missing_bank_id")
     if not txn.account_id:
         errors.append("missing_account_id")
+    if not txn.canonical_account_id:
+        errors.append("missing_canonical_account_id")
     return errors
 
 

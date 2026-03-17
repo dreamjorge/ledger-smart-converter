@@ -171,6 +171,7 @@ def render_analytics_dashboard(
     t: Callable,
     tc: Callable,
     config_dir: Path,
+    data_dir: Path,
     copy_feedback_key: str,
     ml_engine,
 ):
@@ -179,8 +180,9 @@ def render_analytics_dashboard(
         st.success(feedback)
 
     st.header(t("analytics_title"))
-    df_sant = data_service.load_transactions_from_csv("santander_likeu")
-    df_hsbc = data_service.load_transactions_from_csv("hsbc")
+    db_path = data_dir / "ledger.db"
+    df_sant = data_service.load_transactions("santander_likeu", prefer_db=True, db_path=db_path)
+    df_hsbc = data_service.load_transactions("hsbc", prefer_db=True, db_path=db_path)
 
     if df_sant.empty and df_hsbc.empty:
         st.warning(t("no_csv_found"))
@@ -206,6 +208,7 @@ def render_analytics_dashboard(
                 t=t,
                 tc=tc,
                 config_dir=config_dir,
+                data_dir=data_dir,
                 ml_engine=ml_engine,
             )
         tab_idx += 1
@@ -219,6 +222,7 @@ def render_analytics_dashboard(
                 t=t,
                 tc=tc,
                 config_dir=config_dir,
+                data_dir=data_dir,
                 ml_engine=ml_engine,
             )
         tab_idx += 1
@@ -248,7 +252,7 @@ def _render_drilldown(t, tc, stats, df_filtered_for_display, bank_id):
     else:
         st.info(t("no_txns_found"))
 
-def _render_rule_hub(t, tc, df_filtered_for_display, bank_name, bank_id, config_dir, ml_engine):
+def _render_rule_hub(t, tc, df_filtered_for_display, bank_name, bank_id, config_dir, data_dir: Path, ml_engine):
     st.markdown("---")
     with st.expander(t("rule_hub_title"), expanded=False):
         st.subheader(t("rule_hub_subtitle"))
@@ -332,6 +336,7 @@ def _render_rule_hub(t, tc, df_filtered_for_display, bank_name, bank_id, config_
                         regex_pattern=regex_pattern,
                         expense_account=expense_account,
                         bucket_tag=category.lower(),
+                        db_path=data_dir / "ledger.db",
                     )
                     if ok:
                         st.success(f"Rule staged. Pending changes: {result['pending_count']}")
@@ -339,7 +344,12 @@ def _render_rule_hub(t, tc, df_filtered_for_display, bank_name, bank_id, config_
                         st.error(f"Could not stage rule ({result['status']}): {', '.join(result.get('conflicts', []))}")
             with c2:
                 if st.button("Apply Pending Rules", key=f"{bank_name}_apply_rules"):
-                    ok, result = rulesvc.merge_pending_rules(rules_path, pending_path, backup_dir)
+                    ok, result = rulesvc.merge_pending_rules(
+                        rules_path,
+                        pending_path,
+                        backup_dir,
+                        db_path=data_dir / "ledger.db",
+                    )
                     if ok:
                         with st.spinner(t("teaching_ai")):
                             ml.train_global_model()
@@ -357,7 +367,7 @@ def _render_rule_hub(t, tc, df_filtered_for_display, bank_name, bank_id, config_
                             st.warning("No pending rules to apply.")
 
 
-def render_bank_analytics(df, bank_name, bank_id, t, tc, config_dir: Path, ml_engine):
+def render_bank_analytics(df, bank_name, bank_id, t, tc, config_dir: Path, data_dir: Path, ml_engine):
     if df is None or df.empty:
         st.error("No data available")
         return
@@ -424,4 +434,4 @@ def render_bank_analytics(df, bank_name, bank_id, t, tc, config_dir: Path, ml_en
     render_category_deep_dive(t, tc, stats)
     render_monthly_spending_trends(t, tc, stats)
     _render_drilldown(t, tc, stats, df_filtered_for_display, bank_id)
-    _render_rule_hub(t, tc, df_filtered_for_display, bank_name, bank_id, config_dir, ml_engine)
+    _render_rule_hub(t, tc, df_filtered_for_display, bank_name, bank_id, config_dir, data_dir, ml_engine)

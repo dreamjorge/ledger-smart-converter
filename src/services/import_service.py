@@ -36,7 +36,7 @@ def resolve_output_paths(
 ) -> Tuple[Path, Path, Path]:
     analytics_target = analytics_targets.get(bank_label)
     if not analytics_target:
-        analytics_target = (bank_id.split("_")[0], f"firefly_{bank_id}.csv")
+        analytics_target = (bank_id, f"firefly_{bank_id}.csv")
     dest_dir, dest_name = analytics_target
     out_csv = data_dir / dest_dir / dest_name
     out_csv.parent.mkdir(parents=True, exist_ok=True)
@@ -89,8 +89,11 @@ def copy_csv_to_analysis(
     analytics_targets: Dict[str, Tuple[str, str]],
     bank_label: str,
     csv_path: Path,
+    bank_id: Optional[str] = None,
 ) -> Tuple[bool, str]:
     target = analytics_targets.get(bank_label)
+    if not target and bank_id:
+        target = (bank_id, f"firefly_{bank_id}.csv")
     if not target:
         return False, "unknown_bank"
     if not csv_path or not Path(csv_path).exists():

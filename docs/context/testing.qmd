@@ -3,74 +3,49 @@ title: "Testing Context"
 format: html
 ---
 
-## Purpose
+## Overview
 
-pytest-based test suite ensuring code quality and preventing regressions.
+The project uses `pytest` for all testing. Quality is enforced via CI coverage thresholds (80%) and strict validation of core services.
 
-## CodeGraph Navigation for Testing
+## Architecture
 
-Use CodeGraph tools to trace test → source relationships before writing new tests:
+Tests are structured to mirror the `src/` directory.
 
-| CodeGraph Tool | Testing Use Case | Example |
-|---|---|---|
-| `codegraph_callers` | Find what calls a function (to understand test scope) | `codegraph_callers "extract_transactions_from_pdf"` |
-| `codegraph_callees` | Find dependencies (to identify mocking targets) | `codegraph_callees "ocr_image"` |
-| `codegraph_search` | Discover all functions in a module | `codegraph_search "pdf_utils"` |
-| `codegraph_impact` | Know blast radius before refactor | `codegraph_impact "parse_mx_date"` |
-| `codegraph_node` | Get implementation details for test design | `codegraph_node "TransactionCategorizer"` |
-
-**Typical test-writing workflow with CodeGraph:**
-```bash
-# 1. Find all functions to test
-codegraph_search "import_likeu"
-
-# 2. Find callers to understand expected behavior
-codegraph_callers "find_header_row"
-
-# 3. Find dependencies to mock
-codegraph_callees "extract_transactions_from_pdf"
-
-# 4. Write tests using implementation details
-codegraph_node "parse_mx_date"
-```
-
-## Test Statistics
-
-**Total Tests**: 525
-**Test Files**: 22+
-**Coverage**: 93.18% for HSBC (threshold: 85%)
-**Coverage Areas**: Analytics, data service, import service, validation, rules, healthcheck, UI imports, HSBC importer, LikeU importer, PDF utils, ML categorizer
-
-## Test Structure
-
-### Test Files
-
-**Location**: `tests/`
-
-```
+```text
 tests/
-├── test_analytics_service.py      # 24 tests - Analytics calculations
-├── test_common_utils.py            # 40 tests - Utility functions
-├── test_data_service.py            # 19 tests - CSV loading
-├── test_date_utils.py              # 48 tests - Date parsing
-├── test_errors.py                  # 14 tests - Custom exceptions
-├── test_generic_importer.py        # 18 tests - Generic import logic
-├── test_generic_importer_branches.py # 5 tests - Branch coverage
-├── test_healthcheck.py             # 4 tests - Dependency validation
-├── test_import_hsbc_cfdi_firefly.py # 62 tests - HSBC XML/PDF/CSV (93% coverage)
-├── test_import_likeu_firefly.py     # 40 tests - Santander Excel/PDF
-├── test_import_service.py          # 18 tests - Import workflow
-├── test_logging_config.py          # 20 tests - Structured logging
-├── test_merge_suggestions.py       # 15 tests - Rule merging
-├── test_ml_categorizer.py          # 6 tests - ML predictions
-├── test_pdf_utils.py               # 62 tests - PDF/OCR utilities
-├── test_rule_service.py            # 24 tests - Rule staging/merging
-├── test_settings.py                # 1 test - Environment config
-├── test_smart_matching.py          # 23 tests - Merchant fuzzy matching
-├── test_ui_analytics_components.py # 23 tests - Analytics UI logic
-├── test_ui_pages_imports.py        # 1 test - UI module imports
-├── test_validation.py              # 10 tests - Transaction/tag validation
-└── test_web_app_config.py          # 8 tests - Web UI configuration
+├── conftest.py                    # Shared fixtures
+├── test_account_mapping.py        # Canonical account resolution
+├── test_analytics_service.py      # Analytics calculations
+├── test_analytics_service_db.py   # DB-backed analytics
+├── test_common_utils.py           # String/money/regex utils
+├── test_csv_to_db_migrator.py     # CSV to SQLite migration
+├── test_data_service.py           # File loading/discovery
+├── test_date_utils.py             # Date parsing logic
+├── test_db_pipeline.py            # End-to-end DB pipeline
+├── test_db_service.py             # SQLite operations
+├── test_description_normalizer.py # Text cleaning/abbreviations
+├── test_errors.py                 # Custom exception behavior
+├── test_firefly_export_service.py # Firefly CSV generation
+├── test_generic_importer.py       # Main ingestion engine
+├── test_generic_importer_branches.py # HSBC/Standard paths
+├── test_generic_importer_normalized.py # Normalization integration
+├── test_healthcheck.py            # System health metrics
+├── test_import_hsbc_cfdi_firefly.py
+├── test_import_likeu_firefly.py
+├── test_import_service.py
+├── test_logging_config.py
+├── test_merge_suggestions.py
+├── test_ml_categorizer.py
+├── test_ml_categorizer_normalized.py
+├── test_pdf_utils.py
+├── test_rule_service.py
+├── test_rule_service_audit.py
+├── test_settings.py
+├── test_smart_matching.py
+├── test_ui_analytics_components.py
+├── test_ui_pages_imports.py
+├── test_validation.py
+└── test_web_app_config.py
 ```
 
 ## Key Test Suites
@@ -262,6 +237,48 @@ def test_copy_csv_to_analysis_and_last_updated(tmp_path):
     # 4. Verify timestamp format
 ```
 
+## Slow vs Fast Test Suite
+
+Some tests are computationally expensive (ML training, large PDF parsing). These are tagged `@pytest.mark.slow` to keep the default run fast.
+
+### Marking a test as slow
+
+```python
+import pytest
+
+@pytest.mark.slow
+def test_train_global_model_with_real_data():
+    ...
+```
+
+### Running fast tests only (default, CI)
+
+```bash
+python -m pytest -m "not slow" -q
+```
+
+### Running the full suite (including slow tests)
+
+```bash
+python -m pytest -q
+```
+
+### Running only slow tests
+
+```bash
+python -m pytest -m "slow" -q --tb=short
+```
+
+### Rule: when to mark a test slow
+
+Mark a test `@pytest.mark.slow` if it:
+- Trains an ML model on real data (>2 seconds)
+- Processes actual PDF/OCR files
+- Runs against full production CSV datasets
+- Takes longer than 5 seconds to complete
+
+Do NOT mark simple unit tests slow even if they use mocks of slow operations.
+
 ## Running Tests
 
 ### All Tests
@@ -363,10 +380,13 @@ def test_with_temp_file(tmp_path):
 
 **Jobs**:
 1. Checkout code
-2. Setup Python 3.8+
-3. Install dependencies
-4. Run pytest
-5. Report results
+2. Setup Python 3.11
+3. Cache pip dependencies
+4. Install dependencies
+5. Compile checks
+6. Run fast tests with coverage (`-m "not slow"`, 80% minimum)
+7. Run slow ML tests (`-m "slow"`)
+8. Validate DB schema
 
 **Status**: Tests must pass for merge
 
@@ -376,25 +396,21 @@ def test_with_temp_file(tmp_path):
 
 **Well Tested** (✅):
 - Analytics service (24 tests)
-- Data service (11 tests)
-- Validation (10 tests)
+- Data service
+- Validation
+- Common utilities/date parsing
+- Importers (HSBC/LikeU/generic)
+- PDF extraction utilities
+- ML categorizer and smart matching
 
 **Moderately Tested** (⚠️):
-- Import service (2 tests)
-- Rule service (2 tests)
-- Common utils (2 tests)
+- Rule service workflows
+- Import service command/path orchestration
+- UI analytics components
 
 **Minimally Tested** (⚠️):
-- Generic importer (1 test)
-- Healthcheck (1 test)
-- UI pages (1 import test)
-
-**Not Tested** (❌):
-- ML categorizer
-- Smart matching
-- PDF utils
-- Specific bank importers (HSBC, Santander)
-- UI rendering logic
+- End-to-end Streamlit rendering behavior
+- Some CLI argument/error path combinations
 
 ### Adding New Tests
 

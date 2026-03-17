@@ -1,0 +1,16 @@
+version: 1
+suggested_rules:
+- name: Auto:amazon_mexico
+  any_regex:
+  - (amazon\ mexico)
+  set:
+    expense: Expenses:Other:Uncategorized
+    tags:
+    - bucket:amazon_mexico
+- name: Auto:walmart_insurgentes
+  any_regex:
+  - (walmart\ insurgentes)
+  set:
+    expense: Expenses:Other:Uncategorized
+    tags:
+    - bucket:walmart_insurgentes

@@ -9,6 +9,8 @@ format: html
 
 **Key Features**: OCR PDF parsing, ML predictions, rule-based categorization, analytics dashboard, bilingual support.
 
+**Big Picture / Roadmap**: `docs/big_picture_roadmap.md`
+
 ## Architecture
 
 ### Core Components
@@ -77,7 +79,7 @@ scripts/
 ├── run_import.sh          # CLI import helper
 └── generate_dummy_data.py # Generate test data for dashboard
 
-tests/                     # pytest suite (55 tests)
+tests/                     # pytest suite (550 tests)
 ```
 
 ## Key Workflows
@@ -144,5 +146,5 @@ tests/                     # pytest suite (55 tests)
 
 ## Roadmap (see `plan_mejoras.md`)
 
-**Completed**: Validation layer, service architecture, safe rules workflow, CI, enhanced PDF extraction
-**Next**: Account unification, SQLite persistence, Firefly API sync
+**Completed**: Validation layer, service architecture, safe rules workflow, SQLite persistence, DB pipeline, normalized-description categorization
+**Next**: Config unification for mappings, observability improvements, higher critical-path coverage

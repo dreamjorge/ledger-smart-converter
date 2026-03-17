@@ -138,11 +138,11 @@ def render_import_page(
                     analytics_targets=analytics_csv_targets,
                     bank_label=bank_label,
                     csv_path=out_csv,
+                    bank_id=bank_id,
                 )
                 if copied:
                     st.session_state[copy_feedback_key] = t("copy_success", path=result)
                     st.session_state[nav_key] = t("nav_analytics")
-                    st.session_state[bank_key] = bank_label
                     st.rerun()
                 elif result == "missing_src":
                     st.warning(t("copy_error_missing"))

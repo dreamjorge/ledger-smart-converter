@@ -22,20 +22,36 @@ Business logic layer that orchestrates imports, rules, analytics, and data acces
 **Key Functions**:
 
 ```python
-resolve_output_paths(bank_id: str, target_mapping: Dict) -> Dict
-# Returns output CSV paths for a bank
+resolve_output_paths(
+    data_dir: Path,
+    bank_label: str,
+    bank_id: str,
+    analytics_targets: Dict[str, Tuple[str, str]],
+) -> Tuple[Path, Path, Path]
+# Returns (out_csv, out_unknown, out_suggestions)
 
-copy_csv_to_analysis(csv_path: Path, bank_id: str) -> bool
-# Atomic copy to analysis directory
+copy_csv_to_analysis(
+    data_dir: Path,
+    analytics_targets: Dict[str, Tuple[str, str]],
+    bank_label: str,
+    csv_path: Path,
+    bank_id: Optional[str] = None,
+) -> Tuple[bool, str]
+# Copies CSV into analysis hierarchy
 
-get_csv_last_updated(csv_path: Path) -> str
-# Returns formatted last modified timestamp
+get_csv_last_updated(path: Path) -> Optional[str]
+# Returns formatted last modified timestamp or None
 ```
 
 **Responsibilities**:
 - Map bank IDs to output paths
 - Atomic CSV file operations
 - Track file timestamps
+
+**Output Path Convention**:
+- Canonical hierarchy is `data/<bank_dir>/...`
+- If no explicit UI mapping exists, `resolve_output_paths()` now falls back to `data/<bank_id>/firefly_<bank_id>.csv`
+- `copy_csv_to_analysis()` supports the same `bank_id` fallback when display labels do not match configured map keys
 
 ### Rule Service
 
@@ -53,16 +69,27 @@ stage_rule_change(
     merchant_name: str,
     regex_pattern: str,
     expense_account: str,
-    bucket_tag: str
+    bucket_tag: str,
+    db_path: Optional[Path] = None
 ) -> Tuple[bool, Dict]
 # Stage a new rule, detect conflicts
 
 merge_pending_rules(
     rules_path: Path,
     pending_path: Path,
-    backup_dir: Path
+    backup_dir: Path,
+    db_path: Optional[Path] = None
 ) -> Tuple[bool, Dict]
 # Merge pending to main, create backup
+
+record_recategorization_event(
+    db_path: Path,
+    transaction_source_hash: str,
+    old_category: str,
+    new_category: str,
+    reason: str = ""
+) -> int
+# Persist recategorization audit event
 ```
 
 **Safe Workflow**:
@@ -77,6 +104,11 @@ merge_pending_rules(
 - Checks if regex already exists
 - Prevents duplicate merchant rules
 - Returns conflict details for resolution
+
+**Audit Trail**:
+- `stage_rule_change(..., db_path=...)` logs `rule_staged` in DB `audit_events`
+- `merge_pending_rules(..., db_path=...)` logs `rules_merged`
+- `record_recategorization_event(...)` logs `recategorization` with payload metadata
 
 ### Analytics Service
 
@@ -95,7 +127,18 @@ calculate_categorization_stats(
     end_date: Optional[datetime] = None
 ) -> Dict
 # Calculate metrics for dashboard
+
+calculate_categorization_stats_from_db(
+    db_path: Path,
+    bank_id: Optional[str] = None,
+    period: Optional[str] = None,
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None
+) -> Dict
+# SQL-backed stats from `transactions` table
 ```
+
+**Date Parsing Note**: When loading CSVs, dates are parsed with `pd.to_datetime(..., errors="coerce")`. Rows with unparseable dates become `NaT` and are silently excluded from date-range filters. Verify your date column format if transactions appear missing from filtered views.
 
 **Stats Returned**:
 ```python
@@ -132,6 +175,12 @@ get_csv_path(bank_id: str) -> Optional[Path]
 load_transactions_from_csv(bank_id: str) -> pd.DataFrame
 # Load and parse CSV with date conversion
 
+load_transactions_from_db(bank_id: str, db_path: Optional[Path] = None) -> pd.DataFrame
+# Load transactions from SQLite `transactions` table
+
+load_transactions(bank_id: str, prefer_db: bool = True, db_path: Optional[Path] = None) -> pd.DataFrame
+# DB-first loader with CSV fallback
+
 load_all_bank_data() -> Dict[str, pd.DataFrame]
 # Load all banks at once
 ```
@@ -149,6 +198,113 @@ BANK_FILE_MAP = {
 - Returns empty DataFrame on missing file
 - Logs errors but doesn't crash
 - Validates date column parsing
+
+**Default Runtime Source**:
+- UI analytics now uses `load_transactions(..., prefer_db=True)` and `data/ledger.db`.
+- When DB is missing or has no rows for a bank, service falls back to CSV.
+
+### Database Service
+
+**File**: `src/services/db_service.py`
+
+**Key Functions**:
+
+```python
+class DatabaseService:
+    def initialize(self) -> None
+    # Creates/updates SQLite schema from src/database/schema.sql
+
+    def upsert_account(
+        self,
+        account_id: str,
+        display_name: str,
+        account_type: str = "credit_card",
+        bank_id: Optional[str] = None,
+        closing_day: Optional[int] = None,
+        currency: str = "MXN",
+    ) -> None
+    # Creates or updates canonical account metadata
+
+    def record_import(
+        self,
+        bank_id: str,
+        source_file: str,
+        status: str,
+        row_count: int = 0,
+        error: Optional[str] = None,
+    ) -> int
+    # Inserts import audit entry and returns import_id
+
+    def insert_transaction(self, txn: Dict[str, Any], import_id: Optional[int] = None) -> bool
+    # Inserts transaction row with source_hash deduplication
+
+    def backfill_normalized_descriptions(self, normalizer) -> int
+    # Fills missing normalized_description and raw_description in existing rows
+```
+
+**Schema File**: `src/database/schema.sql` (`accounts`, `imports`, `rules`, `transactions`)
+**Transaction Text Fields**:
+- `description`: legacy compatibility text
+- `raw_description`: original parsed text
+- `normalized_description`: deterministic normalized text for categorization
+
+### CSV → DB Migration
+
+**Files**:
+- `src/csv_to_db_migrator.py` (core migration logic)
+- `scripts/migrate_csv_to_db.py` (CLI wrapper)
+
+**CLI**:
+```bash
+python scripts/migrate_csv_to_db.py \
+  --db data/ledger.db \
+  --data-dir data \
+  --accounts config/accounts.yml
+```
+
+**Behavior**:
+- Discovers `data/**/firefly*.csv`
+- Skips generated export-shadow files for known banks when preferred source CSV exists (prevents duplicate rescans)
+- Inserts/updates canonical accounts
+- Records import runs in `imports`
+- Migrates transactions with `source_hash` deduplication
+- Writes both `raw_description` and `normalized_description`
+- Performs backfill for rows still missing `normalized_description`
+
+### DB Pipeline (One Command)
+
+**Files**:
+- `src/db_pipeline.py` (pipeline orchestration)
+- `scripts/run_db_pipeline.py` (CLI wrapper)
+
+**CLI**:
+```bash
+python scripts/run_db_pipeline.py \
+  --db data/ledger.db \
+  --data-dir data \
+  --accounts config/accounts.yml
+```
+
+**Behavior**:
+1. Executes CSV → DB migration
+2. Runs additional normalized description backfill pass
+3. Exports Firefly CSVs back from DB view by bank (`data/<bank_id>/firefly_<bank_id>.csv`)
+
+### Firefly Export Service
+
+**File**: `src/services/firefly_export_service.py`
+
+**Key Function**:
+
+```python
+export_firefly_csv_from_db(
+    db_path: Path,
+    out_csv: Path,
+    bank_id: Optional[str] = None,
+    use_normalized_description: bool = False,
+) -> int
+# Exports Firefly-compatible CSV from SQL view `firefly_export`
+```
 
 ## Service Patterns
 
@@ -214,10 +370,10 @@ if ok:
 
 ### Analytics Dashboard
 ```python
-from services.data_service import load_transactions_from_csv
+from services.data_service import load_transactions
 from services.analytics_service import calculate_categorization_stats
 
-df = load_transactions_from_csv("santander_likeu")
+df = load_transactions("santander_likeu", prefer_db=True)
 
 # All time stats
 stats = calculate_categorization_stats(df)
@@ -269,4 +425,8 @@ codegraph_node "calculate_categorization_stats"
 - `src/domain/transaction.py` - Domain models used by services
 - `src/ui/pages/*.py` - UI calls services
 - `config/rules.yml` - Configuration loaded by services
+- `src/database/schema.sql` - SQLite schema
+- `src/csv_to_db_migrator.py` - CSV migration orchestration
+- `src/db_pipeline.py` - one-command migration+export pipeline
+- `src/services/firefly_export_service.py` - DB view to Firefly CSV export
 - `tests/test_*_service.py` - Service tests

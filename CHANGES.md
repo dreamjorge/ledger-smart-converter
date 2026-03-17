@@ -1,3 +1,45 @@
+# Changes - 2026-03-16
+
+## Summary
+
+Implemented SQLite persistence layer, description normalization, account mapping, Flet UI prototype, and multiple bug fixes.
+
+## Changes Made
+
+### 1. SQLite Persistence Layer
+- `src/services/db_service.py` — `DatabaseService` with hash-based deduplication (`source_hash`)
+- `src/database/schema.sql` — 5-table schema: `transactions`, `accounts`, `imports`, `rules`, `audit_events`
+- `src/csv_to_db_migrator.py` + `scripts/migrate_csv_to_db.py` — CSV→DB migration
+- `src/db_pipeline.py` + `scripts/run_db_pipeline.py` — one-command pipeline
+- `docs/context/db.qmd` — database layer documentation
+
+### 2. Description Normalization
+- `src/description_normalizer.py` — deterministic text normalization for ML categorization
+- All transactions get `normalized_description` (ML prefers this over raw `description`)
+- `config/normalizer_rules.yml` — normalizer rules moved from hardcoded to config
+
+### 3. Account Mapping
+- `src/account_mapping.py` — bank/account to canonical account resolver
+- `config/accounts.yml` — canonical account definitions with bank_id mappings
+- Resolves `canonical_account_id` (e.g. `cc:santander_likeu`) for every transaction
+
+### 4. DB-Backed Analytics
+- `DatabaseService.backfill_normalized_descriptions()` for retroactive normalization
+- `calculate_categorization_stats_from_db()` in analytics service for SQL-backed stats
+- `load_transactions()` with `prefer_db=True` fallback to CSV when DB is empty
+
+### 5. Flet UI Prototype
+- `src/flet_prototype.py` — early Flet-based UI exploration (not production)
+- `scripts/run_flet_ui.ps1` — PowerShell launcher
+- See `docs/plan_mejoras.md` for migration roadmap
+
+### 6. Bug Fixes
+- Import service CSV fallback when DB is empty
+- Analytics date parsing: `pd.to_datetime(errors="coerce")` prevents crashes on malformed dates
+- CI: raised coverage threshold from 60% to 80%, added slow test split, schema validation step
+
+---
+
 # Recent Changes - 2026-02-06
 
 ## Summary

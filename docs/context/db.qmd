@@ -1,0 +1,281 @@
+---
+title: "Database Layer Context"
+format: html
+---
+
+## Purpose
+
+SQLite (`data/ledger.db`) is the canonical persistence store for Ledger Smart Converter. It enables deduplication, audit trails, and DB-backed analytics. All imports flow through `DatabaseService` (`src/services/db_service.py`).
+
+Key responsibilities:
+
+- Persist transactions with hash-based deduplication
+- Track import history and status in the `imports` table
+- Store categorization rules in the `rules` table
+- Record all significant system events in the `audit_events` table
+- Support DB-backed analytics as an alternative to scanning CSV files
+
+## Schema Overview
+
+Four tables form the core schema (defined in `src/database/schema.sql`):
+
+**`accounts`**
+
+```sql
+CREATE TABLE accounts (
+    account_id    TEXT PRIMARY KEY,
+    display_name  TEXT,
+    type          TEXT,          -- e.g. "credit_card", "checking"
+    bank_id       TEXT,
+    closing_day   INTEGER,
+    currency      TEXT DEFAULT 'MXN',
+    created_at    TEXT DEFAULT (datetime('now'))
+);
+```
+
+**`imports`**
+
+```sql
+CREATE TABLE imports (
+    import_id    INTEGER PRIMARY KEY AUTOINCREMENT,
+    bank_id      TEXT,
+    source_file  TEXT,
+    processed_at TEXT DEFAULT (datetime('now')),
+    status       TEXT,          -- "success", "error", "partial"
+    row_count    INTEGER DEFAULT 0,
+    error        TEXT
+);
+```
+
+**`transactions`** — the main store; note the three description fields:
+
+```sql
+CREATE TABLE transactions (
+    id                     INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_hash            TEXT UNIQUE,          -- SHA-256, prevents duplicates
+    date                   TEXT,
+    amount                 REAL,
+    currency               TEXT DEFAULT 'MXN',
+    merchant               TEXT,
+    description            TEXT,                 -- legacy field
+    raw_description        TEXT,                 -- original text from source (immutable)
+    normalized_description TEXT,                 -- cleaned text used for ML
+    account_id             TEXT,
+    canonical_account_id   TEXT,
+    bank_id                TEXT,
+    statement_period       TEXT,                 -- "YYYY-MM"
+    category               TEXT,
+    tags                   TEXT,
+    transaction_type       TEXT,
+    source_name            TEXT,
+    destination_name       TEXT,
+    source_file            TEXT,
+    import_id              INTEGER,
+    created_at             TEXT DEFAULT (datetime('now')),
+    updated_at             TEXT DEFAULT (datetime('now'))
+);
+```
+
+**`audit_events`**
+
+```sql
+CREATE TABLE audit_events (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_type   TEXT,          -- e.g. "rule_staged", "import_started"
+    entity_type  TEXT,          -- e.g. "rule", "transaction", "import"
+    entity_id    TEXT,
+    payload_json TEXT,          -- JSON blob with event details
+    created_at   TEXT DEFAULT (datetime('now'))
+);
+```
+
+**`rules`**
+
+```sql
+CREATE TABLE rules (
+    rule_id    INTEGER PRIMARY KEY AUTOINCREMENT,
+    name       TEXT,
+    pattern    TEXT,
+    expense    TEXT,
+    tags       TEXT,
+    priority   INTEGER DEFAULT 0,
+    enabled    INTEGER DEFAULT 1,
+    created_at TEXT DEFAULT (datetime('now'))
+);
+```
+
+## DatabaseService API
+
+All database access goes through `DatabaseService` in `src/services/db_service.py`.
+
+```python
+class DatabaseService:
+    def __init__(self, db_path: str, schema_path: str) -> None
+    # Opens the SQLite connection and stores paths; does not create schema yet.
+
+    def initialize(self) -> None
+    # Creates all tables from schema.sql if they don't exist. Idempotent — safe to call repeatedly.
+
+    def fetch_one(self, query: str, params: Iterable[Any] = ()) -> Optional[Dict[str, Any]]
+    # Execute a SELECT and return the first row as a dict, or None.
+
+    def fetch_all(self, query: str, params: Iterable[Any] = ()) -> List[Dict[str, Any]]
+    # Execute a SELECT and return all rows as a list of dicts.
+
+    def upsert_account(
+        self,
+        account_id: str,
+        display_name: str,
+        account_type: str = "credit_card",
+        bank_id: Optional[str] = None,
+        closing_day: Optional[int] = None,
+        currency: str = "MXN"
+    ) -> None
+    # INSERT OR REPLACE into accounts. Call before inserting transactions for that account.
+
+    def record_import(
+        self,
+        bank_id: str,
+        source_file: str,
+        status: str,
+        row_count: int = 0,
+        error: Optional[str] = None
+    ) -> int
+    # Insert a row into imports and return the new import_id.
+
+    def update_import_status(
+        self,
+        import_id: int,
+        status: str,
+        row_count: Optional[int] = None,
+        error: Optional[str] = None
+    ) -> None
+    # Update an existing imports row after processing completes.
+
+    def insert_transaction(self, txn: Dict[str, Any], import_id: Optional[int] = None) -> bool
+    # Insert a transaction row using INSERT OR IGNORE.
+    # Returns True if inserted (new), False if skipped (duplicate via source_hash).
+
+    def backfill_normalized_descriptions(self, normalizer) -> int
+    # Fill normalized_description for rows where it is NULL.
+    # normalizer is a callable: str -> str. Returns count of rows updated.
+
+    def record_audit_event(
+        self,
+        event_type: str,
+        entity_type: str,
+        entity_id: Optional[str] = None,
+        payload: Optional[Dict] = None
+    ) -> int
+    # Insert a row into audit_events and return its id.
+```
+
+## Deduplication Strategy
+
+Every transaction is fingerprinted before insert.
+
+`source_hash` is a SHA-256 digest computed from a canonical combination of key fields (date, amount, description, account, bank). The schema declares it `UNIQUE`.
+
+`insert_transaction()` uses `INSERT OR IGNORE`, so a row with a colliding `source_hash` is silently dropped rather than raising an error.
+
+The return value of `insert_transaction()` communicates the outcome:
+
+```python
+inserted = db.insert_transaction(txn_dict, import_id=import_id)
+if inserted:
+    new_count += 1
+else:
+    duplicate_count += 1
+```
+
+This means re-running the pipeline against the same CSV files is always safe — existing data is never overwritten.
+
+## Pipeline
+
+Run the full import pipeline from the command line:
+
+```bash
+python scripts/run_db_pipeline.py \
+    --db data/ledger.db \
+    --data-dir data \
+    --accounts config/accounts.yml
+```
+
+The pipeline (`src/db_pipeline.py`) executes these steps in order:
+
+1. **CSV discovery** — scan `--data-dir` for statement CSV files (skipping export-shadow files)
+2. **`DatabaseService.initialize()`** — create tables if absent (idempotent)
+3. **Seed accounts** — call `upsert_account()` for each entry in `accounts.yml`
+4. **`record_import()`** — create an `imports` row and capture the `import_id`
+5. **`insert_transaction()`** — insert each parsed row; duplicates are silently skipped
+6. **`backfill_normalized_descriptions()`** — normalize any description that is still NULL
+7. **Export Firefly CSVs** — query the DB view and write output CSVs for Firefly III
+
+The `csv_to_db_migrator.py` module handles the CSV parsing and field mapping in step 5.
+
+## Safe Patterns
+
+Four rules to follow when working with the database layer:
+
+1. **Never update `raw_description` after initial insert.** It is immutable audit data that records exactly what appeared in the source file. Treat it as append-only.
+
+2. **Use `backfill_normalized_descriptions()` to fix missing `normalized_description`.** Never run a raw `UPDATE transactions SET normalized_description = ...` — use the dedicated method so normalization logic stays in one place.
+
+3. **For new schema columns, update both files.** Add the column to `src/database/schema.sql` AND add a corresponding `ALTER TABLE` guard inside `_ensure_transactions_columns()` in `src/services/db_service.py`. This keeps existing databases forward-compatible.
+
+4. **Always call `db.initialize()` in tests.** It is idempotent and creates the full schema. Never assume the schema exists before calling it.
+
+## Migration Notes
+
+When migrating existing CSV data to the database:
+
+- The CSV migrator (`src/csv_to_db_migrator.py`) skips export-shadow files (files whose names suggest they were generated by a previous export). This prevents double-counting transactions that were exported and then re-imported.
+- Check the `imports` table to see which source files have already been processed:
+
+```python
+processed = db.fetch_all("SELECT source_file, status, row_count FROM imports")
+```
+
+- Always call `upsert_account()` before inserting transactions for that account. Foreign key constraints or downstream queries may rely on the account row existing.
+
+```python
+db.upsert_account(
+    account_id="BBVA_CC_4321",
+    display_name="BBVA Credit Card 4321",
+    account_type="credit_card",
+    bank_id="bbva",
+    closing_day=25,
+    currency="MXN"
+)
+```
+
+## Audit Trail Usage
+
+Use `record_audit_event()` to log significant actions. The `payload` dict is stored as JSON and can hold arbitrary structured data.
+
+```python
+db.record_audit_event(
+    event_type="rule_staged",
+    entity_type="rule",
+    entity_id="OXXO.*",
+    payload={"merchant": "OXXO", "expense_account": "Expenses:Food:Groceries"}
+)
+```
+
+Common event types used in the codebase:
+
+| `event_type`      | `entity_type` | Fired when                              |
+|-------------------|---------------|-----------------------------------------|
+| `rule_staged`     | `rule`        | A new rule is written to pending file   |
+| `import_started`  | `import`      | Pipeline begins processing a file       |
+| `import_complete` | `import`      | Pipeline finishes a file successfully   |
+| `import_error`    | `import`      | Pipeline encounters a fatal error       |
+
+Query the audit log to debug unexpected behaviour:
+
+```python
+events = db.fetch_all(
+    "SELECT * FROM audit_events WHERE entity_type = ? ORDER BY created_at DESC",
+    ("rule",)
+)
+```
