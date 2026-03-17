@@ -1,0 +1,30 @@
+# Normalizer rules for description_normalizer.py
+# These are loaded at module import time.
+
+abbreviations:
+  TRANSF: "Transferencia"
+  TRANSFER: "Transferencia"
+  DEBITO: "Débito"
+  CREDITO: "Crédito"
+  COMISION: "Comisión"
+  MERPAGO: "MercadoPago"
+  MERCADOPAGO: "MercadoPago"
+  MERCADO: "Mercado"
+  PAGO: "Pago"
+
+accent_restoration:
+  DEBITO: "Débito"
+  CREDITO: "Crédito"
+  COMISION: "Comisión"
+  INTERES: "Interés"
+  NOMINA: "Nómina"
+
+acronyms:
+  - SPEI
+  - RFC
+  - IVA
+  - ATM
+  - PIN
+  - CVV
+  - SAT
+  - CFE

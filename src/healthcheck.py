@@ -32,12 +32,14 @@ def run_healthcheck() -> Dict[str, object]:
         "tesseract_binary_found": bool(settings.ocr_tesseract_cmd) or shutil.which("tesseract") is not None,
     }
     ok = all(v for v in checks.values() if isinstance(v, bool))
+    db_info = check_db()
     return {
         "ok": ok,
         "root_dir": str(settings.root_dir),
         "config_dir": str(settings.config_dir),
         "data_dir": str(settings.data_dir),
         "checks": checks,
+        "db": db_info,
     }
 
 
@@ -50,6 +52,22 @@ def _is_writable(path: Path) -> bool:
         return True
     except Exception:
         return False
+
+
+def check_db() -> Dict[str, object]:
+    """Check SQLite database health: existence and transaction count."""
+    settings = load_settings()
+    db_path = settings.data_dir / "ledger.db"
+    if not db_path.exists():
+        return {"exists": False, "transaction_count": 0}
+    try:
+        import sqlite3
+        conn = sqlite3.connect(db_path)
+        row = conn.execute("SELECT count(*) FROM transactions").fetchone()
+        conn.close()
+        return {"exists": True, "transaction_count": row[0] if row else 0}
+    except Exception as exc:
+        return {"exists": True, "transaction_count": None, "error": str(exc)}
 
 
 def main() -> int:

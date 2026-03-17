@@ -20,7 +20,7 @@ class CanonicalTransaction:
     description: str       # Legacy description field (compatibility)
     raw_description: str   # Original parsed source text
     normalized_description: str  # Deterministic normalized text for categorization
-    amount: float          # Transaction amount
+    amount: Optional[float]  # Transaction amount
     bank_id: str          # e.g., "santander_likeu", "hsbc"
     account_id: str       # Account identifier
     canonical_account_id: str  # Canonical account id, e.g. "cc:santander_likeu"

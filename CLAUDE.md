@@ -8,6 +8,7 @@
 |-----------|-----------|-------|
 | Domain/Validation | `docs/context/domain.qmd` | `src/domain/`, `src/validation.py` |
 | Services Layer | `docs/context/services.qmd` | `src/services/` |
+| Database/Persistence | `docs/context/db.qmd` | `src/services/db_service.py`, `src/database/schema.sql` |
 | Bank Importers | `docs/context/importers.qmd` | `src/import_*.py`, `src/pdf_utils.py` |
 | UI/Dashboard | `docs/context/ui.qmd` | `src/ui/pages/` |
 | ML/Categories | `docs/context/ml-categorization.qmd` | `src/ml_categorizer.py`, `config/rules.yml` |
@@ -21,7 +22,7 @@
 
 **Name**: Ledger Smart Converter
 **Type**: Bank statement importer with ML categorization
-**Stack**: Python 3.8+, Streamlit, sklearn, pytest
+**Stack**: Python 3.8+, Streamlit, sklearn, pytest, SQLite
 **Domain**: Financial data ETL (PDF/XML/XLSX → Firefly III CSV)
 
 ## When Working Here
@@ -29,6 +30,7 @@
 ### Architecture is Layered
 - **Domain** models enforce validation (`src/domain/`)
 - **Services** contain business logic (`src/services/`)
+- **Database** persistence layer — SQLite via `DatabaseService` (`src/services/db_service.py`)
 - **UI** is presentation only (`src/ui/pages/`)
 - **Importers** are bank-specific parsers (`src/import_*.py`)
 
@@ -51,6 +53,10 @@
 **To update UI**: `src/ui/pages/*.py`
 **To debug OCR**: `src/pdf_utils.py`
 **To add tests**: `tests/`
+**To work with DB**: `src/services/db_service.py`, `src/database/schema.sql`
+**To run DB pipeline**: `scripts/run_db_pipeline.py`, `src/db_pipeline.py`, `src/csv_to_db_migrator.py`
+**To configure accounts**: `config/accounts.yml`, `src/account_mapping.py`
+**To debug normalization**: `src/description_normalizer.py`
 
 ## Common Request Patterns
 
@@ -77,6 +83,12 @@
 - **User-facing**: They use UI rule correction feature
 - **Code-level**: Edit `config/rules.pending.yml`, then use rule service to merge
 
+### "Run DB Pipeline"
+1. Run: `python scripts/run_db_pipeline.py --db data/ledger.db --data-dir data --accounts config/accounts.yml`
+2. Verify: `sqlite3 data/ledger.db "SELECT bank_id, count(*) FROM transactions GROUP BY bank_id"`
+3. Debug: check `imports` table for status/errors
+4. Re-run safely — idempotent via `source_hash` deduplication
+
 ### "Improve ML predictions"
 1. Review `src/ml_categorizer.py` model
 2. Check training data quality (requires existing categorized transactions)
@@ -96,8 +108,10 @@
 **Unit tests**: Domain models, validation logic
 **Integration tests**: Import service workflows
 **Coverage areas**: Import services, validation, settings, healthcheck
-**Run**: `python -m pytest -q` (14 tests currently passing)
-**CI**: GitHub Actions on push/PR (`.github/workflows/ci.yml`)
+**Fast run**: `python -m pytest -m "not slow" -q` (~34s, 546 tests — default for CI)
+**Full suite**: `python -m pytest -q` (~55+ min, includes 8 slow ML/OCR tests)
+**Slow tests**: Tagged `@pytest.mark.slow` — ML training, large PDFs, real datasets
+**CI**: GitHub Actions on push/PR (`.github/workflows/ci.yml`) — fast suite + separate slow step
 
 ## Configuration Files
 
@@ -116,9 +130,9 @@
 
 ## Roadmap Context
 
-**Recently completed**: Validation layer, service architecture, safe rules workflow, CI
-**Next up**: SQLite persistence, account unification, hash-based deduplication
-**Future**: Firefly API sync, automated monthly reports
+**Recently completed**: Validation layer, service architecture, safe rules workflow, CI, SQLite persistence, description normalization, account mapping, Flet UI prototype
+**Next up**: Firefly API sync, automated monthly reports, Flet UI migration
+**Future**: Automated monthly reports, mobile-friendly UI
 **See**: `docs/plan_mejoras.md` for details
 
 ## When You're Stuck

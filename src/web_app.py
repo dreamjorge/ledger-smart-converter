@@ -101,7 +101,9 @@ def get_ml_engine():
     return engine
 
 
-ML_ENGINE = get_ml_engine()
+# ML_ENGINE is loaded lazily via st.cache_resource on first use.
+# Call get_ml_engine() where needed in the render functions.
+ML_ENGINE = None  # Will be set lazily; use get_ml_engine() instead
 
 
 def build_bank_map(banks_cfg, t_func):
@@ -195,7 +197,7 @@ def main():
             config_dir=CONFIG_DIR,
             data_dir=DATA_DIR,
             copy_feedback_key=COPY_FEEDBACK_KEY,
-            ml_engine=ML_ENGINE,
+            ml_engine=get_ml_engine(),
         )
 
 

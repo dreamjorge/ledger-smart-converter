@@ -5,6 +5,11 @@ import sys
 # Add src to path if needed to reuse logic
 sys.path.append(str(Path(__file__).parent))
 
+# STATUS: Prototype / Experimental
+# This is an early Flet-based UI prototype exploring a potential replacement for the Streamlit UI.
+# It is NOT used in production. The production UI is src/web_app.py (Streamlit).
+# See: docs/plan_mejoras.md for migration roadmap.
+
 # Dummy translations for the prototype (simplified)
 T = {
     "en": {

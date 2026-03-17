@@ -1,29 +1,37 @@
 import re
 import unicodedata
+from pathlib import Path
 from typing import Dict, List, Optional
 
+import yaml
 
-_ABBREVIATIONS: Dict[str, str] = {
-    "TRANSF": "Transferencia",
-    "TRANSFER": "Transferencia",
-    "DEBITO": "Débito",
-    "CREDITO": "Crédito",
-    "COMISION": "Comisión",
-    "MERPAGO": "MercadoPago",
-    "MERCADOPAGO": "MercadoPago",
-    "MERCADO": "Mercado",
-    "PAGO": "Pago",
-}
 
-_ACCENT_RESTORATION: Dict[str, str] = {
-    "DEBITO": "Débito",
-    "CREDITO": "Crédito",
-    "COMISION": "Comisión",
-    "INTERES": "Interés",
-    "NOMINA": "Nómina",
-}
+def _load_normalizer_rules() -> tuple:
+    """Load normalizer rules from config/normalizer_rules.yml."""
+    rules_path = Path(__file__).parent.parent / "config" / "normalizer_rules.yml"
+    if not rules_path.exists():
+        # Fallback to hardcoded defaults if config missing
+        abbreviations = {
+            "TRANSF": "Transferencia", "TRANSFER": "Transferencia",
+            "DEBITO": "Débito", "CREDITO": "Crédito", "COMISION": "Comisión",
+            "MERPAGO": "MercadoPago", "MERCADOPAGO": "MercadoPago",
+            "MERCADO": "Mercado", "PAGO": "Pago",
+        }
+        accent_restoration = {
+            "DEBITO": "Débito", "CREDITO": "Crédito", "COMISION": "Comisión",
+            "INTERES": "Interés", "NOMINA": "Nómina",
+        }
+        acronyms = {"SPEI", "RFC", "IVA", "ATM", "PIN", "CVV", "SAT", "CFE"}
+        return abbreviations, accent_restoration, acronyms
 
-_ACRONYMS = {"SPEI", "RFC", "IVA", "ATM", "PIN", "CVV", "SAT", "CFE"}
+    cfg = yaml.safe_load(rules_path.read_text(encoding="utf-8")) or {}
+    abbreviations = cfg.get("abbreviations", {}) or {}
+    accent_restoration = cfg.get("accent_restoration", {}) or {}
+    acronyms = set(cfg.get("acronyms", []) or [])
+    return abbreviations, accent_restoration, acronyms
+
+
+_ABBREVIATIONS, _ACCENT_RESTORATION, _ACRONYMS = _load_normalizer_rules()
 _NOISE_RX = re.compile(r"^[\d\-_/]+$")
 
 

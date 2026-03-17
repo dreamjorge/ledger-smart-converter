@@ -19,3 +19,14 @@ description: Use this skill for developing Streamlit dashboard features, updatin
 
 ## Related Agents
 - **Analytics Agent**: Specialist in data visualization and business metrics.
+
+## Two Analytics Paths
+
+Analytics data can come from two sources:
+
+| Path | Function | When to Use |
+|------|----------|-------------|
+| **CSV** | `load_transactions_from_csv(bank_id)` | No DB available, quick one-off analysis |
+| **DB** (preferred) | `load_transactions(bank_id, prefer_db=True)` | Default — uses `data/ledger.db`, falls back to CSV if DB missing/empty |
+
+The UI analytics page uses `prefer_db=True` by default. If transactions appear missing, check that the DB pipeline has been run (see `docs/context/db.qmd` → Pipeline section).

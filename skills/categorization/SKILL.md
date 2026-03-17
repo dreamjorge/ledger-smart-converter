@@ -35,3 +35,23 @@ python src/healthcheck.py
 
 ## Related Agents
 - **ML/Rules Agent**: Manages classification pipeline and rule integrity.
+
+## Normalized Description Feature
+
+The ML model uses `normalized_description` as its primary text feature (preferred over raw `description`).
+
+**Text column priority**:
+1. `normalized_description` — deterministic normalized text from `description_normalizer.py`
+2. `description` — raw legacy field (fallback for older rows)
+
+**Backfill**: If rows are missing `normalized_description`, run before retraining:
+```python
+from services.db_service import DatabaseService
+from description_normalizer import normalize_description
+
+db = DatabaseService()
+db.initialize()
+db.backfill_normalized_descriptions(normalize_description)
+```
+
+This ensures the ML model trains on normalized text, improving categorization consistency.

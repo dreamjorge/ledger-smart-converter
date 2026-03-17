@@ -273,6 +273,48 @@ def test_copy_csv_to_analysis_and_last_updated(tmp_path):
     # 4. Verify timestamp format
 ```
 
+## Slow vs Fast Test Suite
+
+Some tests are computationally expensive (ML training, large PDF parsing). These are tagged `@pytest.mark.slow` to keep the default run fast.
+
+### Marking a test as slow
+
+```python
+import pytest
+
+@pytest.mark.slow
+def test_train_global_model_with_real_data():
+    ...
+```
+
+### Running fast tests only (default, CI)
+
+```bash
+python -m pytest -m "not slow" -q
+```
+
+### Running the full suite (including slow tests)
+
+```bash
+python -m pytest -q
+```
+
+### Running only slow tests
+
+```bash
+python -m pytest -m "slow" -q --tb=short
+```
+
+### Rule: when to mark a test slow
+
+Mark a test `@pytest.mark.slow` if it:
+- Trains an ML model on real data (>2 seconds)
+- Processes actual PDF/OCR files
+- Runs against full production CSV datasets
+- Takes longer than 5 seconds to complete
+
+Do NOT mark simple unit tests slow even if they use mocks of slow operations.
+
 ## Running Tests
 
 ### All Tests
@@ -374,10 +416,13 @@ def test_with_temp_file(tmp_path):
 
 **Jobs**:
 1. Checkout code
-2. Setup Python 3.8+
-3. Install dependencies
-4. Run pytest
-5. Report results
+2. Setup Python 3.11
+3. Cache pip dependencies
+4. Install dependencies
+5. Compile checks
+6. Run fast tests with coverage (`-m "not slow"`, 80% minimum)
+7. Run slow ML tests (`-m "slow"`)
+8. Validate DB schema
 
 **Status**: Tests must pass for merge
 

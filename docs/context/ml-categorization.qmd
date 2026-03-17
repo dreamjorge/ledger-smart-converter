@@ -45,15 +45,18 @@ class TransactionCategorizer:
 ### Training Process
 
 **Data Source**: historical CSV transaction files (not `rules.yml`)
+**Model Location**: `settings.config_dir / "ml_models" / "categorizer_v1.joblib"` — uses `settings.config_dir` (not a hardcoded relative path). Default: `config/ml_models/categorizer_v1.joblib`.
 **Required Columns**: `destination_name` plus `normalized_description` (preferred) or `description` (fallback)
 **Filter**: only rows with `type == "withdrawal"` are used when that column exists
 
 **Training**:
 1. Discover CSV files from `data/`
 2. Keep import CSVs with `firefly` in filename
-3. Build training frame from normalized text (`normalized_description` when available, else `description`) + `destination_name`
+3. Build training frame — text column priority: `normalized_description` (preferred, normalized via `normalize_description()`) → `description` (fallback for older rows)
 4. Train `TfidfVectorizer + LogisticRegression`
 5. Persist model with `joblib`
+
+**Backfill**: If `normalized_description` is NULL for any row, run `DatabaseService.backfill_normalized_descriptions(normalize_description)` before retraining to maximize coverage of normalized text.
 
 **Retraining Triggers**:
 - On web app startup when no persisted model is available

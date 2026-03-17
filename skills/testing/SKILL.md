@@ -31,3 +31,13 @@ description: Use this skill for test-driven development (TDD), running pytest su
 
 ## Related Agents
 - **Testing Agent**: Manages test suites and CI validation.
+
+## Slow vs Fast Suite
+
+Some tests are tagged `@pytest.mark.slow` for ML training, OCR, and large dataset tests.
+
+- **Fast suite** (default, CI): `python -m pytest -m "not slow" -q` (~34s)
+- **Full suite**: `python -m pytest -q` (~55+ min)
+- **Slow only**: `python -m pytest -m "slow" -q --tb=short`
+
+Mark a test slow only if it takes >5 seconds or trains a real ML model.

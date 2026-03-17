@@ -22,9 +22,15 @@ PREFERRED_SOURCE_CSV_BY_BANK = {
     "hsbc": "firefly_hsbc.csv",
 }
 
+# CSV filename prefix patterns to skip during discovery (prevent double-imports)
+SKIP_PATTERNS = ["unknown_", "suggestions_"]
+
 
 def discover_firefly_csvs(data_dir: Path) -> List[Path]:
-    candidates = sorted([p for p in data_dir.glob("**/firefly*.csv") if p.is_file()])
+    candidates = sorted([
+        p for p in data_dir.glob("**/firefly*.csv")
+        if p.is_file() and not any(p.name.startswith(pat) for pat in SKIP_PATTERNS)
+    ])
     by_bank: Dict[str, List[Path]] = {}
     for csv_path in candidates:
         bank_id = _infer_bank_id_from_csv(csv_path, data_dir)

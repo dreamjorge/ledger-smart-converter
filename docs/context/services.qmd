@@ -138,6 +138,8 @@ calculate_categorization_stats_from_db(
 # SQL-backed stats from `transactions` table
 ```
 
+**Date Parsing Note**: When loading CSVs, dates are parsed with `pd.to_datetime(..., errors="coerce")`. Rows with unparseable dates become `NaT` and are silently excluded from date-range filters. Verify your date column format if transactions appear missing from filtered views.
+
 **Stats Returned**:
 ```python
 {

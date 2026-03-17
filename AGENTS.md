@@ -25,6 +25,7 @@ Project-specific commands available in `.claude/commands/`:
 | `/validate-config` | Validate config/rules.yml syntax and structure |
 | `/add-field [field]` | Guide to add a new Transaction model field |
 | `/generate-data` | Generate dummy test data for the dashboard |
+| `/run-db-pipeline` | Migrate CSVs to SQLite DB and export Firefly CSVs |
 
 ---
 
@@ -40,6 +41,7 @@ Use QMD files as the primary context source before reading broad code areas.
 | **UI** | `docs/context/ui.qmd` | Streamlit pages, analytics dashboard, correction hub |
 | **ML & Categories** | `docs/context/ml-categorization.qmd` | Rule-based + ML categorization pipeline |
 | **Testing** | `docs/context/testing.qmd` | Pytest patterns, fixtures, mocking, coverage workflow |
+| **Database** | `docs/context/db.qmd` | SQLite schema, DatabaseService API, deduplication, pipeline |
 | **Project Overview** | `docs/project-index.qmd` | Architecture-wide orientation and cross-module navigation |
 
 ### QMD Usage Rules for Agents
@@ -141,6 +143,10 @@ codegraph_impact "parse_mx_date"
 - Read: `docs/context/importers.qmd` (PDF utilities section)
 - Files: `src/pdf_utils.py`, `src/pdf_feedback.py`
 
+### Working on Database / Persistence
+- Read: `docs/context/db.qmd`
+- Files: `src/services/db_service.py`, `src/database/schema.sql`, `src/csv_to_db_migrator.py`, `src/db_pipeline.py`, `scripts/run_db_pipeline.py`, `config/accounts.yml`
+
 ## Architecture Pattern
 
 **Layer Separation**:
@@ -163,6 +169,7 @@ For complex tasks, delegate to specialized subagents in parallel:
 | **OCR Agent** | PDF extraction, Tesseract debugging | `src/pdf_utils.py`, `src/pdf_feedback.py` | `importers.qmd` | [OCR Debug](file:///d:/Repositories/credit_cards/skills/ocr-debug/SKILL.md) |
 | **Analytics Agent** | Dashboard metrics, data queries | `src/services/analytics_service.py`, `src/ui/pages/analytics_page.py` | `ui.qmd`, `services.qmd` | [Analytics](file:///d:/Repositories/credit_cards/skills/analytics/SKILL.md) |
 | **Testing Agent** | TDD workflow, coverage enforcement | `tests/`, `.github/workflows/ci.yml` | `testing.qmd` | [Testing](file:///d:/Repositories/credit_cards/skills/testing/SKILL.md) |
+| **Database Agent** | DB pipeline runs, schema migrations, deduplication debugging | `src/services/db_service.py`, `src/csv_to_db_migrator.py`, `src/database/schema.sql` | `db.qmd` | [DB Operations](file:///root/ledger-smart-converter/skills/db-operations/SKILL.md) |
 | **Architecture Agent** | Codebase analysis, refactoring, improvement planning | All modules | All QMDs | [Main Skill](file:///d:/Repositories/credit_cards/SKILL.md) |
 
 ### Parallel Delegation Pattern
@@ -174,6 +181,10 @@ Example: "Add new bank with ML rules"
   → Import Agent: create src/import_<bank>_firefly.py
   → ML/Rules Agent: add categorization rules to config/rules.yml
   → Testing Agent: write tests/test_<bank>.py (TDD first)
+
+Example: "Run DB migration and verify"
+  → Database Agent: run db pipeline, verify import counts
+  → Testing Agent: run test_csv_to_db_migrator.py, test_db_service.py
 ```
 
 ### Architecture Analysis Pattern
@@ -231,12 +242,20 @@ Example: "Analyze project status and create improvement plan"
 3. Retrain model: `ml.train_global_model()`
 4. Test predictions in UI Rule Hub
 
+### Run or Debug DB Pipeline
+1. Run: `python scripts/run_db_pipeline.py --db data/ledger.db --data-dir data --accounts config/accounts.yml`
+2. Check import log: `sqlite3 data/ledger.db "SELECT * FROM imports ORDER BY processed_at DESC LIMIT 10"`
+3. Verify transaction count: `sqlite3 data/ledger.db "SELECT bank_id, count(*) FROM transactions GROUP BY bank_id"`
+4. Rerun safely (idempotent): duplicates are skipped via source_hash
+
 ## Testing & CI
 
 **Run Tests**: `python -m pytest tests/ -v` (see `docs/context/testing.qmd`)
-**Quick Run**: `python -m pytest tests/ -q`
-**CI**: `.github/workflows/ci.yml` runs on push/PR
-**Current**: 521 tests passing ✅
+**Fast Run (default)**: `python -m pytest -m "not slow" -q` — excludes slow ML/OCR tests (~34s)
+**Full Suite**: `python -m pytest -q` — includes all tests (~55+ min)
+**Slow Only**: `python -m pytest -m "slow" -q --tb=short`
+**CI**: `.github/workflows/ci.yml` runs on push/PR (fast tests with 80% coverage + separate slow step)
+**Current**: 554 tests total (546 fast + 8 slow `@pytest.mark.slow`)
 
 ### ⚠️ CRITICAL: Test-Driven Development Policy
 
@@ -357,25 +376,32 @@ python src/generic_importer.py --bank <name> --data <file> --out <csv>
 - ❌ Don't mutate dataframes in place → create filtered copies
 - ❌ **Don't leave QMD context files stale** → update the matching QMD in the same commit as the code change; outdated context misleads future agents
 
-## Recent Enhancements (2026-02-06)
+## Recent Enhancements (2026-03-16)
 
-**PDF Utils** (see `docs/context/importers.qmd`):
-- Structured logging (replaced print statements)
-- Enhanced date parsing (more formats supported)
-- Robust amount parsing (returns None vs crashing)
-- Better OCR configuration and fallback
-- Comprehensive docstrings
+**SQLite Persistence**:
+- `DatabaseService` (`src/services/db_service.py`) with hash-based deduplication (`source_hash`)
+- CSV→DB migration: `src/csv_to_db_migrator.py` + `scripts/migrate_csv_to_db.py`
+- One-command DB pipeline: `scripts/run_db_pipeline.py`
+- DB-backed analytics: `calculate_categorization_stats_from_db()` in analytics service
+- See: `docs/context/db.qmd`
 
-**Testing Infrastructure** (see `docs/context/testing.qmd`):
-- Dummy data generator: `scripts/generate_dummy_data.py`
-- 690 realistic test transactions
-- 70+ Mexican merchants across 9 categories
-- Run: `python scripts/generate_dummy_data.py`
+**Description Normalization**:
+- `src/description_normalizer.py` — deterministic text normalization for ML
+- All transactions get `normalized_description` (ML prefers this over raw `description`)
+- Backfill support via `DatabaseService.backfill_normalized_descriptions()`
 
-**Documentation**:
-- QMD context files for token-efficient agent context
-- Rendered HTML documentation with Quarto
-- Module-specific reference files
+**Account Mapping**:
+- `src/account_mapping.py` — bank/account to canonical account resolver
+- `config/accounts.yml` — canonical account definitions with bank_id mappings
+- Resolves `canonical_account_id` (e.g. `cc:santander_likeu`) for every transaction
+
+**Audit Events**:
+- `audit_events` table in SQLite stores all rule changes and import events
+- `record_recategorization_event()` in rule service logs category corrections
+
+**Bug Fixes**:
+- Import service CSV fallback when DB is empty
+- Analytics date parsing: `pd.to_datetime(errors="coerce")` prevents crashes on bad dates
 
 ## Quick Diagnostics
 
@@ -470,7 +496,8 @@ codegraph_impact "refactor_target"
 
 ## Future Direction (Roadmap)
 
-**Next Phase**: SQLite persistence, account unification, hash-based deduplication
+**Completed**: SQLite persistence, description normalization, account mapping, Flet UI prototype
+**Next up**: Firefly API sync, automated monthly reports, Flet UI migration
 **See**: `docs/plan_mejoras.md` for detailed roadmap
 
 ## 🎫 Token Management & Agent Handoff
