@@ -15,6 +15,12 @@ Key responsibilities:
 - Record all significant system events in the `audit_events` table
 - Support DB-backed analytics as an alternative to scanning CSV files
 
+Current runtime access pattern:
+
+- Analytics/UI prefer `data_service.load_transactions(..., prefer_db=True)` so SQLite is read first
+- CSV remains the fallback path when the DB is absent or has no rows for a bank
+- Import and migration flows still seed SQLite from CSV/XML/XLSX source files
+
 ## Schema Overview
 
 Four tables form the core schema (defined in `src/database/schema.sql`):

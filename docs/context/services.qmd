@@ -202,6 +202,7 @@ BANK_FILE_MAP = {
 **Default Runtime Source**:
 - UI analytics now uses `load_transactions(..., prefer_db=True)` and `data/ledger.db`.
 - When DB is missing or has no rows for a bank, service falls back to CSV.
+- `load_all_bank_data()` still reads the supported CSV paths directly for bulk-loading compatibility.
 
 ### Database Service
 
@@ -239,7 +240,7 @@ class DatabaseService:
     # Inserts transaction row with source_hash deduplication
 
     def backfill_normalized_descriptions(self, normalizer) -> int
-    # Fills missing normalized_description and raw_description in existing rows
+    # Fills missing normalized_description values in existing rows
 ```
 
 **Schema File**: `src/database/schema.sql` (`accounts`, `imports`, `rules`, `transactions`)
@@ -324,11 +325,11 @@ File writes use temp file → rename pattern
 
 **Location**: `tests/test_*_service.py`
 
-**Coverage**:
-- Import service: 3 tests
-- Rule service: 2 tests
-- Analytics service: 24 tests
-- Data service: 11 tests
+**Quick checks**:
+- Fast baseline: `python -m pytest -m "not slow" -q`
+- Full collection count: `python -m pytest --collect-only -q`
+- Focused service work: `python -m pytest tests/test_<service>.py -v`
+- DB-backed flows: `python -m pytest tests/test_db_service.py tests/test_db_pipeline.py tests/test_analytics_service_db.py -v`
 
 ## Usage Examples
 

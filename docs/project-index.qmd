@@ -28,6 +28,9 @@ format: html
 - `import_service.py`: Orchestrates import workflow
 - `rule_service.py`: Manages rules staging, conflict detection, merge with backup
 - `analytics_service.py`: Dashboard metrics and aggregations
+- `data_service.py`: DB-first loading with CSV fallback for analytics/UI
+- `db_service.py`: SQLite persistence, deduplication, audit events
+- `firefly_export_service.py`: Firefly CSV export from SQLite views
 
 **ML & Matching**
 - `ml_categorizer.py`: sklearn-based category predictions
@@ -47,9 +50,9 @@ format: html
 ## Data Flow
 
 ```
-Input (PDF/XML/XLSX) → Parse → Validate → Categorize (Rules + ML) → CSV Output → Firefly III
-                                    ↓
-                            Analytics Dashboard
+Input (PDF/XML/XLSX) → Parse → Validate → Normalize → Categorize (Rules + ML) → Persist/Export
+                                                                   ↓
+                                               SQLite (`data/ledger.db`) → Analytics Dashboard / Firefly III
 ```
 
 ## Configuration
@@ -79,7 +82,7 @@ scripts/
 ├── run_import.sh          # CLI import helper
 └── generate_dummy_data.py # Generate test data for dashboard
 
-tests/                     # pytest suite (550 tests)
+tests/                     # pytest suite (558 collected; 550 fast + 8 slow)
 ```
 
 ## Key Workflows
@@ -101,15 +104,17 @@ tests/                     # pytest suite (550 tests)
 6. Retrain ML model
 
 ### Analytics
-1. Load CSVs from `data/`
-2. Aggregate by period/category/bank
-3. Display metrics, charts, drill-down
+1. Load transactions from SQLite via `load_transactions(..., prefer_db=True)`
+2. Fall back to CSV when the DB is missing or empty for a bank
+3. Aggregate by period/category/bank and display metrics, charts, drill-down
 
 ## Reliability Features
 
 - **Validation**: Strict transaction/tag checks with typed errors
 - **Atomic writes**: Temp files + rename for CSV outputs
-- **Idempotent**: Hash-based deduplication (planned for DB phase)
+- **Idempotent**: Hash-based deduplication in SQLite
+- **Auditable**: Import and rule-change events stored in `audit_events`
+- **DB-first reads**: Analytics/UI prefer SQLite and fall back to CSV when needed
 - **Logging**: Structured JSON manifests for auditing
 - **CI**: GitHub Actions (compile + pytest on push/PR)
 
@@ -146,5 +151,5 @@ tests/                     # pytest suite (550 tests)
 
 ## Roadmap (see `plan_mejoras.md`)
 
-**Completed**: Validation layer, service architecture, safe rules workflow, SQLite persistence, DB pipeline, normalized-description categorization
-**Next**: Config unification for mappings, observability improvements, higher critical-path coverage
+**Completed**: Validation layer, service architecture, safe rules workflow, SQLite persistence, account mapping, DB pipeline, normalized-description categorization, DB-backed analytics, Firefly export service, audit events
+**Upcoming**: Service-boundary cleanup, configuration contract consolidation, observability improvements, higher critical-path coverage

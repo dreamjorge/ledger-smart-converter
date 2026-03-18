@@ -26,3 +26,6 @@ temp_web_uploads/
 Thumbs.db
 Desktop.ini
 .DS_Store
+
+# Local git worktrees
+.worktrees/
