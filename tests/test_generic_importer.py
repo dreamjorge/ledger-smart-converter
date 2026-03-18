@@ -8,6 +8,7 @@ from unittest.mock import Mock, patch, MagicMock
 from collections import defaultdict
 
 import generic_importer as gi
+from services.import_pipeline_service import ImportPipelineService
 from generic_importer import (
     parse_iso_date, parse_es_date, GenericImporter, TxnRaw,
     write_csv_atomic
@@ -345,6 +346,43 @@ class TestGenericImporterSeams:
 
         classify.assert_not_called()
         validate_tags.assert_not_called()
+
+
+class TestImportPipelineService:
+    """Test the extracted importer enrichment pipeline service."""
+
+    def test_process_transactions_preserves_enrichment_and_unknown_format(self):
+        service = ImportPipelineService(
+            bank_id="test",
+            account_name="Test Account",
+            card_tag="test_card",
+            pay_asset="Assets:Test",
+            closing_day=15,
+            currency="MXN",
+            fallback_expense="Expenses:Other:Uncategorized",
+            compiled_rules=[],
+            merchant_aliases=[],
+            normalize_description_fn=lambda raw_desc, bank_id: "Normalized Merchant",
+            clean_description_fn=lambda desc: "Legacy Merchant",
+            classify_fn=lambda text_for_matching, *_args: ("Expenses:Other:Uncategorized", ["tag1"], "merchant"),
+            validate_transaction_fn=lambda canonical_txn: [],
+            validate_tags_fn=lambda tags: [],
+            resolve_canonical_account_id_fn=lambda bank_id, account_name: "cc:test",
+            get_statement_period_fn=lambda date, closing_day: "2026-01",
+        )
+
+        rows, unknown, warnings = service.process_transactions(
+            [TxnRaw(date="2026-01-10", description="raw merchant text", amount=-125.0)],
+            strict=False,
+        )
+
+        assert warnings == 0
+        assert len(rows) == 1
+        assert rows[0]["description"] == "Legacy Merchant"
+        assert rows[0]["type"] == "withdrawal"
+        assert unknown[0]["merchant"] == "merchant"
+        assert unknown[0]["count"] == 1
+        assert "Normalized Merchant" in unknown[0]["examples"]
 
 
 # ===========================

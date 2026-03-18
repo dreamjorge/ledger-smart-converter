@@ -53,6 +53,32 @@ get_csv_last_updated(path: Path) -> Optional[str]
 - If no explicit UI mapping exists, `resolve_output_paths()` now falls back to `data/<bank_id>/firefly_<bank_id>.csv`
 - `copy_csv_to_analysis()` supports the same `bank_id` fallback when display labels do not match configured map keys
 
+### Import Pipeline Service
+
+**File**: `src/services/import_pipeline_service.py`
+
+**Key Functions**:
+
+```python
+class ImportPipelineService:
+    def process_transactions(
+        txns: List[TxnRaw],
+        strict: bool = False,
+    ) -> Tuple[List[Dict], List[Dict], int]
+    # Enrich raw transactions, validate, categorize, and format unknown merchants
+```
+
+**Responsibilities**:
+- Build canonical transactions from raw importer rows
+- Apply normalized-description and legacy-description handling
+- Enforce validation and tag rules before row emission
+- Handle HSBC `infer_kind` branching inside the service boundary
+- Return unknown merchant summaries in the same format used by the importer CLI
+
+**Coordinator Role**:
+- `GenericImporter.process()` now instantiates this service and delegates the enrichment loop to it
+- The service accepts injected collaborators so existing importer seams remain testable
+
 ### Rule Service
 
 **File**: `src/services/rule_service.py`
