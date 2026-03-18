@@ -166,6 +166,12 @@ calculate_categorization_stats_from_db(
 
 **Date Parsing Note**: When loading CSVs, dates are parsed with `pd.to_datetime(..., errors="coerce")`. Rows with unparseable dates become `NaT` and are silently excluded from date-range filters. Verify your date column format if transactions appear missing from filtered views.
 
+**Analytics Boundary**:
+- `calculate_categorization_stats()` now normalizes analytics inputs once at the service boundary before aggregation.
+- The boundary coerces `date`, `amount`, `type`, `destination_name`, `category_name`, and `tags` into a stable frame shape when those columns are present or implied by the source.
+- `calculate_categorization_stats_from_db()` uses the same boundary so DB-derived and CSV-derived analytics share the same normalization rules.
+- Missing optional columns stay safe: the normalization layer fills them with nullable values rather than changing business meaning.
+
 **Stats Returned**:
 ```python
 {

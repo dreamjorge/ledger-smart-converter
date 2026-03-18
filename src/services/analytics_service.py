@@ -3,6 +3,45 @@ import pandas as pd
 from services.db_service import DatabaseService
 
 
+def _empty_stats() -> Dict[str, Any]:
+    return {
+        "total": 0,
+        "categorized": 0,
+        "uncategorized": 0,
+        "coverage_pct": 0,
+        "category_populated": 0,
+        "category_pct": 0,
+        "total_spent": 0.0,
+        "type_counts": {},
+        "categories": {},
+        "category_spending": {},
+        "monthly_spending_trends": {},
+    }
+
+
+def _normalize_analytics_frame(df: pd.DataFrame) -> pd.DataFrame:
+    """Normalize analytics inputs once at the service boundary.
+
+    The goal is to keep downstream aggregation code working against a stable
+    frame shape regardless of whether the input originated from CSV loading,
+    SQLite, or a test fixture with partial columns.
+    """
+    normalized = df.copy()
+
+    if "date" in normalized.columns:
+        normalized["date"] = pd.to_datetime(normalized["date"], errors="coerce")
+    if "amount" in normalized.columns:
+        normalized["amount"] = pd.to_numeric(normalized["amount"], errors="coerce")
+    else:
+        normalized["amount"] = pd.Series([pd.NA] * len(normalized), index=normalized.index, dtype="float64")
+
+    for column in ("type", "destination_name", "category_name", "tags"):
+        if column not in normalized.columns:
+            normalized[column] = pd.Series([pd.NA] * len(normalized), index=normalized.index, dtype="object")
+
+    return normalized
+
+
 def is_categorized(destination_name) -> bool:
     """Check if a destination_name represents a categorized transaction.
 
@@ -78,19 +117,9 @@ def calculate_categorization_stats(
     if df is None:
         return None
     if df.empty:
-        return {
-            "total": 0,
-            "categorized": 0,
-            "uncategorized": 0,
-            "coverage_pct": 0,
-            "category_populated": 0,
-            "category_pct": 0,
-            "total_spent": 0.0,
-            "type_counts": {},
-            "categories": {},
-            "category_spending": {},
-            "monthly_spending_trends": {},
-        }
+        return _empty_stats()
+
+    df = _normalize_analytics_frame(df)
 
     # Apply date range filtering if provided
     if start_date and "date" in df.columns:
@@ -100,67 +129,33 @@ def calculate_categorization_stats(
 
     # If date range filtering was applied and resulted in empty df, return early
     if df.empty:
-        return {
-            "total": 0,
-            "categorized": 0,
-            "uncategorized": 0,
-            "coverage_pct": 0,
-            "category_populated": 0,
-            "category_pct": 0,
-            "total_spent": 0.0,
-            "type_counts": {},
-            "categories": {},
-            "category_spending": {},
-            "monthly_spending_trends": {},
-        }
+        return _empty_stats()
 
     # Apply period filtering ONLY if no date range filtering was applied
     if not (start_date or end_date) and period and "tags" in df.columns:
         df = df[df["tags"].str.contains(f"period:{period}", na=False)]
         if df.empty:  # If after filtering, df is empty, return empty stats
-            return {
-                "total": 0,
-                "categorized": 0,
-                "uncategorized": 0,
-                "coverage_pct": 0,
-                "category_populated": 0,
-                "category_pct": 0,
-                "total_spent": 0.0,
-                "type_counts": {},
-                "categories": {},
-                "category_spending": {},
-                "monthly_spending_trends": {},
-            }
+            return _empty_stats()
 
     total = len(df)
-    if "destination_name" in df.columns:
-        # Use is_categorized helper to avoid double-counting
-        categorized = df["destination_name"].apply(is_categorized).sum()
-        uncategorized = total - categorized
-    else:
-        categorized = 0
-        uncategorized = total
+    categorized = df["destination_name"].apply(is_categorized).sum()
+    uncategorized = total - categorized
 
-    if "category_name" in df.columns:
-        has_category = df["category_name"].notna() & (df["category_name"] != "")
-        category_populated = has_category.sum()
-    else:
-        category_populated = 0
+    has_category = df["category_name"].notna() & (df["category_name"] != "")
+    category_populated = has_category.sum()
 
     total_spent = 0.0
-    if "amount" in df.columns and "type" in df.columns:
-        total_spent = df[df["type"] == "withdrawal"]["amount"].astype(float).sum()
+    total_spent = df[df["type"] == "withdrawal"]["amount"].dropna().sum()
 
-    type_counts = df["type"].value_counts().to_dict() if "type" in df.columns else {}
+    type_counts = df["type"].dropna().value_counts().to_dict()
     categories = {}
     category_spending = {}
     monthly_spending_trends = {}
 
-    if "destination_name" in df.columns and "amount" in df.columns and "date" in df.columns:
+    if "date" in df.columns:
         # Spending trends over time
         # Filter for withdrawal transactions
         withdrawals_df = df[df["type"] == "withdrawal"].copy()
-        withdrawals_df["amount"] = pd.to_numeric(withdrawals_df["amount"], errors='coerce')
         withdrawals_df.dropna(subset=["amount", "date", "destination_name"], inplace=True)
 
         # Extract main category from destination_name (e.g., "Expenses:Food" -> "Food")
@@ -252,11 +247,7 @@ def calculate_categorization_stats_from_db(
 
     rows = db.fetch_all(query, tuple(params))
     if not rows:
-        return calculate_categorization_stats(pd.DataFrame())
+        return _empty_stats()
 
     df = pd.DataFrame(rows)
-    if "date" in df.columns:
-        df["date"] = pd.to_datetime(df["date"], errors="coerce")
-    if "amount" in df.columns:
-        df["amount"] = pd.to_numeric(df["amount"], errors="coerce").fillna(0.0)
     return calculate_categorization_stats(df)
