@@ -270,3 +270,49 @@ class TestLoadTransactionsPreferredSource:
             assert len(df) == 1
             assert df.iloc[0]["description"] == "csv"
             mock_csv.assert_called_once_with("santander_likeu")
+
+    def test_load_transactions_falls_back_to_csv_when_db_exists_but_has_no_rows_for_bank(self, tmp_path):
+        db_path = tmp_path / "ledger.db"
+        db = DatabaseService(db_path=db_path)
+        db.initialize()
+        db.upsert_account(
+            account_id="cc:hsbc",
+            display_name="Liabilities:CC:HSBC",
+            bank_id="hsbc",
+            currency="MXN",
+        )
+        db.insert_transaction(
+            {
+                "date": "2026-01-20",
+                "amount": 200.0,
+                "currency": "MXN",
+                "merchant": "merchant:netflix",
+                "description": "NETFLIX",
+                "account_id": "Liabilities:CC:HSBC",
+                "canonical_account_id": "cc:hsbc",
+                "bank_id": "hsbc",
+                "statement_period": "2026-01",
+                "category": "Entertainment",
+                "tags": "bucket:subs,merchant:netflix,period:2026-01",
+                "source_file": "data/hsbc/firefly_hsbc.csv",
+                "transaction_type": "withdrawal",
+                "source_name": "Liabilities:CC:HSBC",
+                "destination_name": "Expenses:Entertainment:DigitalServices",
+            }
+        )
+
+        with patch("services.data_service.load_transactions_from_csv") as mock_csv:
+            mock_csv.return_value = pd.DataFrame({"description": ["csv"]})
+            df = load_transactions("santander_likeu", prefer_db=True, db_path=db_path)
+
+        assert len(df) == 1
+        assert df.iloc[0]["description"] == "csv"
+        mock_csv.assert_called_once_with("santander_likeu")
+
+    def test_load_transactions_raises_for_unknown_bank_even_with_db_first(self, tmp_path):
+        db_path = tmp_path / "ledger.db"
+        db = DatabaseService(db_path=db_path)
+        db.initialize()
+
+        with pytest.raises(ValueError, match="Unknown bank ID"):
+            load_transactions("unknown_bank", prefer_db=True, db_path=db_path)
