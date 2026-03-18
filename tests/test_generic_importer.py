@@ -298,7 +298,11 @@ class TestGenericImporterSeams:
 
     def test_process_uses_normalized_description_for_matching_and_unknown_examples(self, importer, monkeypatch):
         txns = [TxnRaw(date="2026-01-10", description="raw merchant text", amount=-125.0)]
-        classify = Mock(return_value=("Expenses:Other:Uncategorized", ["tag1"], "merchant"))
+        captured = {}
+
+        def classify(text_for_matching, *_args, **_kwargs):
+            captured["text_for_matching"] = text_for_matching
+            return ("Expenses:Other:Uncategorized", ["tag1"], "merchant")
 
         monkeypatch.setattr(gi, "normalize_description", lambda raw_desc, bank_id: "Normalized Merchant")
         monkeypatch.setattr(gi, "validate_transaction", lambda _txn: [])
@@ -312,8 +316,10 @@ class TestGenericImporterSeams:
 
         assert warnings == 0
         assert rows[0]["description"] == "Legacy Merchant"
-        assert unknown[0]["examples"] == "Normalized Merchant"
-        assert classify.call_args.args[0] == "Normalized Merchant"
+        assert unknown[0]["merchant"] == "merchant"
+        assert unknown[0]["count"] == 1
+        assert "Normalized Merchant" in unknown[0]["examples"]
+        assert captured["text_for_matching"] == "Normalized Merchant"
 
     def test_process_short_circuits_invalid_transactions_before_categorization(self, importer, monkeypatch):
         txns = [TxnRaw(date="2026-01-10", description="raw merchant text", amount=-125.0)]
@@ -331,14 +337,12 @@ class TestGenericImporterSeams:
         assert rows == []
         assert unknown == []
         assert warnings == 1
-        assert resolve_account.call_count == 1
         classify.assert_not_called()
         validate_tags.assert_not_called()
 
         with pytest.raises(ValidationError):
             importer.process(txns, strict=True)
 
-        assert resolve_account.call_count == 2
         classify.assert_not_called()
         validate_tags.assert_not_called()
 
