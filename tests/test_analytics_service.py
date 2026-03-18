@@ -170,7 +170,7 @@ class TestBasicCategorization:
         """Analytics should tolerate missing values in optional columns."""
         df = pd.DataFrame(
             [
-                {"type": None, "amount": 100.0, "destination_name": "Expenses:Food", "category_name": "", "date": "2024-01-15"},
+                {"type": pd.NA, "amount": 100.0, "destination_name": "Expenses:Food", "category_name": "", "date": "2024-01-15"},
                 {"type": "deposit", "amount": 50.0, "destination_name": "PlainName", "category_name": None, "date": "2024-01-16"},
             ]
         )
@@ -183,6 +183,25 @@ class TestBasicCategorization:
         assert stats["total_spent"] == 0.0
         assert stats["category_populated"] == 0
         assert stats["type_counts"]["deposit"] == 1
+        assert stats["categories"]["Food"] == 1
+        assert stats["monthly_spending_trends"] == {}
+
+    def test_handles_missing_type_column_entirely(self):
+        """Analytics should tolerate frames without a type column at all."""
+        df = pd.DataFrame(
+            [
+                {"amount": 100.0, "destination_name": "Expenses:Food", "date": "2024-01-15"},
+                {"amount": 50.0, "destination_name": "PlainName", "date": "2024-01-16"},
+            ]
+        )
+
+        stats = calculate_categorization_stats(df)
+
+        assert stats["total"] == 2
+        assert stats["categorized"] == 1
+        assert stats["uncategorized"] == 1
+        assert stats["total_spent"] == 0.0
+        assert stats["type_counts"] == {}
         assert stats["categories"]["Food"] == 1
         assert stats["monthly_spending_trends"] == {}
 

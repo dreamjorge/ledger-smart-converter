@@ -33,11 +33,16 @@ def _normalize_analytics_frame(df: pd.DataFrame) -> pd.DataFrame:
     if "amount" in normalized.columns:
         normalized["amount"] = pd.to_numeric(normalized["amount"], errors="coerce")
     else:
-        normalized["amount"] = pd.Series([pd.NA] * len(normalized), index=normalized.index, dtype="float64")
+        normalized["amount"] = pd.Series([0.0] * len(normalized), index=normalized.index, dtype="float64")
 
-    for column in ("type", "destination_name", "category_name", "tags"):
+    if "type" in normalized.columns:
+        normalized["type"] = normalized["type"].astype("object").where(normalized["type"].notna(), None)
+    else:
+        normalized["type"] = pd.Series([None] * len(normalized), index=normalized.index, dtype="object")
+
+    for column in ("destination_name", "category_name", "tags"):
         if column not in normalized.columns:
-            normalized[column] = pd.Series([pd.NA] * len(normalized), index=normalized.index, dtype="object")
+            normalized[column] = pd.Series([None] * len(normalized), index=normalized.index, dtype="object")
 
     return normalized
 
@@ -144,7 +149,6 @@ def calculate_categorization_stats(
     has_category = df["category_name"].notna() & (df["category_name"] != "")
     category_populated = has_category.sum()
 
-    total_spent = 0.0
     total_spent = df[df["type"] == "withdrawal"]["amount"].dropna().sum()
 
     type_counts = df["type"].dropna().value_counts().to_dict()
