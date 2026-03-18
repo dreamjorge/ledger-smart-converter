@@ -4,7 +4,6 @@ This service provides centralized access to bank transaction data stored in CSV 
 It handles file path resolution, CSV loading, date parsing, and error handling.
 """
 
-from functools import lru_cache
 from pathlib import Path
 from typing import Dict, Optional
 
@@ -32,7 +31,6 @@ def _accounts_config_path() -> Path:
     return _SETTINGS.config_dir / "accounts.yml"
 
 
-@lru_cache(maxsize=4)
 def _load_accounts_config(config_path: Path) -> Dict:
     if not config_path.exists():
         logger.warning("Accounts config not found at %s; falling back to legacy CSV map", config_path)
@@ -42,6 +40,24 @@ def _load_accounts_config(config_path: Path) -> Dict:
     except Exception as exc:
         logger.error("Failed to load accounts config from %s: %s", config_path, exc, exc_info=True)
         return {}
+
+
+def _supported_bank_ids(config_path: Path) -> set:
+    cfg = _load_accounts_config(config_path)
+    supported = set()
+    canonical_accounts = cfg.get("canonical_accounts", {})
+    if isinstance(canonical_accounts, dict):
+        for entry in canonical_accounts.values():
+            if not isinstance(entry, dict):
+                continue
+            for bank_id in entry.get("bank_ids", []):
+                if isinstance(bank_id, str) and bank_id.strip():
+                    supported.add(_normalize_bank_id(bank_id))
+
+    if supported:
+        return supported
+
+    return {"santander", "santander_likeu", "hsbc"}
 
 
 def _legacy_csv_path(bank_id: str) -> Optional[Path]:
@@ -74,7 +90,6 @@ def _resolve_csv_output_path(canonical_id: str, entry: Dict) -> Optional[Path]:
     return None
 
 
-@lru_cache(maxsize=4)
 def _build_bank_file_map(config_path: Path, data_dir: Path) -> Dict[str, Path]:
     cfg = _load_accounts_config(config_path)
     bank_map: Dict[str, Path] = {}
@@ -101,7 +116,7 @@ def _build_bank_file_map(config_path: Path, data_dir: Path) -> Dict[str, Path]:
 
 
 def _require_supported_bank(bank_id: str) -> None:
-    if not get_csv_path(bank_id):
+    if _normalize_bank_id(bank_id) not in _supported_bank_ids(_accounts_config_path()):
         logger.error("Unknown bank ID: %s", bank_id)
         raise ValueError(f"Unknown bank ID: {bank_id}")
 

@@ -84,6 +84,52 @@ class TestGetCsvPath:
         assert get_csv_path("example_bank") == expected
         assert get_csv_path("unknown_bank") is None
 
+    def test_reloads_accounts_config_changes_without_restart(self, tmp_path, monkeypatch):
+        config_dir = tmp_path / "config"
+        data_dir = tmp_path / "data"
+        config_dir.mkdir()
+        data_dir.mkdir()
+
+        accounts_path = config_dir / "accounts.yml"
+        first_cfg = {
+            "version": 1,
+            "canonical_accounts": {
+                "cc:example": {
+                    "bank_ids": ["example_bank"],
+                    "account_ids": ["Liabilities:CC:Example"],
+                    "csv_output": {
+                        "directory": "example-a",
+                        "filename": "firefly_a.csv",
+                    },
+                }
+            },
+        }
+        second_cfg = {
+            "version": 1,
+            "canonical_accounts": {
+                "cc:example": {
+                    "bank_ids": ["example_bank"],
+                    "account_ids": ["Liabilities:CC:Example"],
+                    "csv_output": {
+                        "directory": "example-b",
+                        "filename": "firefly_b.csv",
+                    },
+                }
+            },
+        }
+
+        accounts_path.write_text(yaml.safe_dump(first_cfg), encoding="utf-8")
+        monkeypatch.setattr(
+            data_service,
+            "_SETTINGS",
+            SimpleNamespace(config_dir=config_dir, data_dir=data_dir),
+        )
+
+        assert get_csv_path("example_bank") == data_dir / "example-a" / "firefly_a.csv"
+
+        accounts_path.write_text(yaml.safe_dump(second_cfg), encoding="utf-8")
+        assert get_csv_path("example_bank") == data_dir / "example-b" / "firefly_b.csv"
+
 
 class TestLoadTransactionsFromCsv:
     """Test CSV loading functionality."""
@@ -261,6 +307,20 @@ class TestLoadTransactionsCsvErrorPaths:
 
 class TestLoadTransactionsPreferredSource:
     """Test DB-first transaction loading behavior."""
+
+    def test_load_transactions_from_db_unknown_bank_does_not_touch_csv_resolution(self, tmp_path):
+        db_path = tmp_path / "ledger.db"
+        db = DatabaseService(db_path=db_path)
+        db.initialize()
+
+        with patch(
+            "services.data_service.get_csv_path",
+            side_effect=AssertionError("CSV resolution should not be consulted for DB validation"),
+        ) as mock_csv_path:
+            with pytest.raises(ValueError, match="Unknown bank ID"):
+                data_service.load_transactions_from_db("unknown_bank", db_path=db_path)
+
+        mock_csv_path.assert_not_called()
 
     def test_load_transactions_prefers_db_when_present(self, tmp_path):
         db_path = tmp_path / "ledger.db"

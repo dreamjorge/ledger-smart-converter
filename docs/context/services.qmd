@@ -221,6 +221,7 @@ load_all_bank_data() -> Dict[str, pd.DataFrame]
 - When DB is missing or has no rows for a bank, service falls back to CSV.
 - `get_csv_path()` now reads `config/accounts.yml` and uses each canonical account's `bank_ids` plus optional `csv_output.directory` and `csv_output.filename` metadata to resolve CSV fallbacks.
 - `load_transactions_from_db()` and `load_transactions_from_csv()` both fail fast for unsupported bank IDs, so CSV fallback is never attempted for an unknown bank.
+- `get_csv_path()` re-reads the accounts config on each lookup, so config edits are picked up without restarting a long-lived process.
 - `load_all_bank_data()` still reads the supported CSV paths directly for bulk-loading compatibility.
 
 ### Database Service
