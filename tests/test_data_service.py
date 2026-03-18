@@ -314,5 +314,10 @@ class TestLoadTransactionsPreferredSource:
         db = DatabaseService(db_path=db_path)
         db.initialize()
 
-        with pytest.raises(ValueError, match="Unknown bank ID"):
-            load_transactions("unknown_bank", prefer_db=True, db_path=db_path)
+        with patch("services.data_service.load_transactions_from_db", side_effect=ValueError("Unknown bank ID")) as mock_db:
+            with patch("services.data_service.load_transactions_from_csv") as mock_csv:
+                with pytest.raises(ValueError, match="Unknown bank ID"):
+                    load_transactions("unknown_bank", prefer_db=True, db_path=db_path)
+
+        mock_db.assert_called_once_with("unknown_bank", db_path=db_path)
+        mock_csv.assert_not_called()
