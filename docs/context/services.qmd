@@ -211,15 +211,6 @@ load_all_bank_data() -> Dict[str, pd.DataFrame]
 # Load all banks at once
 ```
 
-**Bank Mapping**:
-```python
-BANK_FILE_MAP = {
-    "santander": Path("data/santander/firefly_likeu.csv"),
-    "santander_likeu": Path("data/santander/firefly_likeu.csv"),
-    "hsbc": Path("data/hsbc/firefly_hsbc.csv"),
-}
-```
-
 **Error Handling**:
 - Returns empty DataFrame on missing file
 - Logs errors but doesn't crash
@@ -228,6 +219,8 @@ BANK_FILE_MAP = {
 **Default Runtime Source**:
 - UI analytics now uses `load_transactions(..., prefer_db=True)` and `data/ledger.db`.
 - When DB is missing or has no rows for a bank, service falls back to CSV.
+- `get_csv_path()` now reads `config/accounts.yml` and uses each canonical account's `bank_ids` plus optional `csv_output.directory` and `csv_output.filename` metadata to resolve CSV fallbacks.
+- `load_transactions_from_db()` and `load_transactions_from_csv()` both fail fast for unsupported bank IDs, so CSV fallback is never attempted for an unknown bank.
 - `load_all_bank_data()` still reads the supported CSV paths directly for bulk-loading compatibility.
 
 ### Database Service

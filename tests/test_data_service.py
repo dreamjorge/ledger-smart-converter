@@ -3,7 +3,11 @@ import pytest
 from pathlib import Path
 from unittest.mock import patch, mock_open
 import io
+from types import SimpleNamespace
 
+import yaml
+
+import services.data_service as data_service
 from services.data_service import (
     get_csv_path,
     load_transactions_from_csv,
@@ -48,6 +52,37 @@ class TestGetCsvPath:
 
         path = get_csv_path(None)
         assert path is None
+
+    def test_uses_accounts_config_metadata_and_aliases(self, tmp_path, monkeypatch):
+        config_dir = tmp_path / "config"
+        data_dir = tmp_path / "data"
+        config_dir.mkdir()
+        data_dir.mkdir()
+
+        accounts_cfg = {
+            "version": 1,
+            "canonical_accounts": {
+                "cc:example": {
+                    "bank_ids": ["example_alias", "example_bank"],
+                    "account_ids": ["Liabilities:CC:Example"],
+                    "csv_output": {
+                        "directory": "example",
+                        "filename": "firefly_example.csv",
+                    },
+                }
+            },
+        }
+        (config_dir / "accounts.yml").write_text(yaml.safe_dump(accounts_cfg), encoding="utf-8")
+        monkeypatch.setattr(
+            data_service,
+            "_SETTINGS",
+            SimpleNamespace(config_dir=config_dir, data_dir=data_dir),
+        )
+
+        expected = data_dir / "example" / "firefly_example.csv"
+        assert get_csv_path("example_alias") == expected
+        assert get_csv_path("example_bank") == expected
+        assert get_csv_path("unknown_bank") is None
 
 
 class TestLoadTransactionsFromCsv:
@@ -314,10 +349,11 @@ class TestLoadTransactionsPreferredSource:
         db = DatabaseService(db_path=db_path)
         db.initialize()
 
-        with patch("services.data_service.load_transactions_from_db", side_effect=ValueError("Unknown bank ID")) as mock_db:
-            with patch("services.data_service.load_transactions_from_csv") as mock_csv:
-                with pytest.raises(ValueError, match="Unknown bank ID"):
-                    load_transactions("unknown_bank", prefer_db=True, db_path=db_path)
+        with patch(
+            "services.data_service.load_transactions_from_csv",
+            side_effect=AssertionError("CSV fallback should not run for an unknown bank"),
+        ) as mock_csv:
+            with pytest.raises(ValueError, match="Unknown bank ID"):
+                load_transactions("unknown_bank", prefer_db=True, db_path=db_path)
 
-        mock_db.assert_called_once_with("unknown_bank", db_path=db_path)
         mock_csv.assert_not_called()

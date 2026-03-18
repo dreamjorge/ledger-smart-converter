@@ -20,6 +20,7 @@ Current runtime access pattern:
 - Analytics/UI prefer `data_service.load_transactions(..., prefer_db=True)` so SQLite is read first
 - CSV remains the fallback path when the DB is absent or has no rows for a bank
 - Import and migration flows still seed SQLite from CSV/XML/XLSX source files
+- `config/accounts.yml` is shared with `data_service` for bank aliases and CSV output metadata, so the DB layer and source resolution stay aligned on the same canonical account catalog
 
 ## Schema Overview
 
