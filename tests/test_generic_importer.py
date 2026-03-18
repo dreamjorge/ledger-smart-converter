@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest.mock import Mock, patch, MagicMock
 from collections import defaultdict
 
+import generic_importer as gi
 from generic_importer import (
     parse_iso_date, parse_es_date, GenericImporter, TxnRaw,
     write_csv_atomic
@@ -265,6 +266,81 @@ class TestGenericImporterInit:
 
         assert len(importer.compiled_rules) == 1
         assert importer.compiled_rules[0]["name"] == "TestRule"
+
+
+class TestGenericImporterSeams:
+    """Test orchestration seams in GenericImporter.process."""
+
+    @pytest.fixture
+    def importer(self, tmp_path):
+        rules_path = tmp_path / "rules.yml"
+        config = {
+            "banks": {
+                "test": {
+                    "account_key": "acc",
+                    "payment_asset_key": "pay",
+                    "card_tag": "test_card",
+                    "type": "xlsx",
+                    "fallback_name": "Test Account",
+                    "fallback_asset": "Assets:Test",
+                }
+            },
+            "defaults": {
+                "currency": "MXN",
+                "accounts": {},
+                "fallback_expense": "Expenses:Other:Uncategorized",
+            },
+            "rules": [],
+            "merchant_aliases": [],
+        }
+        rules_path.write_text(yaml.safe_dump(config), encoding="utf-8")
+        return GenericImporter(rules_path, "test")
+
+    def test_process_uses_normalized_description_for_matching_and_unknown_examples(self, importer, monkeypatch):
+        txns = [TxnRaw(date="2026-01-10", description="raw merchant text", amount=-125.0)]
+        classify = Mock(return_value=("Expenses:Other:Uncategorized", ["tag1"], "merchant"))
+
+        monkeypatch.setattr(gi, "normalize_description", lambda raw_desc, bank_id: "Normalized Merchant")
+        monkeypatch.setattr(gi, "validate_transaction", lambda _txn: [])
+        monkeypatch.setattr(gi, "validate_tags", lambda _tags: [])
+        monkeypatch.setattr(gi, "resolve_canonical_account_id", lambda *_a, **_k: "cc:test")
+        monkeypatch.setattr(gi.cu, "clean_description", lambda _desc: "Legacy Merchant")
+        monkeypatch.setattr(gi.cu, "classify", classify)
+        monkeypatch.setattr(gi.cu, "get_statement_period", lambda *_a: "2026-01")
+
+        rows, unknown, warnings = importer.process(txns, strict=False)
+
+        assert warnings == 0
+        assert rows[0]["description"] == "Legacy Merchant"
+        assert unknown[0]["examples"] == "Normalized Merchant"
+        assert classify.call_args.args[0] == "Normalized Merchant"
+
+    def test_process_short_circuits_invalid_transactions_before_categorization(self, importer, monkeypatch):
+        txns = [TxnRaw(date="2026-01-10", description="raw merchant text", amount=-125.0)]
+        classify = Mock()
+        resolve_account = Mock(return_value="cc:test")
+        validate_tags = Mock(return_value=[])
+
+        monkeypatch.setattr(gi, "validate_transaction", lambda _txn: ["bad txn"])
+        monkeypatch.setattr(gi, "validate_tags", validate_tags)
+        monkeypatch.setattr(gi, "resolve_canonical_account_id", resolve_account)
+        monkeypatch.setattr(gi.cu, "classify", classify)
+
+        rows, unknown, warnings = importer.process(txns, strict=False)
+
+        assert rows == []
+        assert unknown == []
+        assert warnings == 1
+        assert resolve_account.call_count == 1
+        classify.assert_not_called()
+        validate_tags.assert_not_called()
+
+        with pytest.raises(ValidationError):
+            importer.process(txns, strict=True)
+
+        assert resolve_account.call_count == 2
+        classify.assert_not_called()
+        validate_tags.assert_not_called()
 
 
 # ===========================

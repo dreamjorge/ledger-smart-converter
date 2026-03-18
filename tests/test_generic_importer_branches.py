@@ -3,6 +3,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 import yaml
+from unittest.mock import Mock
 
 import generic_importer as gi
 from errors import ValidationError
@@ -35,6 +36,12 @@ def _write_rules(tmp_path: Path, bank_id: str, bank_type: str = "xlsx") -> Path:
 
 def test_load_data_pdf_source_branch(tmp_path, monkeypatch):
     importer = gi.GenericImporter(_write_rules(tmp_path, "test_pdf", "xlsx"), "test_pdf")
+    load_xml = Mock()
+    load_xlsx = Mock()
+    load_generic = Mock()
+    monkeypatch.setattr(importer, "_load_xml", load_xml)
+    monkeypatch.setattr(importer, "_load_xlsx", load_xlsx)
+    monkeypatch.setattr(importer, "_load_generic", load_generic)
     monkeypatch.setattr(
         gi.pu,
         "extract_transactions_from_pdf",
@@ -47,41 +54,41 @@ def test_load_data_pdf_source_branch(tmp_path, monkeypatch):
     txns = importer.load_data(None, Path("dummy.pdf"), True)
     assert len(txns) == 1
     assert txns[0].source == "pdf"
+    load_xml.assert_not_called()
+    load_xlsx.assert_not_called()
+    load_generic.assert_not_called()
 
 
 def test_load_data_dispatches_xml_xlsx_and_generic(tmp_path, monkeypatch):
     xml_importer = gi.GenericImporter(_write_rules(tmp_path, "test_xml", "xml"), "test_xml")
     xlsx_importer = gi.GenericImporter(_write_rules(tmp_path, "test_xlsx", "xlsx"), "test_xlsx")
 
-    monkeypatch.setattr(
-        xml_importer,
-        "_load_xml",
-        lambda _p: [
+    xml_loader = Mock(
+        return_value=[
             gi.TxnRaw("2026-01-02", "B", -20.0, ""),
             gi.TxnRaw("2026-01-01", "A", -10.0, ""),
-        ],
+        ]
     )
-    monkeypatch.setattr(
-        xlsx_importer,
-        "_load_xlsx",
-        lambda _p: [gi.TxnRaw("2026-01-03", "C", -30.0, "")],
-    )
-    monkeypatch.setattr(
-        xlsx_importer,
-        "_load_generic",
-        lambda _p: [gi.TxnRaw("2026-01-04", "D", -40.0, "")],
-    )
+    xlsx_loader = Mock(return_value=[gi.TxnRaw("2026-01-03", "C", -30.0, "")])
+    generic_loader = Mock(return_value=[gi.TxnRaw("2026-01-04", "D", -40.0, "")])
+    monkeypatch.setattr(xml_importer, "_load_xml", xml_loader)
+    monkeypatch.setattr(xlsx_importer, "_load_xlsx", xlsx_loader)
+    monkeypatch.setattr(xlsx_importer, "_load_generic", generic_loader)
 
     tx_xml = xml_importer.load_data(Path("in.xml"), None, False)
     assert [t.description for t in tx_xml] == ["A", "B"]
+    xml_loader.assert_called_once_with(Path("in.xml"))
 
     tx_xlsx = xlsx_importer.load_data(Path("in.xlsx"), None, False)
     assert len(tx_xlsx) == 1
     assert tx_xlsx[0].description == "C"
+    xlsx_loader.assert_called_once_with(Path("in.xlsx"))
+    generic_loader.assert_not_called()
 
     tx_fallback = xlsx_importer.load_data(Path("in.csv"), None, False)
     assert len(tx_fallback) == 1
     assert tx_fallback[0].description == "D"
+    generic_loader.assert_called_once_with(Path("in.csv"))
 
     assert xlsx_importer.load_data(None, None, False) == []
 
