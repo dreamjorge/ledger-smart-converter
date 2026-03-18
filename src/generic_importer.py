@@ -190,15 +190,6 @@ class GenericImporter:
         pipeline = self._build_pipeline_service()
         return pipeline.process_transactions(txns, strict=strict)
 
-    def _make_withdrawal(self, t, desc, expense, category, tags):
-        return self._build_pipeline_service()._make_withdrawal(t, desc, expense, category, tags)
-
-    def _make_transfer(self, t, desc, source, dest, tags, extra_tag):
-        return self._build_pipeline_service()._make_transfer(t, desc, source, dest, tags, extra_tag)
-
-    def _format_unknown(self, agg):
-        return self._build_pipeline_service()._format_unknown(agg)
-
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--bank", required=True, help="Bank ID from rules.yml")
