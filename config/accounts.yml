@@ -6,9 +6,15 @@ canonical_accounts:
       - santander
     account_ids:
       - "Liabilities:CC:Santander LikeU"
+    csv_output:
+      directory: santander
+      filename: firefly_likeu.csv
 
   cc:hsbc:
     bank_ids:
       - hsbc
     account_ids:
       - "Liabilities:CC:HSBC"
+    csv_output:
+      directory: hsbc
+      filename: firefly_hsbc.csv

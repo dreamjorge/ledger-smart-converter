@@ -7,6 +7,8 @@ from pathlib import Path
 from unittest.mock import Mock, patch, MagicMock
 from collections import defaultdict
 
+import generic_importer as gi
+from services.import_pipeline_service import ImportPipelineService
 from generic_importer import (
     parse_iso_date, parse_es_date, GenericImporter, TxnRaw,
     write_csv_atomic
@@ -267,6 +269,178 @@ class TestGenericImporterInit:
         assert importer.compiled_rules[0]["name"] == "TestRule"
 
 
+class TestGenericImporterSeams:
+    """Test orchestration seams in GenericImporter.process."""
+
+    @pytest.fixture
+    def importer(self, tmp_path):
+        rules_path = tmp_path / "rules.yml"
+        config = {
+            "banks": {
+                "test": {
+                    "account_key": "acc",
+                    "payment_asset_key": "pay",
+                    "card_tag": "test_card",
+                    "type": "xlsx",
+                    "fallback_name": "Test Account",
+                    "fallback_asset": "Assets:Test",
+                }
+            },
+            "defaults": {
+                "currency": "MXN",
+                "accounts": {},
+                "fallback_expense": "Expenses:Other:Uncategorized",
+            },
+            "rules": [],
+            "merchant_aliases": [],
+        }
+        rules_path.write_text(yaml.safe_dump(config), encoding="utf-8")
+        return GenericImporter(rules_path, "test")
+
+    def test_process_uses_normalized_description_for_matching_and_unknown_examples(self, importer, monkeypatch):
+        txns = [TxnRaw(date="2026-01-10", description="raw merchant text", amount=-125.0)]
+        captured = {}
+
+        def classify(text_for_matching, *_args, **_kwargs):
+            captured["text_for_matching"] = text_for_matching
+            return ("Expenses:Other:Uncategorized", ["tag1"], "merchant")
+
+        monkeypatch.setattr(gi, "normalize_description", lambda raw_desc, bank_id: "Normalized Merchant")
+        monkeypatch.setattr(gi, "validate_transaction", lambda _txn: [])
+        monkeypatch.setattr(gi, "validate_tags", lambda _tags: [])
+        monkeypatch.setattr(gi, "resolve_canonical_account_id", lambda *_a, **_k: "cc:test")
+        monkeypatch.setattr(gi.cu, "clean_description", lambda _desc: "Legacy Merchant")
+        monkeypatch.setattr(gi.cu, "classify", classify)
+        monkeypatch.setattr(gi.cu, "get_statement_period", lambda *_a: "2026-01")
+
+        rows, unknown, warnings = importer.process(txns, strict=False)
+
+        assert warnings == 0
+        assert rows[0]["description"] == "Legacy Merchant"
+        assert unknown[0]["merchant"] == "merchant"
+        assert unknown[0]["count"] == 1
+        assert "Normalized Merchant" in unknown[0]["examples"]
+        assert captured["text_for_matching"] == "Normalized Merchant"
+
+    def test_process_short_circuits_invalid_transactions_before_categorization(self, importer, monkeypatch):
+        txns = [TxnRaw(date="2026-01-10", description="raw merchant text", amount=-125.0)]
+        classify = Mock()
+        resolve_account = Mock(return_value="cc:test")
+        validate_tags = Mock(return_value=[])
+
+        monkeypatch.setattr(gi, "validate_transaction", lambda _txn: ["bad txn"])
+        monkeypatch.setattr(gi, "validate_tags", validate_tags)
+        monkeypatch.setattr(gi, "resolve_canonical_account_id", resolve_account)
+        monkeypatch.setattr(gi.cu, "classify", classify)
+
+        rows, unknown, warnings = importer.process(txns, strict=False)
+
+        assert rows == []
+        assert unknown == []
+        assert warnings == 1
+        classify.assert_not_called()
+        validate_tags.assert_not_called()
+
+        with pytest.raises(ValidationError):
+            importer.process(txns, strict=True)
+
+        classify.assert_not_called()
+        validate_tags.assert_not_called()
+
+    def test_generic_importer_no_longer_exposes_pipeline_helper_wrappers(self):
+        assert not hasattr(GenericImporter, "_make_withdrawal")
+        assert not hasattr(GenericImporter, "_make_transfer")
+        assert not hasattr(GenericImporter, "_format_unknown")
+
+
+class TestImportPipelineService:
+    """Test the extracted importer enrichment pipeline service."""
+
+    @pytest.fixture
+    def service(self):
+        return ImportPipelineService(
+            bank_id="test",
+            account_name="Test Account",
+            card_tag="test_card",
+            pay_asset="Assets:Test",
+            closing_day=15,
+            currency="MXN",
+            fallback_expense="Expenses:Other:Uncategorized",
+            compiled_rules=[],
+            merchant_aliases=[],
+            normalize_description_fn=lambda raw_desc, bank_id: "Normalized Merchant",
+            clean_description_fn=lambda desc: "Legacy Merchant",
+            classify_fn=lambda text_for_matching, *_args: ("Expenses:Other:Uncategorized", ["tag1"], "merchant"),
+            validate_transaction_fn=lambda canonical_txn: [],
+            validate_tags_fn=lambda tags: [],
+            resolve_canonical_account_id_fn=lambda bank_id, account_name: "cc:test",
+            get_statement_period_fn=lambda date, closing_day: "2026-01",
+        )
+
+    def test_process_transactions_preserves_enrichment_and_unknown_format(self, service):
+
+        rows, unknown, warnings = service.process_transactions(
+            [TxnRaw(date="2026-01-10", description="raw merchant text", amount=-125.0)],
+            strict=False,
+        )
+
+        assert warnings == 0
+        assert len(rows) == 1
+        assert rows[0]["description"] == "Legacy Merchant"
+        assert rows[0]["type"] == "withdrawal"
+        assert unknown[0]["merchant"] == "merchant"
+        assert unknown[0]["count"] == 1
+        assert "Normalized Merchant" in unknown[0]["examples"]
+
+    def test_make_withdrawal(self, service):
+        txn = TxnRaw(date="2026-01-15", description="Test purchase", amount=-100.50)
+        tags = {"tag1", "tag2"}
+
+        row = service._make_withdrawal(txn, "Test purchase", "Expenses:Food", "Food", tags)
+
+        assert row["type"] == "withdrawal"
+        assert row["date"] == "2026-01-15"
+        assert row["amount"] == "100.50"
+        assert row["currency_code"] == "MXN"
+        assert row["description"] == "Test purchase"
+        assert row["destination_name"] == "Expenses:Food"
+        assert row["category_name"] == "Food"
+        assert "tag1" in row["tags"]
+        assert "tag2" in row["tags"]
+
+    def test_make_transfer(self, service):
+        txn = TxnRaw(date="2026-01-15", description="Payment", amount=500.00)
+        tags = {"tag1"}
+
+        row = service._make_transfer(txn, "Payment", "Source Account", "Dest Account", tags, "payment")
+
+        assert row["type"] == "transfer"
+        assert row["date"] == "2026-01-15"
+        assert row["amount"] == "500.00"
+        assert row["source_name"] == "Source Account"
+        assert row["destination_name"] == "Dest Account"
+        assert row["category_name"] == ""
+        assert "payment" in row["tags"]
+        assert "tag1" in row["tags"]
+
+    def test_format_unknown(self, service):
+        agg = defaultdict(lambda: {"count": 0, "total": 0.0, "examples": set()})
+        agg["merchant1"]["count"] = 3
+        agg["merchant1"]["total"] = 150.50
+        agg["merchant1"]["examples"] = {"Example 1", "Example 2"}
+        agg["merchant2"]["count"] = 1
+        agg["merchant2"]["total"] = 50.00
+        agg["merchant2"]["examples"] = {"Example 3"}
+
+        result = service._format_unknown(agg)
+
+        assert len(result) == 2
+        assert result[0]["merchant"] == "merchant1"
+        assert result[0]["count"] == 3
+        assert result[0]["total"] == "150.50"
+        assert "Example 1" in result[0]["examples"]
+
+
 # ===========================
 # write_csv_atomic Tests
 # ===========================
@@ -334,90 +508,6 @@ class TestWriteCsvAtomic:
         # Empty DataFrame creates a file with just a newline
         content = csv_path.read_text()
         assert content.strip() == ""
-
-
-# ===========================
-# GenericImporter Helper Methods Tests
-# ===========================
-
-class TestGenericImporterHelpers:
-    """Test GenericImporter helper methods."""
-
-    @pytest.fixture
-    def importer(self, tmp_path):
-        """Create a test importer instance."""
-        rules_path = tmp_path / "rules.yml"
-        config = {
-            "banks": {
-                "test": {
-                    "account_key": "acc",
-                    "payment_asset_key": "pay",
-                    "card_tag": "test_card",
-                    "type": "xlsx",
-                    "fallback_name": "Test Account"
-                }
-            },
-            "defaults": {
-                "currency": "MXN",
-                "accounts": {},
-                "fallback_expense": "Expenses:Other"
-            },
-            "rules": []
-        }
-        rules_path.write_text(yaml.safe_dump(config), encoding="utf-8")
-        return GenericImporter(rules_path, "test")
-
-    def test_make_withdrawal(self, importer):
-        """Test _make_withdrawal creates correct withdrawal row."""
-        txn = TxnRaw(date="2026-01-15", description="Test purchase", amount=-100.50)
-        tags = {"tag1", "tag2"}
-
-        row = importer._make_withdrawal(txn, "Test purchase", "Expenses:Food", "Food", tags)
-
-        assert row["type"] == "withdrawal"
-        assert row["date"] == "2026-01-15"
-        assert row["amount"] == "100.50"  # Absolute value
-        assert row["currency_code"] == "MXN"
-        assert row["description"] == "Test purchase"
-        assert row["destination_name"] == "Expenses:Food"
-        assert row["category_name"] == "Food"
-        assert "tag1" in row["tags"]
-        assert "tag2" in row["tags"]
-
-    def test_make_transfer(self, importer):
-        """Test _make_transfer creates correct transfer row."""
-        txn = TxnRaw(date="2026-01-15", description="Payment", amount=500.00)
-        tags = {"tag1"}
-
-        row = importer._make_transfer(txn, "Payment", "Source Account", "Dest Account", tags, "payment")
-
-        assert row["type"] == "transfer"
-        assert row["date"] == "2026-01-15"
-        assert row["amount"] == "500.00"
-        assert row["source_name"] == "Source Account"
-        assert row["destination_name"] == "Dest Account"
-        assert row["category_name"] == ""
-        assert "payment" in row["tags"]
-        assert "tag1" in row["tags"]
-
-    def test_format_unknown(self, importer):
-        """Test _format_unknown formats unknown merchants correctly."""
-        agg = defaultdict(lambda: {"count": 0, "total": 0.0, "examples": set()})
-        agg["merchant1"]["count"] = 3
-        agg["merchant1"]["total"] = 150.50
-        agg["merchant1"]["examples"] = {"Example 1", "Example 2"}
-        agg["merchant2"]["count"] = 1
-        agg["merchant2"]["total"] = 50.00
-        agg["merchant2"]["examples"] = {"Example 3"}
-
-        result = importer._format_unknown(agg)
-
-        assert len(result) == 2
-        # Should be sorted by total descending
-        assert result[0]["merchant"] == "merchant1"
-        assert result[0]["count"] == 3
-        assert result[0]["total"] == "150.50"
-        assert "Example 1" in result[0]["examples"]
 
 
 # ===========================

@@ -16,14 +16,20 @@ Este plan busca tres metas: **despliegue claro**, **unificación de cuentas**, y
 - [x] Refactor de arquitectura UI: `src/web_app.py` como router + páginas en `src/ui/pages/`.
 - [x] Capa de servicios: `src/services/import_service.py`, `src/services/rule_service.py`, `src/services/analytics_service.py`.
 - [x] Workflow seguro de reglas: staging en `config/rules.pending.yml`, detección de conflictos, merge con respaldo en `config/backups/`.
-- [x] Suite de pruebas ampliada (14 tests pasando localmente).
+- [x] SQLite persistencia, deduplicación y auditoría: `src/services/db_service.py`, `src/database/schema.sql`.
+- [x] Mapa canónico de cuentas y resolución por alias: `src/account_mapping.py`, `config/accounts.yml`.
+- [x] Normalización determinística de descripciones para categorización: `src/description_normalizer.py`.
+- [x] Pipeline DB/CSV de migración y exportación Firefly: `src/csv_to_db_migrator.py`, `src/db_pipeline.py`, `src/services/firefly_export_service.py`.
+- [x] Analytics con lectura DB-first y fallback a CSV: `src/services/data_service.py`, `src/services/analytics_service.py`.
+- [x] Eventos de auditoría para reglas e importaciones.
+- [x] Suite de pruebas ampliada (558 tests colectados; 550 fast + 8 slow).
 - [x] CI automatizado en GitHub Actions: `.github/workflows/ci.yml`.
 
 ### Pendiente (siguiente tramo)
-- [ ] Modelo canónico completo de cuentas (`account_id`) y alias dedicados en archivos separados.
-- [ ] Persistencia intermedia (SQLite/DuckDB) con migración desde CSVs.
-- [ ] Exporter Firefly y dashboard leyendo desde vistas de DB.
-- [ ] Auditoría avanzada de cambios de reglas y re-procesos incrementales.
+- [ ] Consolidar los límites de los servicios para reducir lógica de orquestación en `src/generic_importer.py`.
+- [ ] Unificar contratos de configuración para cuentas, alias y defaults de banco.
+- [ ] Aumentar observabilidad y trazabilidad en los flujos de importación y exportación.
+- [ ] Subir cobertura en caminos críticos de importación, persistencia y analytics.
 
 ---
 
@@ -74,11 +80,11 @@ Este plan busca tres metas: **despliegue claro**, **unificación de cuentas**, y
 
 ## 3) Generación de base de datos (dashboard + Firefly)
 
-**Problema actual:** la app trabaja sobre CSV dispersos; es difícil unificar y comparar histórico o re-procesos.
+**Estado actual:** la capa SQLite ya existe y es la base operativa para persistencia, deduplicación, auditoría, migración desde CSV y exportación Firefly. El reto ahora no es introducir la base de datos, sino consolidar el contrato, reducir ambigüedad operativa y cerrar huecos de limpieza técnica.
 
-**Propuesta:** introducir un **almacenamiento intermedio** (SQLite o DuckDB) con un esquema consistente.
+**Objetivo de esta fase:** endurecer la capa de datos para que el flujo DB-first sea explícito, observable y fácil de mantener, con CSV como fallback/intercambio y no como segundo sistema paralelo.
 
-### Esquema sugerido (SQLite)
+### Esquema actual (SQLite)
 - `transactions` (tabla principal)
   - `id`, `date`, `amount`, `currency`, `merchant`, `description`
   - `account_id`, `bank_id`, `statement_period`, `category`, `tags`
@@ -93,7 +99,7 @@ Este plan busca tres metas: **despliegue claro**, **unificación de cuentas**, y
 ### Reglas de deduplicación
 - `source_hash = sha256(bank_id + source_file + date + amount + merchant)`
 - Unicidad por `(source_hash)` para evitar duplicados en re-procesos.
-- Campo `import_id` para rastrear lote de carga.
+- Campo `import_id` para rastrear lote de carga y auditoría.
 
 ### Flujo de datos (ETL)
 1. **Ingesta**: CSV/XML/PDF → `transactions_raw`.
@@ -107,27 +113,27 @@ Este plan busca tres metas: **despliegue claro**, **unificación de cuentas**, y
 - Historial consistente, evita duplicados mediante `source_hash`.
 - Dashboard más rápido con consultas agregadas.
 - Exportación Firefly estable y auditable (log de importes).
+- Un único contrato operacional para DB-first, con CSV como fallback documentado.
 
 **Entregables y aceptación**
 - Migración de CSVs existentes a la DB sin pérdida de campos.
 - Exporter Firefly consume vistas en DB, no CSV directo.
 - Se puede re-procesar un mismo PDF/CSV sin duplicar filas.
+- La ruta DB-first queda documentada y validada por los servicios y la UI.
 
 ## 4) Hoja de ruta sugerida (prioridades)
 
-**Fase 1 (rápida, 1-2 semanas)**
-- Documentación de despliegue + plantilla de config.
-- Mapa canónico de cuentas + alias.
-- Unificación de rutas de salida en `data/`.
-- Checklist de validación por banco (HSBC/Santander).
+**Fase 1 (inmediata)**
+- Consolidar límites de servicios y reducir lógica de orquestación en el importador.
+- Unificar contratos de configuración para cuentas, alias y defaults de banco.
+- Actualizar documentación/QMD para que refleje la arquitectura real.
 
-**Fase 2 (2-6 semanas)**
-- Base de datos SQLite con migración de CSV existentes.
-- Exporter Firefly desde DB.
-- Dashboard leyendo vistas agregadas desde DB.
-- Registro de importaciones y auditoría básica.
+**Fase 2 (siguiente iteración)**
+- Aumentar cobertura en caminos críticos de importación, persistencia y analytics.
+- Mejorar observabilidad y trazabilidad en exportación e importación.
+- Endurecer el contrato DB-first con fallback explícito a CSV donde corresponda.
 
-**Fase 3 (6+ semanas)**
+**Fase 3 (más adelante)**
 - UI para gestionar cuentas/rules.
 - Re-procesos incrementales y auditoría de cambios.
 - Sincronización automática con Firefly (opcional vía API).

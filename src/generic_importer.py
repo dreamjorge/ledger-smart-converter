@@ -10,9 +10,7 @@ Generic Importer for Firefly III
 
 import argparse
 import os
-import re
 import xml.etree.ElementTree as ET
-from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -25,12 +23,12 @@ import yaml
 import common_utils as cu
 from description_normalizer import normalize_description
 from account_mapping import resolve_canonical_account_id
-from domain.transaction import CanonicalTransaction
-from errors import ConfigError, ValidationError
+from errors import ConfigError
 from logging_config import build_run_log, get_logger, write_json_atomic
 import pdf_utils as pu
-from validation import validate_tags, validate_transaction
 from date_utils import parse_spanish_date as parse_es_date
+from validation import validate_tags, validate_transaction
+from services.import_pipeline_service import ImportPipelineService
 
 LOGGER = get_logger("generic_importer")
 USE_NORMALIZED_TEXT = os.getenv("LSC_USE_NORMALIZED_TEXT", "true").strip().lower() not in {"0", "false", "no"}
@@ -77,6 +75,27 @@ class GenericImporter:
         
         self.compiled_rules = cu.compile_rules(self.config)
         self.merchant_aliases = self.config.get("merchant_aliases", [])
+
+    def _build_pipeline_service(self) -> ImportPipelineService:
+        return ImportPipelineService(
+            bank_id=self.bank_id,
+            account_name=self.acc_name,
+            card_tag=self.bank_cfg["card_tag"],
+            pay_asset=self.pay_asset,
+            closing_day=self.closing_day,
+            currency=self.currency,
+            fallback_expense=self.fallback_expense,
+            compiled_rules=self.compiled_rules,
+            merchant_aliases=self.merchant_aliases,
+            use_normalized_text=USE_NORMALIZED_TEXT,
+            normalize_description_fn=normalize_description,
+            clean_description_fn=cu.clean_description,
+            classify_fn=cu.classify,
+            validate_transaction_fn=validate_transaction,
+            validate_tags_fn=validate_tags,
+            resolve_canonical_account_id_fn=resolve_canonical_account_id,
+            get_statement_period_fn=cu.get_statement_period,
+        )
 
     def load_data(self, data_path: Optional[Path], pdf_path: Optional[Path], use_pdf_source: bool) -> List[TxnRaw]:
         txns = []
@@ -168,104 +187,8 @@ class GenericImporter:
         return out
 
     def process(self, txns: List[TxnRaw], strict: bool = False) -> Tuple[List[Dict], List[Dict], int]:
-        out_rows = []
-        unknown_agg = defaultdict(lambda: {"count": 0, "total": 0.0, "examples": set()})
-        warning_count = 0
-        
-        for t in txns:
-            raw_desc = (t.description or "").strip()
-            normalized_desc = normalize_description(raw_desc, bank_id=self.bank_id)
-            legacy_desc = cu.clean_description(raw_desc)
-            text_for_matching = normalized_desc if (USE_NORMALIZED_TEXT and normalized_desc) else legacy_desc
-            canonical = CanonicalTransaction(
-                date=t.date,
-                description=legacy_desc,
-                amount=float(t.amount),
-                bank_id=self.bank_id,
-                account_id=self.acc_name,
-                canonical_account_id=resolve_canonical_account_id(self.bank_id, self.acc_name),
-                raw_description=raw_desc,
-                normalized_description=normalized_desc,
-                source=t.source,
-                rfc=t.rfc,
-            )
-            record_errors = validate_transaction(canonical)
-            if record_errors:
-                warning_count += 1
-                LOGGER.warning("skipping invalid transaction: %s", {"errors": record_errors, "txn": canonical.id})
-                if strict:
-                    raise ValidationError(f"Invalid transaction {canonical.id}: {record_errors}")
-                continue
-
-            expense, tags, merchant = cu.classify(text_for_matching, self.compiled_rules, self.merchant_aliases, self.fallback_expense)
-            tags = set(tags)
-            tags.add(self.bank_cfg["card_tag"])
-            period = cu.get_statement_period(t.date, self.closing_day)
-            if period: tags.add(f"period:{period}")
-            if t.rfc: tags.add(f"rfc:{t.rfc}")
-            tags.add(f"txn:{canonical.id[:10]}")
-            tag_errors = validate_tags(list(tags))
-            if tag_errors:
-                warning_count += 1
-                LOGGER.warning("tag validation warning: %s", {"errors": tag_errors, "txn": canonical.id})
-                if strict:
-                    raise ValidationError(f"Invalid tags {canonical.id}: {tag_errors}")
-            
-            # Category from expense
-            category = expense.split(":")[1] if ":" in expense else ""
-            
-            # HSBC special inference if it's HSBC
-            if self.bank_id == "hsbc":
-                from import_hsbc_cfdi_firefly import infer_kind
-                kind = infer_kind(text_for_matching, t.amount, t.rfc)
-                if kind == "charge":
-                    row = self._make_withdrawal(t, legacy_desc, expense, category, tags)
-                elif kind == "payment":
-                    row = self._make_transfer(t, legacy_desc, self.pay_asset, self.acc_name, tags, "pago")
-                else: # refund/cashback
-                    src = "Income:Cashback" if kind == "cashback" else "Income:Other"
-                    row = self._make_transfer(t, legacy_desc, src, self.acc_name, tags, kind)
-            else:
-                # Standard Logic
-                if t.amount < 0: # Charge
-                    row = self._make_withdrawal(t, legacy_desc, expense, category, tags)
-                else: # Payment
-                    row = self._make_transfer(t, legacy_desc, self.pay_asset, self.acc_name, tags, "pago")
-
-            if row:
-                out_rows.append(row)
-                if row["type"] == "withdrawal" and expense == self.fallback_expense:
-                    ua = unknown_agg[merchant]
-                    ua["count"] += 1
-                    ua["total"] += abs(t.amount)
-                    if len(ua["examples"]) < 5:
-                        ua["examples"].add(normalized_desc or legacy_desc)
-                    
-        return out_rows, self._format_unknown(unknown_agg), warning_count
-
-    def _make_withdrawal(self, t, desc, expense, category, tags):
-        return {
-            "type": "withdrawal", "date": t.date, "amount": f"{abs(t.amount):.2f}",
-            "currency_code": self.currency, "description": desc,
-            "source_name": self.acc_name, "destination_name": expense,
-            "category_name": category, "tags": ",".join(sorted(tags))
-        }
-
-    def _make_transfer(self, t, desc, source, dest, tags, extra_tag):
-        t2 = set(tags)
-        t2.add(extra_tag)
-        return {
-            "type": "transfer", "date": t.date, "amount": f"{abs(t.amount):.2f}",
-            "currency_code": self.currency, "description": desc,
-            "source_name": source, "destination_name": dest,
-            "category_name": "", "tags": ",".join(sorted(t2))
-        }
-
-    def _format_unknown(self, agg):
-        out = []
-        for m, d in agg.items():
-            out.append({"merchant": m, "count": d["count"], "total": f"{d['total']:.2f}", "examples": " | ".join(sorted(d["examples"]))})
-        return sorted(out, key=lambda x: -float(x["total"]))
+        pipeline = self._build_pipeline_service()
+        return pipeline.process_transactions(txns, strict=strict)
 
 def main():
     ap = argparse.ArgumentParser()

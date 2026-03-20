@@ -126,6 +126,11 @@ Do not set `st.session_state["bank_select"]` from `import_page.py` after widgets
 - Delegates to `render_bank_analytics()` per bank
 - Delegates to `render_comparison()` for side-by-side view
 
+**Analytics Contract**:
+- `render_bank_analytics()` delegates stats calculation to `services.analytics_service.calculate_categorization_stats()`
+- The analytics service now normalizes date, amount, type, destination, category, and tag fields once at the service boundary
+- DB-backed and CSV-backed frames should therefore behave the same once they reach the analytics service, even if their raw loader shape differs slightly
+
 #### render_bank_analytics
 
 **Signature**: `render_bank_analytics(df, bank_name, bank_id, t, tc, config_dir, data_dir, ml_engine)`

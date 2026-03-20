@@ -3,7 +3,11 @@ import pytest
 from pathlib import Path
 from unittest.mock import patch, mock_open
 import io
+from types import SimpleNamespace
 
+import yaml
+
+import services.data_service as data_service
 from services.data_service import (
     get_csv_path,
     load_transactions_from_csv,
@@ -49,9 +53,138 @@ class TestGetCsvPath:
         path = get_csv_path(None)
         assert path is None
 
+    def test_uses_accounts_config_metadata_and_aliases(self, tmp_path, monkeypatch):
+        config_dir = tmp_path / "config"
+        data_dir = tmp_path / "data"
+        config_dir.mkdir()
+        data_dir.mkdir()
+
+        accounts_cfg = {
+            "version": 1,
+            "canonical_accounts": {
+                "cc:example": {
+                    "bank_ids": ["example_alias", "example_bank"],
+                    "account_ids": ["Liabilities:CC:Example"],
+                    "csv_output": {
+                        "directory": "example",
+                        "filename": "firefly_example.csv",
+                    },
+                }
+            },
+        }
+        (config_dir / "accounts.yml").write_text(yaml.safe_dump(accounts_cfg), encoding="utf-8")
+        monkeypatch.setattr(
+            data_service,
+            "_SETTINGS",
+            SimpleNamespace(config_dir=config_dir, data_dir=data_dir),
+        )
+
+        expected = data_dir / "example" / "firefly_example.csv"
+        assert get_csv_path("example_alias") == expected
+        assert get_csv_path("example_bank") == expected
+        assert get_csv_path("unknown_bank") is None
+
+    def test_legacy_banks_preserved_when_accounts_yml_has_only_new_bank(self, tmp_path, monkeypatch):
+        """Regression: hsbc/santander paths survive when accounts.yml has a new bank."""
+        config_dir = tmp_path / "config"
+        data_dir = tmp_path / "data"
+        config_dir.mkdir()
+        data_dir.mkdir()
+
+        accounts_cfg = {
+            "version": 1,
+            "canonical_accounts": {
+                "cc:newbank": {
+                    "bank_ids": ["newbank"],
+                    "account_ids": ["Liabilities:CC:NewBank"],
+                    "csv_output": {"directory": "newbank", "filename": "firefly_newbank.csv"},
+                }
+            },
+        }
+        (config_dir / "accounts.yml").write_text(yaml.safe_dump(accounts_cfg), encoding="utf-8")
+        monkeypatch.setattr(data_service, "_SETTINGS",
+                            SimpleNamespace(config_dir=config_dir, data_dir=data_dir))
+
+        assert get_csv_path("hsbc") == data_dir / "hsbc" / "firefly_hsbc.csv"
+        assert get_csv_path("santander_likeu") == data_dir / "santander" / "firefly_likeu.csv"
+        assert get_csv_path("newbank") == data_dir / "newbank" / "firefly_newbank.csv"
+
+    def test_reloads_accounts_config_changes_without_restart(self, tmp_path, monkeypatch):
+        config_dir = tmp_path / "config"
+        data_dir = tmp_path / "data"
+        config_dir.mkdir()
+        data_dir.mkdir()
+
+        accounts_path = config_dir / "accounts.yml"
+        first_cfg = {
+            "version": 1,
+            "canonical_accounts": {
+                "cc:example": {
+                    "bank_ids": ["example_bank"],
+                    "account_ids": ["Liabilities:CC:Example"],
+                    "csv_output": {
+                        "directory": "example-a",
+                        "filename": "firefly_a.csv",
+                    },
+                }
+            },
+        }
+        second_cfg = {
+            "version": 1,
+            "canonical_accounts": {
+                "cc:example": {
+                    "bank_ids": ["example_bank"],
+                    "account_ids": ["Liabilities:CC:Example"],
+                    "csv_output": {
+                        "directory": "example-b",
+                        "filename": "firefly_b.csv",
+                    },
+                }
+            },
+        }
+
+        accounts_path.write_text(yaml.safe_dump(first_cfg), encoding="utf-8")
+        monkeypatch.setattr(
+            data_service,
+            "_SETTINGS",
+            SimpleNamespace(config_dir=config_dir, data_dir=data_dir),
+        )
+
+        assert get_csv_path("example_bank") == data_dir / "example-a" / "firefly_a.csv"
+
+        accounts_path.write_text(yaml.safe_dump(second_cfg), encoding="utf-8")
+        assert get_csv_path("example_bank") == data_dir / "example-b" / "firefly_b.csv"
+
 
 class TestLoadTransactionsFromCsv:
     """Test CSV loading functionality."""
+
+    def test_load_transactions_from_csv_legacy_bank_not_rejected_when_new_bank_in_accounts_yml(
+        self, tmp_path, monkeypatch
+    ):
+        """hsbc should not raise ValueError when accounts.yml only lists a new bank."""
+        config_dir = tmp_path / "config"
+        data_dir = tmp_path / "data"
+        config_dir.mkdir()
+        data_dir.mkdir()
+
+        accounts_cfg = {
+            "version": 1,
+            "canonical_accounts": {
+                "cc:newbank": {
+                    "bank_ids": ["newbank"],
+                    "account_ids": ["Liabilities:CC:NewBank"],
+                    "csv_output": {"directory": "newbank", "filename": "firefly_newbank.csv"},
+                }
+            },
+        }
+        (config_dir / "accounts.yml").write_text(yaml.safe_dump(accounts_cfg), encoding="utf-8")
+        monkeypatch.setattr(data_service, "_SETTINGS",
+                            SimpleNamespace(config_dir=config_dir, data_dir=data_dir))
+
+        df = load_transactions_from_csv("hsbc")
+        assert isinstance(df, pd.DataFrame)
+        assert df.empty
 
     def test_raises_error_for_unknown_bank(self):
         with pytest.raises(ValueError, match="Unknown bank ID"):
@@ -227,6 +360,20 @@ class TestLoadTransactionsCsvErrorPaths:
 class TestLoadTransactionsPreferredSource:
     """Test DB-first transaction loading behavior."""
 
+    def test_load_transactions_from_db_unknown_bank_does_not_touch_csv_resolution(self, tmp_path):
+        db_path = tmp_path / "ledger.db"
+        db = DatabaseService(db_path=db_path)
+        db.initialize()
+
+        with patch(
+            "services.data_service.get_csv_path",
+            side_effect=AssertionError("CSV resolution should not be consulted for DB validation"),
+        ) as mock_csv_path:
+            with pytest.raises(ValueError, match="Unknown bank ID"):
+                data_service.load_transactions_from_db("unknown_bank", db_path=db_path)
+
+        mock_csv_path.assert_not_called()
+
     def test_load_transactions_prefers_db_when_present(self, tmp_path):
         db_path = tmp_path / "ledger.db"
         db = DatabaseService(db_path=db_path)
@@ -270,3 +417,55 @@ class TestLoadTransactionsPreferredSource:
             assert len(df) == 1
             assert df.iloc[0]["description"] == "csv"
             mock_csv.assert_called_once_with("santander_likeu")
+
+    def test_load_transactions_falls_back_to_csv_when_db_exists_but_has_no_rows_for_bank(self, tmp_path):
+        db_path = tmp_path / "ledger.db"
+        db = DatabaseService(db_path=db_path)
+        db.initialize()
+        db.upsert_account(
+            account_id="cc:hsbc",
+            display_name="Liabilities:CC:HSBC",
+            bank_id="hsbc",
+            currency="MXN",
+        )
+        db.insert_transaction(
+            {
+                "date": "2026-01-20",
+                "amount": 200.0,
+                "currency": "MXN",
+                "merchant": "merchant:netflix",
+                "description": "NETFLIX",
+                "account_id": "Liabilities:CC:HSBC",
+                "canonical_account_id": "cc:hsbc",
+                "bank_id": "hsbc",
+                "statement_period": "2026-01",
+                "category": "Entertainment",
+                "tags": "bucket:subs,merchant:netflix,period:2026-01",
+                "source_file": "data/hsbc/firefly_hsbc.csv",
+                "transaction_type": "withdrawal",
+                "source_name": "Liabilities:CC:HSBC",
+                "destination_name": "Expenses:Entertainment:DigitalServices",
+            }
+        )
+
+        with patch("services.data_service.load_transactions_from_csv") as mock_csv:
+            mock_csv.return_value = pd.DataFrame({"description": ["csv"]})
+            df = load_transactions("santander_likeu", prefer_db=True, db_path=db_path)
+
+        assert len(df) == 1
+        assert df.iloc[0]["description"] == "csv"
+        mock_csv.assert_called_once_with("santander_likeu")
+
+    def test_load_transactions_raises_for_unknown_bank_even_with_db_first(self, tmp_path):
+        db_path = tmp_path / "ledger.db"
+        db = DatabaseService(db_path=db_path)
+        db.initialize()
+
+        with patch(
+            "services.data_service.load_transactions_from_csv",
+            side_effect=AssertionError("CSV fallback should not run for an unknown bank"),
+        ) as mock_csv:
+            with pytest.raises(ValueError, match="Unknown bank ID"):
+                load_transactions("unknown_bank", prefer_db=True, db_path=db_path)
+
+        mock_csv.assert_not_called()

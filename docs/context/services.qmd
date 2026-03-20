@@ -53,6 +53,32 @@ get_csv_last_updated(path: Path) -> Optional[str]
 - If no explicit UI mapping exists, `resolve_output_paths()` now falls back to `data/<bank_id>/firefly_<bank_id>.csv`
 - `copy_csv_to_analysis()` supports the same `bank_id` fallback when display labels do not match configured map keys
 
+### Import Pipeline Service
+
+**File**: `src/services/import_pipeline_service.py`
+
+**Key Functions**:
+
+```python
+class ImportPipelineService:
+    def process_transactions(
+        txns: List[TxnRaw],
+        strict: bool = False,
+    ) -> Tuple[List[Dict], List[Dict], int]
+    # Enrich raw transactions, validate, categorize, and format unknown merchants
+```
+
+**Responsibilities**:
+- Build canonical transactions from raw importer rows
+- Apply normalized-description and legacy-description handling
+- Enforce validation and tag rules before row emission
+- Handle HSBC `infer_kind` branching inside the service boundary
+- Return unknown merchant summaries in the same format used by the importer CLI
+
+**Coordinator Role**:
+- `GenericImporter.process()` now instantiates this service and delegates the enrichment loop to it
+- The service accepts injected collaborators so existing importer seams remain testable
+
 ### Rule Service
 
 **File**: `src/services/rule_service.py`
@@ -140,6 +166,12 @@ calculate_categorization_stats_from_db(
 
 **Date Parsing Note**: When loading CSVs, dates are parsed with `pd.to_datetime(..., errors="coerce")`. Rows with unparseable dates become `NaT` and are silently excluded from date-range filters. Verify your date column format if transactions appear missing from filtered views.
 
+**Analytics Boundary**:
+- `calculate_categorization_stats()` now normalizes analytics inputs once at the service boundary before aggregation.
+- The boundary coerces `date`, `amount`, `type`, `destination_name`, `category_name`, and `tags` into a stable frame shape when those columns are present or implied by the source.
+- `calculate_categorization_stats_from_db()` uses the same boundary so DB-derived and CSV-derived analytics share the same normalization rules.
+- Missing optional columns stay safe: the normalization layer fills them with nullable values rather than changing business meaning.
+
 **Stats Returned**:
 ```python
 {
@@ -185,15 +217,6 @@ load_all_bank_data() -> Dict[str, pd.DataFrame]
 # Load all banks at once
 ```
 
-**Bank Mapping**:
-```python
-BANK_FILE_MAP = {
-    "santander": Path("data/santander/firefly_likeu.csv"),
-    "santander_likeu": Path("data/santander/firefly_likeu.csv"),
-    "hsbc": Path("data/hsbc/firefly_hsbc.csv"),
-}
-```
-
 **Error Handling**:
 - Returns empty DataFrame on missing file
 - Logs errors but doesn't crash
@@ -202,6 +225,10 @@ BANK_FILE_MAP = {
 **Default Runtime Source**:
 - UI analytics now uses `load_transactions(..., prefer_db=True)` and `data/ledger.db`.
 - When DB is missing or has no rows for a bank, service falls back to CSV.
+- `get_csv_path()` now reads `config/accounts.yml` and uses each canonical account's `bank_ids` plus optional `csv_output.directory` and `csv_output.filename` metadata to resolve CSV fallbacks.
+- `load_transactions_from_db()` and `load_transactions_from_csv()` both fail fast for unsupported bank IDs, so CSV fallback is never attempted for an unknown bank.
+- `get_csv_path()` re-reads the accounts config on each lookup, so config edits are picked up without restarting a long-lived process.
+- `load_all_bank_data()` still reads the supported CSV paths directly for bulk-loading compatibility.
 
 ### Database Service
 
@@ -239,7 +266,7 @@ class DatabaseService:
     # Inserts transaction row with source_hash deduplication
 
     def backfill_normalized_descriptions(self, normalizer) -> int
-    # Fills missing normalized_description and raw_description in existing rows
+    # Fills missing normalized_description values in existing rows
 ```
 
 **Schema File**: `src/database/schema.sql` (`accounts`, `imports`, `rules`, `transactions`)
@@ -324,11 +351,11 @@ File writes use temp file → rename pattern
 
 **Location**: `tests/test_*_service.py`
 
-**Coverage**:
-- Import service: 3 tests
-- Rule service: 2 tests
-- Analytics service: 24 tests
-- Data service: 11 tests
+**Quick checks**:
+- Fast baseline: `python -m pytest -m "not slow" -q`
+- Full collection count: `python -m pytest --collect-only -q`
+- Focused service work: `python -m pytest tests/test_<service>.py -v`
+- DB-backed flows: `python -m pytest tests/test_db_service.py tests/test_db_pipeline.py tests/test_analytics_service_db.py -v`
 
 ## Usage Examples
 
