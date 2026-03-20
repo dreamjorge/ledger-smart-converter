@@ -42,9 +42,12 @@ def _load_accounts_config(config_path: Path) -> Dict:
         return {}
 
 
+_LEGACY_BANK_IDS = {"santander", "santander_likeu", "hsbc"}
+
+
 def _supported_bank_ids(config_path: Path) -> set:
     cfg = _load_accounts_config(config_path)
-    supported = set()
+    supported = set(_LEGACY_BANK_IDS)
     canonical_accounts = cfg.get("canonical_accounts", {})
     if isinstance(canonical_accounts, dict):
         for entry in canonical_accounts.values():
@@ -53,11 +56,7 @@ def _supported_bank_ids(config_path: Path) -> set:
             for bank_id in entry.get("bank_ids", []):
                 if isinstance(bank_id, str) and bank_id.strip():
                     supported.add(_normalize_bank_id(bank_id))
-
-    if supported:
-        return supported
-
-    return {"santander", "santander_likeu", "hsbc"}
+    return supported
 
 
 def _legacy_csv_path(bank_id: str) -> Optional[Path]:
@@ -91,8 +90,12 @@ def _resolve_csv_output_path(canonical_id: str, entry: Dict) -> Optional[Path]:
 
 
 def _build_bank_file_map(config_path: Path, data_dir: Path) -> Dict[str, Path]:
+    bank_map: Dict[str, Path] = {
+        "santander": data_dir / "santander" / "firefly_likeu.csv",
+        "santander_likeu": data_dir / "santander" / "firefly_likeu.csv",
+        "hsbc": data_dir / "hsbc" / "firefly_hsbc.csv",
+    }
     cfg = _load_accounts_config(config_path)
-    bank_map: Dict[str, Path] = {}
     canonical_accounts = cfg.get("canonical_accounts", {})
     if isinstance(canonical_accounts, dict):
         for canonical_id, entry in canonical_accounts.items():
@@ -101,17 +104,9 @@ def _build_bank_file_map(config_path: Path, data_dir: Path) -> Dict[str, Path]:
             target = _resolve_csv_output_path(canonical_id, entry)
             if not target:
                 continue
-            bank_ids = [_normalize_bank_id(v) for v in entry.get("bank_ids", []) if isinstance(v, str) and v.strip()]
-            for bank_id in bank_ids:
+            for bank_id in [_normalize_bank_id(v) for v in entry.get("bank_ids", [])
+                            if isinstance(v, str) and v.strip()]:
                 bank_map[bank_id] = target
-
-    if not bank_map:
-        bank_map = {
-            "santander": data_dir / "santander" / "firefly_likeu.csv",
-            "santander_likeu": data_dir / "santander" / "firefly_likeu.csv",
-            "hsbc": data_dir / "hsbc" / "firefly_hsbc.csv",
-        }
-
     return bank_map
 
 

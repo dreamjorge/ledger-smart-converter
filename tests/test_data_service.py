@@ -84,6 +84,31 @@ class TestGetCsvPath:
         assert get_csv_path("example_bank") == expected
         assert get_csv_path("unknown_bank") is None
 
+    def test_legacy_banks_preserved_when_accounts_yml_has_only_new_bank(self, tmp_path, monkeypatch):
+        """Regression: hsbc/santander paths survive when accounts.yml has a new bank."""
+        config_dir = tmp_path / "config"
+        data_dir = tmp_path / "data"
+        config_dir.mkdir()
+        data_dir.mkdir()
+
+        accounts_cfg = {
+            "version": 1,
+            "canonical_accounts": {
+                "cc:newbank": {
+                    "bank_ids": ["newbank"],
+                    "account_ids": ["Liabilities:CC:NewBank"],
+                    "csv_output": {"directory": "newbank", "filename": "firefly_newbank.csv"},
+                }
+            },
+        }
+        (config_dir / "accounts.yml").write_text(yaml.safe_dump(accounts_cfg), encoding="utf-8")
+        monkeypatch.setattr(data_service, "_SETTINGS",
+                            SimpleNamespace(config_dir=config_dir, data_dir=data_dir))
+
+        assert get_csv_path("hsbc") == data_dir / "hsbc" / "firefly_hsbc.csv"
+        assert get_csv_path("santander_likeu") == data_dir / "santander" / "firefly_likeu.csv"
+        assert get_csv_path("newbank") == data_dir / "newbank" / "firefly_newbank.csv"
+
     def test_reloads_accounts_config_changes_without_restart(self, tmp_path, monkeypatch):
         config_dir = tmp_path / "config"
         data_dir = tmp_path / "data"
@@ -133,6 +158,33 @@ class TestGetCsvPath:
 
 class TestLoadTransactionsFromCsv:
     """Test CSV loading functionality."""
+
+    def test_load_transactions_from_csv_legacy_bank_not_rejected_when_new_bank_in_accounts_yml(
+        self, tmp_path, monkeypatch
+    ):
+        """hsbc should not raise ValueError when accounts.yml only lists a new bank."""
+        config_dir = tmp_path / "config"
+        data_dir = tmp_path / "data"
+        config_dir.mkdir()
+        data_dir.mkdir()
+
+        accounts_cfg = {
+            "version": 1,
+            "canonical_accounts": {
+                "cc:newbank": {
+                    "bank_ids": ["newbank"],
+                    "account_ids": ["Liabilities:CC:NewBank"],
+                    "csv_output": {"directory": "newbank", "filename": "firefly_newbank.csv"},
+                }
+            },
+        }
+        (config_dir / "accounts.yml").write_text(yaml.safe_dump(accounts_cfg), encoding="utf-8")
+        monkeypatch.setattr(data_service, "_SETTINGS",
+                            SimpleNamespace(config_dir=config_dir, data_dir=data_dir))
+
+        df = load_transactions_from_csv("hsbc")
+        assert isinstance(df, pd.DataFrame)
+        assert df.empty
 
     def test_raises_error_for_unknown_bank(self):
         with pytest.raises(ValueError, match="Unknown bank ID"):
