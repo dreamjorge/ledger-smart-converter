@@ -47,7 +47,7 @@ class FireflyApiClient:
         """
         url = f"{self.base_url}/api/v1/transactions"
         payload = {"transactions": [txn]}
-        response = requests.post(url, json=payload, headers=self._headers())
+        response = requests.post(url, json=payload, headers=self._headers(), timeout=30)
 
         if response.status_code == 401:
             raise FireflyAuthError("Invalid Firefly token — check your Personal Access Token.")
