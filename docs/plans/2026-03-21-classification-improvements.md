@@ -18,62 +18,72 @@
 - Test: `tests/test_rule_service.py`
 
 **Acceptance Criteria:**
-- After `sync_rules_to_db()`, the `rules` table contains one row per rule from `rules.yml`
-- Re-running sync is idempotent (no duplicates)
-- Disabled rules have `enabled = 0`
+- After `sync_rules_to_db()`, the `rules` table contains one row **per regex pattern** from `rules.yml` (a single rule with two patterns creates two rows)
+- Re-running sync is idempotent — `UNIQUE(pattern)` constraint + `INSERT OR IGNORE` prevents duplicates
+- Returns count of newly inserted rows (0 on re-run)
+
+> **YAML schema note:** `config/rules.yml` uses `rules[*].any_regex` (list of patterns),
+> `rules[*].set.expense`, and `rules[*].set.tags` (list). The old `categorization_rules` /
+> `regex` / `expense_account` / `bucket_tag` field names do **not** exist in this repo.
 
 **Step 1: Write the failing test**
 
 ```python
 def test_sync_rules_to_db_populates_table(tmp_path):
-    from pathlib import Path
     from services.db_service import DatabaseService
     from services.rule_service import sync_rules_to_db
 
     rules_yml = tmp_path / "rules.yml"
+    # Use the real rules.yml schema: rules[*].any_regex / set.expense / set.tags
     rules_yml.write_text("""
-categorization_rules:
-  - merchant: OXXO
-    regex: "OXXO.*"
-    expense_account: "Expenses:Food:Groceries"
-    bucket_tag: groceries
-  - merchant: Uber
-    regex: "UBER.*"
-    expense_account: "Expenses:Transport:Uber"
-    bucket_tag: transport
+rules:
+  - name: Groceries
+    any_regex: [oxxo, walmart]
+    set:
+      expense: "Expenses:Food:Groceries"
+      tags: [bucket:groceries]
+  - name: Uber
+    any_regex: [uber]
+    set:
+      expense: "Expenses:Transport:Uber"
+      tags: [bucket:transport]
 """)
     db = DatabaseService(db_path=tmp_path / "test.db")
     db.initialize()
 
-    sync_rules_to_db(db, rules_path=rules_yml)
+    inserted = sync_rules_to_db(db, rules_path=rules_yml)
 
+    # 3 rows: oxxo + walmart + uber (one row per pattern)
+    assert inserted == 3
     rows = db.fetch_all("SELECT * FROM rules WHERE enabled = 1")
-    assert len(rows) == 2
+    assert len(rows) == 3
     patterns = {r["pattern"] for r in rows}
-    assert "OXXO.*" in patterns
-    assert "UBER.*" in patterns
+    assert "oxxo" in patterns
+    assert "walmart" in patterns
+    assert "uber" in patterns
 
 def test_sync_rules_to_db_is_idempotent(tmp_path):
-    from pathlib import Path
     from services.db_service import DatabaseService
     from services.rule_service import sync_rules_to_db
 
     rules_yml = tmp_path / "rules.yml"
     rules_yml.write_text("""
-categorization_rules:
-  - merchant: OXXO
-    regex: "OXXO.*"
-    expense_account: "Expenses:Food:Groceries"
-    bucket_tag: groceries
+rules:
+  - name: Groceries
+    any_regex: [oxxo, walmart]
+    set:
+      expense: "Expenses:Food:Groceries"
+      tags: [bucket:groceries]
 """)
     db = DatabaseService(db_path=tmp_path / "test.db")
     db.initialize()
 
     sync_rules_to_db(db, rules_path=rules_yml)
-    sync_rules_to_db(db, rules_path=rules_yml)  # second sync
+    inserted2 = sync_rules_to_db(db, rules_path=rules_yml)  # second sync
 
+    assert inserted2 == 0  # nothing new
     rows = db.fetch_all("SELECT COUNT(*) AS cnt FROM rules")
-    assert rows[0]["cnt"] == 1  # not 2
+    assert rows[0]["cnt"] == 2  # oxxo + walmart, not 4
 ```
 
 **Step 2: Run test to verify it fails**
@@ -91,47 +101,81 @@ Expected: `ImportError` or `AttributeError` — `sync_rules_to_db` does not exis
 
 **Files:**
 - Modify: `src/services/rule_service.py`
+- Modify: `src/services/db_service.py` (add `insert_rule()` public method)
+- Modify: `src/database/schema.sql` (add `UNIQUE` constraint on `pattern`)
 
-**Step 1: Add the function**
+**Prerequisite — add `UNIQUE(pattern)` to the `rules` table in `schema.sql`:**
+
+```sql
+CREATE TABLE IF NOT EXISTS rules (
+    rule_id   INTEGER PRIMARY KEY AUTOINCREMENT,
+    name      TEXT,
+    pattern   TEXT NOT NULL UNIQUE,   -- UNIQUE enables INSERT OR IGNORE dedup
+    expense   TEXT,
+    tags      TEXT,
+    priority  INTEGER NOT NULL DEFAULT 100,
+    enabled   INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+> **Note on legacy DBs:** SQLite cannot add a UNIQUE constraint via `ALTER TABLE`.
+> Existing databases must be re-initialized to gain the constraint. Without it,
+> `INSERT OR IGNORE` has no dedup target and re-runs will insert duplicates.
+
+**Add `insert_rule()` to `DatabaseService` (public API — do not use `_conn` directly from the service layer):**
 
 ```python
-import yaml
+def insert_rule(self, name: str, pattern: str, expense: str = "",
+                tags: str = "", priority: int = 100) -> bool:
+    """Insert a rule row. INSERT OR IGNORE skips duplicate patterns.
+
+    Returns True if inserted (new), False if skipped (duplicate pattern).
+    Requires UNIQUE(pattern) constraint — see schema.sql.
+    """
+    with self._connect() as conn:
+        cursor = conn.execute(
+            "INSERT OR IGNORE INTO rules (name, pattern, expense, tags, priority, enabled) "
+            "VALUES (?, ?, ?, ?, ?, 1)",
+            (name, pattern, expense, tags, priority),
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+```
+
+**Step 1: Add `sync_rules_to_db` to `rule_service.py`**
+
+```python
 from pathlib import Path
 from services.db_service import DatabaseService
 
 def sync_rules_to_db(db: DatabaseService, rules_path: Path) -> int:
-    """Sync categorization_rules from rules.yml into the rules DB table.
+    """Sync rules from rules.yml into the DB rules table.
 
-    Uses INSERT OR IGNORE on pattern so re-runs are safe.
-    Returns count of newly inserted rows.
+    Maps the real YAML schema:
+      rules[*].any_regex  → one DB row per pattern
+      rules[*].set.expense → expense column
+      rules[*].set.tags   → comma-joined string in tags column
+
+    Uses INSERT OR IGNORE (backed by UNIQUE(pattern)) for idempotency.
+    Returns count of newly inserted rows (0 on re-run).
     """
-    with open(rules_path, "r", encoding="utf-8") as f:
-        data = yaml.safe_load(f) or {}
-
-    rules = data.get("categorization_rules", [])
+    data = _load_yaml(rules_path)  # existing helper in rule_service.py
+    rules = (data or {}).get("rules", [])
     inserted = 0
     for rule in rules:
-        pattern = rule.get("regex", "")
-        if not pattern:
-            continue
-        db._conn.execute(
-            "INSERT OR IGNORE INTO rules (name, pattern, expense, tags, priority, enabled) "
-            "VALUES (?, ?, ?, ?, ?, 1)",
-            (
-                rule.get("merchant", ""),
-                pattern,
-                rule.get("expense_account", ""),
-                rule.get("bucket_tag", ""),
-                rule.get("priority", 100),
-            ),
-        )
-        if db._conn.execute("SELECT changes()").fetchone()[0]:
-            inserted += 1
-    db._conn.commit()
+        set_block = rule.get("set", {}) or {}
+        name     = rule.get("name", "") or ""
+        expense  = set_block.get("expense", "") or ""
+        raw_tags = set_block.get("tags", [])
+        tags     = ",".join(raw_tags) if isinstance(raw_tags, list) else (raw_tags or "")
+        priority = rule.get("priority", 100) or 100
+        for pattern in _rule_regexes(rule):  # existing helper; yields each any_regex entry
+            if db.insert_rule(name=name, pattern=pattern, expense=expense,
+                              tags=tags, priority=priority):
+                inserted += 1
     return inserted
 ```
-
-> **Note:** If `DatabaseService` doesn't expose `_conn` directly, check `db_service.py` — use the connection attribute it does expose, or add a `execute()` wrapper method to `DatabaseService` instead.
 
 **Step 2: Run tests**
 

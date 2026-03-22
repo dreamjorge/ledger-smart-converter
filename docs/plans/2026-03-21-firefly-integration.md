@@ -426,34 +426,46 @@ git commit -m "feat(firefly): add FireflyApiClient with auth/validation error ha
 - Both default to `None` — absence means API sync is skipped
 - No breaking change to existing settings
 
-**Step 1: Write the failing test**
+> **Settings API note:** `src/settings.py` exposes a `Settings` dataclass and a
+> `load_settings()` factory function — **not** a module-level singleton. Existing
+> tests (e.g. `tests/test_settings.py`) all call `load_settings()` directly.
+> Do **not** use `importlib.reload` — it will fight with the frozen dataclass and
+> is incompatible with the existing test patterns.
+
+**Step 1: Read `src/settings.py` first** to confirm the dataclass + `load_settings()` pattern, then write the failing tests:
 
 ```python
 def test_firefly_settings_default_to_none(monkeypatch):
     monkeypatch.delenv("FIREFLY_URL", raising=False)
     monkeypatch.delenv("FIREFLY_TOKEN", raising=False)
-    # Force settings reload
-    import importlib, settings as s
-    importlib.reload(s)
-    assert s.settings.firefly_url is None
-    assert s.settings.firefly_token is None
+    from settings import load_settings
+    s = load_settings()
+    assert s.firefly_url is None
+    assert s.firefly_token is None
 
 def test_firefly_settings_read_from_env(monkeypatch):
     monkeypatch.setenv("FIREFLY_URL", "http://my-firefly.local")
     monkeypatch.setenv("FIREFLY_TOKEN", "mytoken123")
-    import importlib, settings as s
-    importlib.reload(s)
-    assert s.settings.firefly_url == "http://my-firefly.local"
-    assert s.settings.firefly_token == "mytoken123"
+    from settings import load_settings
+    s = load_settings()
+    assert s.firefly_url == "http://my-firefly.local"
+    assert s.firefly_token == "mytoken123"
 ```
 
 **Step 2: Add to `src/settings.py`**
 
-Add to the settings class/dataclass (read `src/settings.py` first to match the existing pattern):
+Add to the `Settings` dataclass and the `load_settings()` factory (match the exact pattern used for other optional env vars in that file):
 
 ```python
-firefly_url: Optional[str] = os.getenv("FIREFLY_URL")
-firefly_token: Optional[str] = os.getenv("FIREFLY_TOKEN")
+firefly_url: Optional[str] = None
+firefly_token: Optional[str] = None
+```
+
+In `load_settings()`:
+
+```python
+firefly_url=os.getenv("FIREFLY_URL"),
+firefly_token=os.getenv("FIREFLY_TOKEN"),
 ```
 
 **Step 3: Run tests**
