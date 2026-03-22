@@ -152,33 +152,53 @@ def merge_pending_rules(
 
 
 def sync_rules_to_db(db: DatabaseService, rules_path: Path) -> int:
-    """Sync categorization_rules from rules.yml into the rules DB table.
+    """Sync rules from rules.yml into the rules DB table.
+
+    Reads the top-level ``rules`` key from the YAML file. Each rule uses the
+    real schema:
+
+    .. code-block:: yaml
+
+        rules:
+          - name: Groceries
+            any_regex:
+              - walmart
+              - oxxo
+            set:
+              expense: Expenses:Food:Groceries
+              tags: [bucket:groceries]
+
+    For rules with multiple patterns in ``any_regex``, one DB row is inserted
+    per pattern so that each pattern can be matched independently.  Tags that
+    are provided as a list are joined into a comma-separated string.
 
     Uses a fetch-then-insert pattern to avoid duplicates — re-runs are safe.
     Returns count of newly inserted rows.
     """
     data = _load_yaml(rules_path)
-    rules = data.get("categorization_rules", [])
+    rules = data.get("rules", [])
     inserted = 0
     for rule in rules:
-        pattern = rule.get("regex", "")
-        if not pattern:
-            continue
-        existing = db.fetch_one("SELECT rule_id FROM rules WHERE pattern = ?", (pattern,))
-        if existing is None:
-            with db._connect() as conn:
-                conn.execute(
-                    "INSERT INTO rules (name, pattern, expense, tags, priority, enabled) VALUES (?, ?, ?, ?, ?, 1)",
-                    (
-                        rule.get("merchant", ""),
-                        pattern,
-                        rule.get("expense_account", ""),
-                        rule.get("bucket_tag", ""),
-                        rule.get("priority", 100),
-                    ),
-                )
-                conn.commit()
-            inserted += 1
+        name = rule.get("name", "")
+        set_block = rule.get("set", {}) or {}
+        expense = set_block.get("expense", "")
+        raw_tags = set_block.get("tags", []) or []
+        if isinstance(raw_tags, list):
+            tags = ",".join(str(t) for t in raw_tags)
+        else:
+            tags = str(raw_tags)
+        priority = rule.get("priority", 100)
+        patterns = _rule_regexes(rule)
+        for pattern in patterns:
+            existing = db.fetch_one("SELECT rule_id FROM rules WHERE pattern = ?", (pattern,))
+            if existing is None:
+                with db._connect() as conn:
+                    conn.execute(
+                        "INSERT INTO rules (name, pattern, expense, tags, priority, enabled) VALUES (?, ?, ?, ?, ?, 1)",
+                        (name, pattern, expense, tags, priority),
+                    )
+                    conn.commit()
+                inserted += 1
     return inserted
 
 
