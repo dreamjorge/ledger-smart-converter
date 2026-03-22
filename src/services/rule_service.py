@@ -151,6 +151,37 @@ def merge_pending_rules(
     }
 
 
+def sync_rules_to_db(db: DatabaseService, rules_path: Path) -> int:
+    """Sync categorization_rules from rules.yml into the rules DB table.
+
+    Uses a fetch-then-insert pattern to avoid duplicates — re-runs are safe.
+    Returns count of newly inserted rows.
+    """
+    data = _load_yaml(rules_path)
+    rules = data.get("categorization_rules", [])
+    inserted = 0
+    for rule in rules:
+        pattern = rule.get("regex", "")
+        if not pattern:
+            continue
+        existing = db.fetch_one("SELECT rule_id FROM rules WHERE pattern = ?", (pattern,))
+        if existing is None:
+            with db._connect() as conn:
+                conn.execute(
+                    "INSERT INTO rules (name, pattern, expense, tags, priority, enabled) VALUES (?, ?, ?, ?, ?, 1)",
+                    (
+                        rule.get("merchant", ""),
+                        pattern,
+                        rule.get("expense_account", ""),
+                        rule.get("bucket_tag", ""),
+                        rule.get("priority", 100),
+                    ),
+                )
+                conn.commit()
+            inserted += 1
+    return inserted
+
+
 def get_pending_count(pending_path: Path) -> int:
     if not pending_path.exists():
         return 0

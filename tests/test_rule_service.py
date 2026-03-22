@@ -342,6 +342,60 @@ class TestGetPendingCount:
         assert count == 0
 
 
+def test_sync_rules_to_db_populates_table(tmp_path):
+    from pathlib import Path
+    from services.db_service import DatabaseService
+    from services.rule_service import sync_rules_to_db
+
+    rules_yml = tmp_path / "rules.yml"
+    rules_yml.write_text("""
+categorization_rules:
+  - merchant: OXXO
+    regex: "OXXO.*"
+    expense_account: "Expenses:Food:Groceries"
+    bucket_tag: groceries
+  - merchant: Uber
+    regex: "UBER.*"
+    expense_account: "Expenses:Transport:Uber"
+    bucket_tag: transport
+""")
+    db = DatabaseService(db_path=tmp_path / "test.db")
+    db.initialize()
+
+    inserted = sync_rules_to_db(db, rules_path=rules_yml)
+
+    assert inserted == 2
+    rows = db.fetch_all("SELECT * FROM rules WHERE enabled = 1")
+    assert len(rows) == 2
+    patterns = {r["pattern"] for r in rows}
+    assert "OXXO.*" in patterns
+    assert "UBER.*" in patterns
+
+
+def test_sync_rules_to_db_is_idempotent(tmp_path):
+    from pathlib import Path
+    from services.db_service import DatabaseService
+    from services.rule_service import sync_rules_to_db
+
+    rules_yml = tmp_path / "rules.yml"
+    rules_yml.write_text("""
+categorization_rules:
+  - merchant: OXXO
+    regex: "OXXO.*"
+    expense_account: "Expenses:Food:Groceries"
+    bucket_tag: groceries
+""")
+    db = DatabaseService(db_path=tmp_path / "test.db")
+    db.initialize()
+
+    sync_rules_to_db(db, rules_path=rules_yml)
+    inserted2 = sync_rules_to_db(db, rules_path=rules_yml)  # second sync
+
+    assert inserted2 == 0  # nothing new inserted
+    rows = db.fetch_all("SELECT COUNT(*) AS cnt FROM rules")
+    assert rows[0]["cnt"] == 1  # not 2
+
+
 class TestMergePendingRulesEdgeCases:
     """Test edge cases for merge_pending_rules function."""
 
