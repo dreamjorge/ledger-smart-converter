@@ -161,6 +161,7 @@ def test_ensure_columns_adds_missing_column(tmp_path):
     assert "destination_name" in cols
     assert "statement_period" in cols
     assert "tags" in cols
+    assert "category" in cols
 
 
 def test_dashboard_metrics_aggregates_by_period_and_category(tmp_path):

@@ -48,6 +48,7 @@ class DatabaseService:
             ("canonical_account_id", "TEXT"),
             ("merchant", "TEXT"),
             ("statement_period", "TEXT"),
+            ("category", "TEXT"),
             ("tags", "TEXT"),
             ("transaction_type", "TEXT NOT NULL DEFAULT 'withdrawal'"),
             ("source_name", "TEXT"),
