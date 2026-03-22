@@ -20,10 +20,14 @@ CREATE TABLE IF NOT EXISTS imports (
     error TEXT
 );
 
+-- NOTE: The UNIQUE(pattern) constraint below applies to new databases only.
+-- Existing databases cannot have this constraint added via ALTER TABLE in SQLite
+-- (table recreation would be required). New DBs get idempotent INSERT OR IGNORE
+-- behaviour automatically via the UNIQUE constraint.
 CREATE TABLE IF NOT EXISTS rules (
     rule_id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT,
-    pattern TEXT NOT NULL,
+    pattern TEXT NOT NULL UNIQUE,
     expense TEXT,
     tags TEXT,
     priority INTEGER NOT NULL DEFAULT 100,

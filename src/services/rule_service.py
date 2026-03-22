@@ -176,28 +176,17 @@ def sync_rules_to_db(db: DatabaseService, rules_path: Path) -> int:
     Returns count of newly inserted rows.
     """
     data = _load_yaml(rules_path)
-    rules = data.get("rules", [])
+    rules = data.get("rules", []) if data else []
     inserted = 0
     for rule in rules:
-        name = rule.get("name", "")
         set_block = rule.get("set", {}) or {}
-        expense = set_block.get("expense", "")
-        raw_tags = set_block.get("tags", []) or []
-        if isinstance(raw_tags, list):
-            tags = ",".join(str(t) for t in raw_tags)
-        else:
-            tags = str(raw_tags)
-        priority = rule.get("priority", 100)
-        patterns = _rule_regexes(rule)
-        for pattern in patterns:
-            existing = db.fetch_one("SELECT rule_id FROM rules WHERE pattern = ?", (pattern,))
-            if existing is None:
-                with db._connect() as conn:
-                    conn.execute(
-                        "INSERT INTO rules (name, pattern, expense, tags, priority, enabled) VALUES (?, ?, ?, ?, ?, 1)",
-                        (name, pattern, expense, tags, priority),
-                    )
-                    conn.commit()
+        name = rule.get("name", "") or ""
+        expense = set_block.get("expense", "") or ""
+        raw_tags = set_block.get("tags", [])
+        tags = ",".join(raw_tags) if isinstance(raw_tags, list) else (raw_tags or "")
+        priority = rule.get("priority", 100) or 100
+        for pattern in _rule_regexes(rule):
+            if db.insert_rule(name=name, pattern=pattern, expense=expense, tags=tags, priority=priority):
                 inserted += 1
     return inserted
 

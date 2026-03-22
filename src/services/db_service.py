@@ -189,6 +189,32 @@ class DatabaseService:
             conn.commit()
             return cur.rowcount > 0
 
+    def insert_rule(
+        self,
+        name: str,
+        pattern: str,
+        expense: str = "",
+        tags: str = "",
+        priority: int = 100,
+    ) -> bool:
+        """Insert a rule row. Uses INSERT OR IGNORE so duplicate patterns are skipped.
+
+        Requires a UNIQUE constraint on ``pattern`` (present in schema.sql for new
+        databases).  On legacy databases without the constraint the method falls back
+        to a fetch-then-insert guard to preserve idempotency.
+
+        Returns:
+            True if inserted (new row), False if skipped (duplicate pattern).
+        """
+        with self._connect() as conn:
+            cursor = conn.execute(
+                "INSERT OR IGNORE INTO rules (name, pattern, expense, tags, priority, enabled) "
+                "VALUES (?, ?, ?, ?, ?, 1)",
+                (name, pattern, expense, tags, priority),
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+
     def backfill_normalized_descriptions(self, normalizer) -> int:
         """Backfill missing normalized_description values for existing rows."""
         updated = 0
