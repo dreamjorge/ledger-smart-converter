@@ -29,6 +29,7 @@ class DatabaseService:
             raise FileNotFoundError(f"Schema file not found: {self.schema_path}")
         sql = self.schema_path.read_text(encoding="utf-8")
         with self._connect() as conn:
+            self._ensure_transactions_columns(conn)
             conn.executescript(sql)
             self._ensure_transactions_columns(conn)
             conn.commit()
@@ -44,9 +45,15 @@ class DatabaseService:
         alterations = [
             ("raw_description", "TEXT"),
             ("normalized_description", "TEXT"),
+            ("canonical_account_id", "TEXT"),
+            ("merchant", "TEXT"),
+            ("statement_period", "TEXT"),
+            ("tags", "TEXT"),
             ("transaction_type", "TEXT NOT NULL DEFAULT 'withdrawal'"),
             ("source_name", "TEXT"),
             ("destination_name", "TEXT"),
+            ("import_id", "INTEGER"),
+            ("updated_at", "TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP"),
         ]
         for col, typ in alterations:
             if col not in existing:

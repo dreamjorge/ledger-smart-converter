@@ -123,6 +123,46 @@ def test_dashboard_metrics_view_exists(tmp_path):
     assert isinstance(rows, list)  # view exists, returns empty list
 
 
+def test_ensure_columns_adds_missing_column(tmp_path):
+    """Simulates an old DB missing normalized_description and raw_description."""
+    import sqlite3
+    from services.db_service import DatabaseService
+
+    db_path = tmp_path / "old.db"
+    # Create minimal old schema without several newer columns
+    con = sqlite3.connect(db_path)
+    con.execute("""CREATE TABLE transactions (
+        id INTEGER PRIMARY KEY, source_hash TEXT UNIQUE,
+        date TEXT, amount REAL, currency TEXT DEFAULT 'MXN',
+        description TEXT, account_id TEXT, canonical_account_id TEXT,
+        bank_id TEXT, transaction_type TEXT DEFAULT 'withdrawal',
+        source_file TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )""")
+    con.execute("CREATE TABLE IF NOT EXISTS accounts (account_id TEXT PRIMARY KEY, display_name TEXT NOT NULL, type TEXT NOT NULL DEFAULT 'credit_card', bank_id TEXT, closing_day INTEGER, currency TEXT NOT NULL DEFAULT 'MXN', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)")
+    con.execute("CREATE TABLE IF NOT EXISTS imports (import_id INTEGER PRIMARY KEY AUTOINCREMENT, bank_id TEXT NOT NULL, source_file TEXT NOT NULL, processed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, status TEXT NOT NULL, row_count INTEGER NOT NULL DEFAULT 0, error TEXT)")
+    con.execute("CREATE TABLE IF NOT EXISTS audit_events (id INTEGER PRIMARY KEY AUTOINCREMENT, event_type TEXT NOT NULL, entity_type TEXT NOT NULL, entity_id TEXT, payload_json TEXT, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)")
+    con.execute("CREATE TABLE IF NOT EXISTS rules (rule_id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, pattern TEXT NOT NULL, expense TEXT, tags TEXT, priority INTEGER NOT NULL DEFAULT 100, enabled INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)")
+    con.commit()
+    con.close()
+
+    # initialize() must add missing columns without error
+    db = DatabaseService(db_path=db_path)
+    db.initialize()
+
+    # Verify columns now exist
+    con2 = sqlite3.connect(db_path)
+    cols = [row[1] for row in con2.execute("PRAGMA table_info(transactions)")]
+    con2.close()
+    assert "normalized_description" in cols
+    assert "raw_description" in cols
+    assert "merchant" in cols
+    assert "source_name" in cols
+    assert "destination_name" in cols
+    assert "statement_period" in cols
+    assert "tags" in cols
+
+
 def test_dashboard_metrics_aggregates_by_period_and_category(tmp_path):
     db = DatabaseService(db_path=tmp_path / "test.db")
     db.initialize()
