@@ -372,3 +372,77 @@ class TestGetCsvLastUpdatedEdgeCases:
         assert result[10] == " "
         assert result[13] == ":"
         assert result[16] == ":"
+
+
+# ===========================
+# ML Retrain Trigger Tests
+# ===========================
+
+class TestRetrainAfterImport:
+    """Test that train_global_model is called after a successful import."""
+
+    def _make_mock_proc(self, returncode: int):
+        mock_result = Mock()
+        mock_result.returncode = returncode
+        mock_result.stdout = ""
+        mock_result.stderr = ""
+        return mock_result
+
+    def test_retrain_triggered_after_successful_import(self, tmp_path, monkeypatch):
+        """train_global_model is called exactly once when import succeeds (returncode=0)."""
+        calls = []
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = self._make_mock_proc(returncode=0)
+            monkeypatch.setattr("ml_categorizer.train_global_model", lambda: calls.append(1))
+
+            imp.run_import_script(
+                root_dir=tmp_path,
+                src_dir=tmp_path / "src",
+                bank_id="test_bank",
+                rules_path=tmp_path / "rules.yml",
+                out_csv=tmp_path / "out.csv",
+                out_unknown=tmp_path / "unknown.csv",
+            )
+
+        assert len(calls) == 1
+
+    def test_retrain_not_triggered_on_failed_import(self, tmp_path, monkeypatch):
+        """train_global_model is NOT called when import fails (returncode != 0)."""
+        calls = []
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = self._make_mock_proc(returncode=1)
+            monkeypatch.setattr("ml_categorizer.train_global_model", lambda: calls.append(1))
+
+            imp.run_import_script(
+                root_dir=tmp_path,
+                src_dir=tmp_path / "src",
+                bank_id="test_bank",
+                rules_path=tmp_path / "rules.yml",
+                out_csv=tmp_path / "out.csv",
+                out_unknown=tmp_path / "unknown.csv",
+            )
+
+        assert len(calls) == 0
+
+    def test_retrain_exception_does_not_affect_import_result(self, tmp_path, monkeypatch):
+        """If train_global_model raises, the ImportRunResult is still returned correctly."""
+        def failing_retrain():
+            raise RuntimeError("ML training exploded")
+
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = self._make_mock_proc(returncode=0)
+            monkeypatch.setattr("ml_categorizer.train_global_model", failing_retrain)
+
+            result = imp.run_import_script(
+                root_dir=tmp_path,
+                src_dir=tmp_path / "src",
+                bank_id="test_bank",
+                rules_path=tmp_path / "rules.yml",
+                out_csv=tmp_path / "out.csv",
+                out_unknown=tmp_path / "unknown.csv",
+            )
+
+        assert result.returncode == 0
+        assert isinstance(result, imp.ImportRunResult)
