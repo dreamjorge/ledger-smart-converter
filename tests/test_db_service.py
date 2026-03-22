@@ -114,3 +114,36 @@ def test_record_audit_event(tmp_path):
     row = db.fetch_one("SELECT * FROM audit_events WHERE id = ?", (event_id,))
     assert row["event_type"] == "test_event"
     assert row["entity_id"] == "abc123"
+
+
+def test_dashboard_metrics_view_exists(tmp_path):
+    db = DatabaseService(db_path=tmp_path / "test.db")
+    db.initialize()
+    rows = db.fetch_all("SELECT * FROM dashboard_metrics")
+    assert isinstance(rows, list)  # view exists, returns empty list
+
+
+def test_dashboard_metrics_aggregates_by_period_and_category(tmp_path):
+    db = DatabaseService(db_path=tmp_path / "test.db")
+    db.initialize()
+    db.upsert_account("ACC1", "Test Account", bank_id="testbank")
+    db.insert_transaction({
+        "source_hash": "hash1", "date": "2024-01-15", "amount": 100.0,
+        "currency": "MXN", "description": "OXXO", "account_id": "ACC1",
+        "canonical_account_id": "ACC1", "bank_id": "testbank",
+        "statement_period": "2024-01", "category": "Groceries",
+        "transaction_type": "withdrawal", "source_file": "test.csv",
+    })
+    db.insert_transaction({
+        "source_hash": "hash2", "date": "2024-01-20", "amount": 50.0,
+        "currency": "MXN", "description": "WALMART", "account_id": "ACC1",
+        "canonical_account_id": "ACC1", "bank_id": "testbank",
+        "statement_period": "2024-01", "category": "Groceries",
+        "transaction_type": "withdrawal", "source_file": "test.csv",
+    })
+    rows = db.fetch_all("SELECT * FROM dashboard_metrics WHERE bank_id = ?", ("testbank",))
+    assert len(rows) == 1
+    assert rows[0]["statement_period"] == "2024-01"
+    assert rows[0]["category"] == "Groceries"
+    assert rows[0]["tx_count"] == 2
+    assert abs(rows[0]["total_amount"] - 150.0) < 0.01

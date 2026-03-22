@@ -91,3 +91,14 @@ SELECT
     COALESCE(tags, '') AS tags,
     bank_id
 FROM transactions;
+
+CREATE VIEW IF NOT EXISTS dashboard_metrics AS
+SELECT
+    COALESCE(statement_period, 'unknown') AS statement_period,
+    COALESCE(category, 'Uncategorized')   AS category,
+    bank_id,
+    COUNT(*)                              AS tx_count,
+    ROUND(SUM(amount), 2)                 AS total_amount
+FROM transactions
+WHERE transaction_type = 'withdrawal'
+GROUP BY statement_period, category, bank_id;
