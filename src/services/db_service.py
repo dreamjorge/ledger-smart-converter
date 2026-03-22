@@ -200,8 +200,9 @@ class DatabaseService:
         """Insert a rule row. Uses INSERT OR IGNORE so duplicate patterns are skipped.
 
         Requires a UNIQUE constraint on ``pattern`` (present in schema.sql for new
-        databases).  On legacy databases without the constraint the method falls back
-        to a fetch-then-insert guard to preserve idempotency.
+        databases).  On legacy databases without the constraint, ``INSERT OR IGNORE``
+        has no uniqueness target and may insert duplicates; re-initialize the DB to
+        apply the current schema in that case.
 
         Returns:
             True if inserted (new row), False if skipped (duplicate pattern).
