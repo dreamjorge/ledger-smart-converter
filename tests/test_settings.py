@@ -20,6 +20,22 @@ def test_load_settings_from_env(monkeypatch):
     assert s.log_level == "DEBUG"
 
 
+def test_firefly_settings_default_to_none(monkeypatch):
+    monkeypatch.delenv("FIREFLY_URL", raising=False)
+    monkeypatch.delenv("FIREFLY_TOKEN", raising=False)
+    s = load_settings()
+    assert s.firefly_url is None
+    assert s.firefly_token is None
+
+
+def test_firefly_settings_read_from_env(monkeypatch):
+    monkeypatch.setenv("FIREFLY_URL", "http://my-firefly.local")
+    monkeypatch.setenv("FIREFLY_TOKEN", "mytoken123")
+    s = load_settings()
+    assert s.firefly_url == "http://my-firefly.local"
+    assert s.firefly_token == "mytoken123"
+
+
 def test_load_settings_reads_dotenv(monkeypatch, tmp_path):
     monkeypatch.delenv("LSC_LOG_LEVEL", raising=False)
     monkeypatch.delenv("LSC_DOTENV_PATH", raising=False)
