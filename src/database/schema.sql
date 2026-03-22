@@ -20,10 +20,14 @@ CREATE TABLE IF NOT EXISTS imports (
     error TEXT
 );
 
+-- NOTE: The UNIQUE(pattern) constraint below applies to new databases only.
+-- Existing databases cannot have this constraint added via ALTER TABLE in SQLite
+-- (table recreation would be required). New DBs get idempotent INSERT OR IGNORE
+-- behaviour automatically via the UNIQUE constraint.
 CREATE TABLE IF NOT EXISTS rules (
     rule_id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT,
-    pattern TEXT NOT NULL,
+    pattern TEXT NOT NULL UNIQUE,
     expense TEXT,
     tags TEXT,
     priority INTEGER NOT NULL DEFAULT 100,
@@ -91,3 +95,14 @@ SELECT
     COALESCE(tags, '') AS tags,
     bank_id
 FROM transactions;
+
+CREATE VIEW IF NOT EXISTS dashboard_metrics AS
+SELECT
+    COALESCE(statement_period, 'unknown') AS statement_period,
+    COALESCE(category, 'Uncategorized')   AS category,
+    bank_id,
+    COUNT(*)                              AS tx_count,
+    ROUND(SUM(amount), 2)                 AS total_amount
+FROM transactions
+WHERE transaction_type = 'withdrawal'
+GROUP BY statement_period, category, bank_id;

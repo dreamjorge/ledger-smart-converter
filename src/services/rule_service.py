@@ -151,6 +151,46 @@ def merge_pending_rules(
     }
 
 
+def sync_rules_to_db(db: DatabaseService, rules_path: Path) -> int:
+    """Sync rules from rules.yml into the rules DB table.
+
+    Reads the top-level ``rules`` key from the YAML file. Each rule uses the
+    real schema:
+
+    .. code-block:: yaml
+
+        rules:
+          - name: Groceries
+            any_regex:
+              - walmart
+              - oxxo
+            set:
+              expense: Expenses:Food:Groceries
+              tags: [bucket:groceries]
+
+    For rules with multiple patterns in ``any_regex``, one DB row is inserted
+    per pattern so that each pattern can be matched independently.  Tags that
+    are provided as a list are joined into a comma-separated string.
+
+    Uses a fetch-then-insert pattern to avoid duplicates — re-runs are safe.
+    Returns count of newly inserted rows.
+    """
+    data = _load_yaml(rules_path)
+    rules = data.get("rules", []) if data else []
+    inserted = 0
+    for rule in rules:
+        set_block = rule.get("set", {}) or {}
+        name = rule.get("name", "") or ""
+        expense = set_block.get("expense", "") or ""
+        raw_tags = set_block.get("tags", [])
+        tags = ",".join(raw_tags) if isinstance(raw_tags, list) else (raw_tags or "")
+        priority = rule.get("priority", 100) or 100
+        for pattern in _rule_regexes(rule):
+            if db.insert_rule(name=name, pattern=pattern, expense=expense, tags=tags, priority=priority):
+                inserted += 1
+    return inserted
+
+
 def get_pending_count(pending_path: Path) -> int:
     if not pending_path.exists():
         return 0

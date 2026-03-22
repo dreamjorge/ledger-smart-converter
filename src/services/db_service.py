@@ -29,6 +29,7 @@ class DatabaseService:
             raise FileNotFoundError(f"Schema file not found: {self.schema_path}")
         sql = self.schema_path.read_text(encoding="utf-8")
         with self._connect() as conn:
+            self._ensure_transactions_columns(conn)
             conn.executescript(sql)
             self._ensure_transactions_columns(conn)
             conn.commit()
@@ -44,9 +45,16 @@ class DatabaseService:
         alterations = [
             ("raw_description", "TEXT"),
             ("normalized_description", "TEXT"),
+            ("canonical_account_id", "TEXT"),
+            ("merchant", "TEXT"),
+            ("statement_period", "TEXT"),
+            ("category", "TEXT"),
+            ("tags", "TEXT"),
             ("transaction_type", "TEXT NOT NULL DEFAULT 'withdrawal'"),
             ("source_name", "TEXT"),
             ("destination_name", "TEXT"),
+            ("import_id", "INTEGER"),
+            ("updated_at", "TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP"),
         ]
         for col, typ in alterations:
             if col not in existing:
@@ -180,6 +188,54 @@ class DatabaseService:
             )
             conn.commit()
             return cur.rowcount > 0
+
+    def insert_rule(
+        self,
+        name: str,
+        pattern: str,
+        expense: str = "",
+        tags: str = "",
+        priority: int = 100,
+    ) -> bool:
+        """Insert a rule row. Uses INSERT OR IGNORE so duplicate patterns are skipped.
+
+        Requires a UNIQUE constraint on ``pattern`` (present in schema.sql for new
+        databases).  On legacy databases without the constraint, ``INSERT OR IGNORE``
+        has no uniqueness target and may insert duplicates; re-initialize the DB to
+        apply the current schema in that case.
+
+        Returns:
+            True if inserted (new row), False if skipped (duplicate pattern).
+        """
+        with self._connect() as conn:
+            cursor = conn.execute(
+                "INSERT OR IGNORE INTO rules (name, pattern, expense, tags, priority, enabled) "
+                "VALUES (?, ?, ?, ?, ?, 1)",
+                (name, pattern, expense, tags, priority),
+            )
+            conn.commit()
+            return cursor.rowcount > 0
+
+    def categorization_coverage(self) -> dict:
+        """Return categorization coverage stats for withdrawal transactions.
+
+        Returns:
+            {"categorized": int, "total": int, "pct": float}
+            where pct is 0.0 when total == 0.
+        """
+        row = self.fetch_one(
+            """
+            SELECT
+                COUNT(*) AS total,
+                SUM(CASE WHEN category IS NOT NULL AND category != '' THEN 1 ELSE 0 END) AS categorized
+            FROM transactions
+            WHERE transaction_type = 'withdrawal'
+            """
+        )
+        total = row["total"] if row and row["total"] else 0
+        categorized = row["categorized"] if row and row["categorized"] else 0
+        pct = round(categorized / total, 4) if total > 0 else 0.0
+        return {"categorized": categorized, "total": total, "pct": pct}
 
     def backfill_normalized_descriptions(self, normalizer) -> int:
         """Backfill missing normalized_description values for existing rows."""

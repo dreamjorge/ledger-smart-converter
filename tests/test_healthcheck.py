@@ -20,6 +20,8 @@ def test_run_healthcheck_with_monkeypatched_dependencies(monkeypatch, tmp_path: 
             temp_dir=temp_dir,
             ocr_tesseract_cmd="",
             log_level="INFO",
+            firefly_url=None,
+            firefly_token=None,
         ),
     )
     monkeypatch.setattr(hc, "_check_dependency", lambda _name: True)

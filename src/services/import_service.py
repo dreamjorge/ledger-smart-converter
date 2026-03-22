@@ -1,3 +1,4 @@
+import logging
 import shutil
 import subprocess
 import sys
@@ -5,6 +6,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Optional, Tuple
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -74,7 +77,7 @@ def run_import_script(
 
     cmd = [sys.executable, str(src_dir / "generic_importer.py")] + args
     proc = subprocess.run(cmd, capture_output=True, text=True, cwd=str(root_dir))
-    return ImportRunResult(
+    result = ImportRunResult(
         returncode=proc.returncode,
         stdout=proc.stdout,
         stderr=proc.stderr,
@@ -82,6 +85,13 @@ def run_import_script(
         out_unknown=out_unknown,
         out_suggestions=out_csv.parent / "rules_suggestions.yml",
     )
+    if proc.returncode == 0:
+        try:
+            from ml_categorizer import train_global_model
+            train_global_model()
+        except Exception as exc:
+            logger.warning("ML retrain after import failed: %s", exc)
+    return result
 
 
 def copy_csv_to_analysis(

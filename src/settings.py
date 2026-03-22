@@ -1,6 +1,7 @@
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Optional
 
 try:
     from dotenv import load_dotenv as _load_dotenv
@@ -33,6 +34,8 @@ class Settings:
     temp_dir: Path
     ocr_tesseract_cmd: str
     log_level: str
+    firefly_url: Optional[str]
+    firefly_token: Optional[str]
 
 
 def load_settings() -> Settings:
@@ -51,4 +54,6 @@ def load_settings() -> Settings:
         temp_dir=temp_dir,
         ocr_tesseract_cmd=os.getenv("LSC_TESSERACT_CMD", ""),
         log_level=os.getenv("LSC_LOG_LEVEL", "INFO"),
+        firefly_url=os.getenv("FIREFLY_URL"),
+        firefly_token=os.getenv("FIREFLY_TOKEN"),
     )

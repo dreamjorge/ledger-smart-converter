@@ -342,6 +342,74 @@ class TestGetPendingCount:
         assert count == 0
 
 
+def test_sync_rules_to_db_populates_table(tmp_path):
+    from pathlib import Path
+    from services.db_service import DatabaseService
+    from services.rule_service import sync_rules_to_db
+
+    rules_yml = tmp_path / "rules.yml"
+    # Use the real rules.yml schema: top-level "rules", patterns in "any_regex",
+    # expense/tags nested under "set".
+    rules_yml.write_text("""
+rules:
+  - name: Groceries
+    any_regex:
+      - "oxxo"
+      - "walmart"
+    set:
+      expense: "Expenses:Food:Groceries"
+      tags: [bucket:groceries]
+  - name: Transport
+    any_regex:
+      - "uber"
+    set:
+      expense: "Expenses:Transport:Uber"
+      tags: [bucket:transport]
+""")
+    db = DatabaseService(db_path=tmp_path / "test.db")
+    db.initialize()
+
+    inserted = sync_rules_to_db(db, rules_path=rules_yml)
+
+    # 3 patterns total: oxxo, walmart, uber → 3 rows
+    assert inserted == 3
+    rows = db.fetch_all("SELECT * FROM rules WHERE enabled = 1")
+    assert len(rows) == 3
+    patterns = {r["pattern"] for r in rows}
+    assert "oxxo" in patterns
+    assert "walmart" in patterns
+    assert "uber" in patterns
+
+
+def test_sync_rules_to_db_is_idempotent(tmp_path):
+    from pathlib import Path
+    from services.db_service import DatabaseService
+    from services.rule_service import sync_rules_to_db
+
+    rules_yml = tmp_path / "rules.yml"
+    # Single rule with two patterns — both should be inserted on first run,
+    # neither on second run.
+    rules_yml.write_text("""
+rules:
+  - name: Groceries
+    any_regex:
+      - "oxxo"
+      - "walmart"
+    set:
+      expense: "Expenses:Food:Groceries"
+      tags: [bucket:groceries]
+""")
+    db = DatabaseService(db_path=tmp_path / "test.db")
+    db.initialize()
+
+    sync_rules_to_db(db, rules_path=rules_yml)
+    inserted2 = sync_rules_to_db(db, rules_path=rules_yml)  # second sync
+
+    assert inserted2 == 0  # nothing new inserted
+    rows = db.fetch_all("SELECT COUNT(*) AS cnt FROM rules")
+    assert rows[0]["cnt"] == 2  # oxxo + walmart
+
+
 class TestMergePendingRulesEdgeCases:
     """Test edge cases for merge_pending_rules function."""
 
