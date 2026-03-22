@@ -216,6 +216,27 @@ class DatabaseService:
             conn.commit()
             return cursor.rowcount > 0
 
+    def categorization_coverage(self) -> dict:
+        """Return categorization coverage stats for withdrawal transactions.
+
+        Returns:
+            {"categorized": int, "total": int, "pct": float}
+            where pct is 0.0 when total == 0.
+        """
+        row = self.fetch_one(
+            """
+            SELECT
+                COUNT(*) AS total,
+                SUM(CASE WHEN category IS NOT NULL AND category != '' THEN 1 ELSE 0 END) AS categorized
+            FROM transactions
+            WHERE transaction_type = 'withdrawal'
+            """
+        )
+        total = row["total"] if row and row["total"] else 0
+        categorized = row["categorized"] if row and row["categorized"] else 0
+        pct = round(categorized / total, 4) if total > 0 else 0.0
+        return {"categorized": categorized, "total": total, "pct": pct}
+
     def backfill_normalized_descriptions(self, normalizer) -> int:
         """Backfill missing normalized_description values for existing rows."""
         updated = 0

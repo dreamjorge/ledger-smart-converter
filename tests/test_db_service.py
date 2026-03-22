@@ -164,6 +164,50 @@ def test_ensure_columns_adds_missing_column(tmp_path):
     assert "category" in cols
 
 
+def test_categorization_coverage_empty_db(tmp_path):
+    from services.db_service import DatabaseService
+    db = DatabaseService(db_path=tmp_path / "test.db")
+    db.initialize()
+    result = db.categorization_coverage()
+    assert result == {"categorized": 0, "total": 0, "pct": 0.0}
+
+
+def test_categorization_coverage_partial(tmp_path):
+    from services.db_service import DatabaseService
+    db = DatabaseService(db_path=tmp_path / "test.db")
+    db.initialize()
+    db.upsert_account("ACC1", "Test", bank_id="b1")
+    base = {
+        "currency": "MXN", "account_id": "ACC1",
+        "canonical_account_id": "ACC1", "bank_id": "b1",
+        "description": "X", "transaction_type": "withdrawal", "source_file": "f.csv",
+    }
+    db.insert_transaction({**base, "source_hash": "h1", "date": "2024-01-01", "amount": 10.0, "category": "Groceries"})
+    db.insert_transaction({**base, "source_hash": "h2", "date": "2024-01-02", "amount": 20.0, "category": None})
+    db.insert_transaction({**base, "source_hash": "h3", "date": "2024-01-03", "amount": 5.0,  "category": ""})
+    result = db.categorization_coverage()
+    assert result["total"] == 3
+    assert result["categorized"] == 1
+    assert abs(result["pct"] - 1/3) < 0.01
+
+
+def test_categorization_coverage_excludes_deposits(tmp_path):
+    from services.db_service import DatabaseService
+    db = DatabaseService(db_path=tmp_path / "test.db")
+    db.initialize()
+    db.upsert_account("ACC1", "Test", bank_id="b1")
+    base = {"currency": "MXN", "account_id": "ACC1", "canonical_account_id": "ACC1",
+            "bank_id": "b1", "description": "X", "source_file": "f.csv"}
+    db.insert_transaction({**base, "source_hash": "h1", "date": "2024-01-01", "amount": 10.0,
+                           "transaction_type": "withdrawal", "category": "Groceries"})
+    db.insert_transaction({**base, "source_hash": "h2", "date": "2024-01-02", "amount": 500.0,
+                           "transaction_type": "deposit", "category": None})
+    result = db.categorization_coverage()
+    assert result["total"] == 1   # deposit excluded
+    assert result["categorized"] == 1
+    assert result["pct"] == 1.0
+
+
 def test_dashboard_metrics_aggregates_by_period_and_category(tmp_path):
     db = DatabaseService(db_path=tmp_path / "test.db")
     db.initialize()
