@@ -79,3 +79,42 @@ def test_run_db_pipeline_honors_requested_banks(tmp_path):
     assert summary["exports"][0]["bank_id"] == "hsbc"
     assert (export_dir / "hsbc" / "firefly_hsbc.csv").exists()
     assert not (export_dir / "santander_likeu" / "firefly_santander_likeu.csv").exists()
+
+
+def test_pipeline_is_idempotent(tmp_path):
+    """Re-running pipeline against same CSV must not duplicate transactions."""
+    data_dir = tmp_path / "data"
+    db_path = tmp_path / "ledger.db"
+    export_dir = tmp_path / "exports"
+
+    _write_firefly_csv(
+        data_dir / "hsbc" / "firefly_hsbc.csv",
+        [
+            'withdrawal,2026-02-10,500.00,MXN,AMAZON,Liabilities:CC:HSBC,Expenses:Shopping,Shopping,"bucket:shopping,merchant:amazon,period:2026-02"',
+        ],
+    )
+
+    # First run
+    summary1 = run_db_pipeline(
+        db_path=db_path,
+        data_dir=data_dir,
+        export_dir=export_dir,
+    )
+
+    # Second run — identical CSV, same DB
+    summary2 = run_db_pipeline(
+        db_path=db_path,
+        data_dir=data_dir,
+        export_dir=export_dir,
+    )
+
+    from services.db_service import DatabaseService
+
+    db = DatabaseService(db_path=db_path)
+    txn_count = db.fetch_one("SELECT COUNT(*) AS cnt FROM transactions")["cnt"]
+    import_count = db.fetch_one("SELECT COUNT(*) AS cnt FROM imports")["cnt"]
+
+    assert txn_count == 1, f"Expected 1 transaction row, got {txn_count}"
+    assert import_count == 2, f"Expected 2 import rows (one per run), got {import_count}"
+    assert summary1["migration"]["rows_inserted"] == 1
+    assert summary2["migration"]["rows_inserted"] == 0
