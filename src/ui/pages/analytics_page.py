@@ -25,6 +25,7 @@ def render_comparison(df_sant: pd.DataFrame, df_hsbc: pd.DataFrame, *, t: Callab
         tc: Category translation function (optional)
     """
     from services.analytics_service import calculate_categorization_stats
+    import plotly.express as px
 
     # Default tc to t if not provided
     if tc is None:
@@ -202,6 +203,7 @@ def _render_drilldown(t, tc, stats, df_filtered_for_display, bank_id):
 
 def _render_rule_hub(t, tc, df_filtered_for_display, bank_name, bank_id, config_dir, data_dir: Path, ml_engine):
     import smart_matching as sm
+    import ml_categorizer as ml
     st.markdown("---")
     with st.expander(t("rule_hub_title"), expanded=False):
         st.subheader(t("rule_hub_subtitle"))

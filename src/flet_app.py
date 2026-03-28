@@ -41,8 +41,9 @@ def main(page: ft.Page):
         "selected_nav_index": 0
     }
     
-    def t(key):
-        return TRANSLATIONS.get(global_state["lang"], {}).get(key, key)
+    def t(key, **kwargs):
+        translation = TRANSLATIONS.get(global_state["lang"], {}).get(key, key)
+        return translation.format(**kwargs) if kwargs else translation
     
     # View Builders
     def get_import_page():

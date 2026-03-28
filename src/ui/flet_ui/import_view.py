@@ -26,7 +26,7 @@ def get_import_view(page: ft.Page, t: Callable, config: Dict):
     def get_bank_cfg():
         banks = {
             "santander_likeu": {"label": t("bank_santander"), "type": "xlsx"},
-            "hsbc_mexico": {"label": t("bank_hsbc"), "type": "xml"}
+            "hsbc": {"label": t("bank_hsbc"), "type": "xml"}
         }
         return banks.get(state["selected_bank_id"])
 
@@ -150,7 +150,7 @@ def get_import_view(page: ft.Page, t: Callable, config: Dict):
                     width=300,
                     options=[
                         ft.dropdown.Option("santander_likeu", t("bank_santander")),
-                        ft.dropdown.Option("hsbc_mexico", t("bank_hsbc")),
+                        ft.dropdown.Option("hsbc", t("bank_hsbc")),
                     ],
                     value=state["selected_bank_id"],
                     on_change=lambda e: (state.update({"selected_bank_id": e.data}), page.update()),

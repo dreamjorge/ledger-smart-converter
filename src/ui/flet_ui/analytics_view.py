@@ -43,20 +43,24 @@ def get_analytics_view(page: ft.Page, t: Callable, config: Dict):
                 charts_col.controls = []
             else:
                 status_text.value = ""
-                # Get Stats from ui_service
-                stats = ui_service.get_overall_stats(df)
+                # Get Stats using analytics_service
+                from services.analytics_service import calculate_categorization_stats
+                stats = calculate_categorization_stats(df)
                 
                 # Update Metrics
                 metrics_row.controls = [
-                    ft.Column([MetricCard(t("metric_total_txns"), stats["total_txns"], ft.Icons.LIST_ALT)], col={"sm": 6, "md": 3}),
-                    ft.Column([MetricCard(t("metric_total_spent"), stats["total_spent"], ft.Icons.ACCOUNT_BALANCE_WALLET, color=ft.Colors.RED_400)], col={"sm": 6, "md": 3}),
-                    ft.Column([MetricCard(t("metric_categorized"), stats["categorized_pct"], ft.Icons.PIE_CHART_OUTLINED, color=ft.Colors.GREEN_400)], col={"sm": 6, "md": 3}),
-                    ft.Column([MetricCard(t("metric_withdrawals"), stats["withdrawal_count"], ft.Icons.ARROW_DOWNWARD, color=ft.Colors.ORANGE_400)], col={"sm": 6, "md": 3}),
+                    ft.Column([MetricCard(t("metric_total_txns"), str(stats.get("total", 0)), ft.Icons.LIST_ALT)], col={"sm": 6, "md": 3}),
+                    ft.Column([MetricCard(t("metric_total_spent"), ui_service.format_currency(stats.get("total_spent", 0.0)), ft.Icons.ACCOUNT_BALANCE_WALLET, color=ft.Colors.RED_400)], col={"sm": 6, "md": 3}),
+                    ft.Column([MetricCard(t("metric_categorized"), ui_service.format_percentage(stats.get("coverage_pct", 0.0)), ft.Icons.PIE_CHART_OUTLINED, color=ft.Colors.GREEN_400)], col={"sm": 6, "md": 3}),
+                    ft.Column([MetricCard(t("metric_withdrawals"), str(stats.get("type_counts", {}).get("withdrawal", 0)), ft.Icons.ARROW_DOWNWARD, color=ft.Colors.ORANGE_400)], col={"sm": 6, "md": 3}),
                 ]
 
+                def tc(cat):
+                    return t(f"cat_{cat.lower()}")
+
                 # Update Charts
-                pie_fig = ui_service.create_category_pie_chart(df, t("chart_spending_share"))
-                bar_fig = ui_service.create_monthly_trend_chart(df, t("monthly_spending_trends_title"))
+                pie_fig = ui_service.get_spending_share_fig(stats, t, tc)
+                bar_fig = ui_service.get_monthly_trends_fig(stats, t, tc)
                 
                 charts_col.controls = [
                     ft.Row([
@@ -86,7 +90,7 @@ def get_analytics_view(page: ft.Page, t: Callable, config: Dict):
                     width=250,
                     options=[
                         ft.dropdown.Option("santander_likeu", t("bank_santander")),
-                        ft.dropdown.Option("hsbc_mexico", t("bank_hsbc")),
+                        ft.dropdown.Option("hsbc", t("bank_hsbc")),
                     ],
                     value=state["selected_bank_id"],
                     on_change=lambda e: (state.update({"selected_bank_id": e.data}), refresh_data()),
