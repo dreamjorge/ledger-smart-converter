@@ -1,13 +1,14 @@
+from __future__ import annotations
 from pathlib import Path
 from typing import Callable, Dict, Tuple
 
-import pandas as pd
 import streamlit as st
-
+# Heavy imports moved to functions: pandas
 from services import import_service as imp
 
 
 def _load_csv_if_exists(path):
+    import pandas as pd
     if path and Path(path).exists():
         return pd.read_csv(path)
     return None
@@ -142,7 +143,7 @@ def render_import_page(
                 )
                 if copied:
                     st.session_state[copy_feedback_key] = t("copy_success", path=result)
-                    st.session_state[nav_key] = t("nav_analytics")
+                    st.session_state[nav_key] = "analytics"
                     st.rerun()
                 elif result == "missing_src":
                     st.warning(t("copy_error_missing"))
@@ -156,7 +157,7 @@ def render_import_page(
             with tab1:
                 df_csv = _load_csv_if_exists(out_csv)
                 if df_csv is not None:
-                    st.dataframe(df_csv, width="stretch")
+                    st.dataframe(df_csv, use_container_width=True)
                     with open(out_csv, "rb") as f:
                         st.download_button(t("download_csv"), f, "firefly_import.csv", "text/csv")
                 else:
@@ -164,7 +165,7 @@ def render_import_page(
             with tab2:
                 df_unk = _load_csv_if_exists(out_unknown)
                 if df_unk is not None:
-                    st.dataframe(df_unk, width="stretch")
+                    st.dataframe(df_unk, use_container_width=True)
                 else:
                     st.info(t("no_unknown"))
             with tab3:

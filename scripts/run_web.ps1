@@ -13,4 +13,5 @@ if (-not (Test-Path $VenvPath)) {
 # But let's assume dependencies are there.
 
 Write-Host "Starting Web Interface..."
-& "$VenvPath\Scripts\streamlit" run "$SrcDir\web_app.py"
+& "$VenvPath\Scripts\streamlit" run "$SrcDir\web_app.py" --browser.gatherUsageStats false --server.port 8501
+

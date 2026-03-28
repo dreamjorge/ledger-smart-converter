@@ -3,11 +3,8 @@ from pathlib import Path
 import streamlit as st
 import yaml
 
-import ml_categorizer as ml
 from settings import load_settings
 from translations import TRANSLATIONS
-from ui.pages.analytics_page import render_analytics_dashboard
-from ui.pages.import_page import render_import_page
 
 # Initialize Session State for Language
 if "lang" not in st.session_state:
@@ -93,6 +90,7 @@ TEMP_DIR.mkdir(exist_ok=True)
 
 @st.cache_resource
 def get_ml_engine():
+    import ml_categorizer as ml
     engine = ml.TransactionCategorizer()
     if engine.load_model():
         return engine
@@ -157,10 +155,29 @@ def main():
             key=BANK_KEY,
             label_visibility="collapsed",
         )
+    # --- Navigation Tabs (Horizontal Radio for Lazy Loading) ---
     bank_id = bank_map[bank_label]
     bank_cfg = banks_cfg.get(bank_id, {})
+    
+    # Using a radio instead of tabs ensures that only the active page imports and runs its code.
+    nav_options = {
+        "import": t("nav_import"),
+        "analytics": t("nav_analytics")
+    }
+    
+    # Selection area
+    st.markdown("<div style='margin-bottom: -1rem;'></div>", unsafe_allow_html=True)
+    selected_nav = st.radio(
+        "Navigation",
+        options=list(nav_options.keys()),
+        format_func=lambda x: nav_options[x],
+        horizontal=True,
+        label_visibility="collapsed",
+        key=NAV_KEY
+    )
+    st.markdown("---")
 
-    # --- Sidebar: info-only (optional, collapsible) ---
+    # --- Sidebar: System Info + Help ---
     st.sidebar.title(t("sidebar_welcome"))
     st.sidebar.markdown(t("sidebar_desc"))
     rules_path = CONFIG_DIR / "rules.yml"
@@ -170,10 +187,9 @@ def main():
         st.sidebar.error(t("no_rules"))
     st.sidebar.info(t("sidebar_info"))
 
-    # --- Main navigation via tabs ---
-    tab_import, tab_analytics = st.tabs([t("nav_import"), t("nav_analytics")])
-
-    with tab_import:
+    # --- Main content: Lazy render based on selection ---
+    if selected_nav == "import":
+        from ui.pages.import_page import render_import_page
         render_import_page(
             t=t,
             root_dir=ROOT_DIR,
@@ -189,8 +205,8 @@ def main():
             nav_key=NAV_KEY,
             bank_key=BANK_KEY,
         )
-
-    with tab_analytics:
+    else:
+        from ui.pages.analytics_page import render_analytics_dashboard
         render_analytics_dashboard(
             t=t,
             tc=tc,

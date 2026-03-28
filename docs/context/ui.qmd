@@ -5,26 +5,48 @@ format: html
 
 ## Purpose
 
-Streamlit-based web interface for importing statements, viewing analytics, and correcting categorizations.
+The user interface for importing statements, viewing analytics, and correcting categorizations. 
+The project is currently transitioning from a **Streamlit** web app to a **Flet** desktop application, decoupling the business logic into `ui_service.py` to support both interfaces during the migration.
 
 ## Architecture
 
-**Location**: `src/ui/`
+**Location**: `src/ui/` (Streamlit) and `src/ui/flet_ui/` (Flet)
 
-**Pattern**: Router + Page modules
+**Pattern**: Service-First Component Rendering
 
-**Entry Point**: `src/web_app.py`
+**Entry Points**: 
+- Desktop (Flet): `src/flet_app.py`
+- Web (Streamlit): `src/web_app.py`
 
-## Application Structure
+## Flet Desktop Application Structure
+
+### Router & Layout
+
+**File**: `src/flet_app.py` and `src/ui/flet_ui/layout.py`
+
+**Responsibilities**:
+- Main desktop window initialization
+- Sidebar navigation (`NavigationRail`)
+- Routing between `import_view`, `analytics_view`, and `rule_hub_view`
+- Global state management (Language selection)
+
+### Core Views
+- **Import View** (`import_view.py`): Replaces Streamlit `st.file_uploader` with Flet `FilePicker` for bank statements and PDFs.
+- **Analytics View** (`analytics_view.py`): Leverages `ui_service.py` for data formatting. Renders Plotly charts inside Flet containers.
+- **Rule Hub View** (`rule_hub_view.py`): AI-assisted categorization correction with fuzzy search.
+
+---
+
+## Streamlit Legacy Application Structure
 
 ### Router
 
 **File**: `src/web_app.py`
 
 **Responsibilities**:
-- Session state initialization
-- Tab-based navigation (Import / Analytics)
-- Language switching (English/Spanish)
+- Session state initialization (including language and bank)
+- Horizontal radio-based navigation (Import / Analytics) with lazy loading
+- Language switching (English/Spanish) with state reset
 - Bank selection (top-bar dropdown, not sidebar)
 - ML model loading and caching
 - Page rendering delegation
@@ -40,15 +62,20 @@ def get_ml_engine():
     engine.load_model()
     return engine
 
-ML_ENGINE = get_ml_engine()
+# Stable internal keys for navigation
+nav_options = {"import": t("nav_import"), "analytics": t("nav_analytics")}
+selected_nav = st.radio("Navigation", options=list(nav_options.keys()), horizontal=True, key="nav_page")
 
-# Two-tab navigation
-tab_import, tab_analytics = st.tabs([t("nav_import"), t("nav_analytics")])
-with tab_import:
+# Lazy rendering logic:
+if selected_nav == "import":
+    from ui.pages.import_page import render_import_page
     render_import_page(...)
-with tab_analytics:
+else:
+    from ui.pages.analytics_page import render_analytics_dashboard
     render_analytics_dashboard(...)
 ```
+
+**Lazy Loading Note**: The app avoids `st.tabs` because it eagerly loads both branches. By using a horizontal radio, the app achieves true lazy-loading of heavy modules (`pandas`, `plotly`, `ml_categorizer`).
 
 **Bank/language controls** live in the top bar (3 columns: title, language, bank).
 Sidebar is info-only (rules status, welcome text).
@@ -386,10 +413,21 @@ codegraph_node "_render_rule_hub"
 
 ## Related Files
 
+### Flet Infrastructure
+- `src/flet_app.py` - Desktop entry point and router
+- `src/ui/flet_ui/layout.py` - Persistent Sidebar and Header layout
+- `src/ui/flet_ui/import_view.py` - Flet import workflow
+- `src/ui/flet_ui/analytics_view.py` - Flet analytics dashboard
+- `src/ui/flet_ui/rule_hub_view.py` - Flet Rule Hub drawer
+- `src/ui/flet_ui/components.py` - Reusable metric and chart containers for Flet
+
+### Streamlit Legacy Infrastructure
 - `src/web_app.py` - App router, CSS theme, ML caching
 - `src/ui/pages/import_page.py` - Import workflow
 - `src/ui/pages/analytics_page.py` - Analytics dashboard + Rule Hub
 - `src/ui/components/analytics_components.py` - Reusable chart/metric components
+
+### Shared Logic & Services
 - `src/translations.py` - Bilingual string dictionary
 - `src/services/data_service.py` - DB-first transaction loading + CSV fallback
 - `src/services/analytics_service.py` - Stats calculation
