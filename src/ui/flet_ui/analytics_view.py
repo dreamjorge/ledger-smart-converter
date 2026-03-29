@@ -1,17 +1,23 @@
 import flet as ft
+from pathlib import Path
 from typing import Callable, Dict
 import pandas as pd
 from services import data_service, ui_service
 from services.analytics_service import calculate_categorization_stats
+from services.import_service import get_banks_from_config
 from ui.flet_ui.components import MetricCard, ChartContainer
 
 def get_analytics_view(page: ft.Page, t: Callable, config: Dict):
     """
     Flet implementation of the Analytics Dashboard.
     """
+    root_dir = Path.cwd()
+    banks_cfg = get_banks_from_config(root_dir / "config" / "rules.yml")
+    first_bank_id = next(iter(banks_cfg), "santander_likeu")
+
     # State
     state = {
-        "selected_bank_id": "santander_likeu",
+        "selected_bank_id": first_bank_id,
         "df": pd.DataFrame(),
         "loading": False
     }
@@ -82,8 +88,8 @@ def get_analytics_view(page: ft.Page, t: Callable, config: Dict):
                     label=t("select_bank"),
                     width=250,
                     options=[
-                        ft.dropdown.Option("santander_likeu", t("bank_santander")),
-                        ft.dropdown.Option("hsbc", t("bank_hsbc")),
+                        ft.dropdown.Option(bid, bcfg["display_name"])
+                        for bid, bcfg in banks_cfg.items()
                     ],
                     value=state["selected_bank_id"],
                     on_change=lambda e: (state.update({"selected_bank_id": e.data}), refresh_data()),

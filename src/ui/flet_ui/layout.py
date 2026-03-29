@@ -47,6 +47,16 @@ class AppLayout(ft.Row):
                     selected_icon=ft.Icons.SETTINGS,
                     label=self.t("config"),
                 ),
+                ft.NavigationRailDestination(
+                    icon=ft.Icons.ADD_CIRCLE_OUTLINE,
+                    selected_icon=ft.Icons.ADD_CIRCLE,
+                    label=self.t("nav_manual_entry"),
+                ),
+                ft.NavigationRailDestination(
+                    icon=ft.Icons.MANAGE_ACCOUNTS_OUTLINED,
+                    selected_icon=ft.Icons.MANAGE_ACCOUNTS,
+                    label=self.t("nav_settings"),
+                ),
             ],
             on_change=self._handle_nav_change,
             bgcolor=ft.Colors.SURFACE_VARIANT,

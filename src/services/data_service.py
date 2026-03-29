@@ -286,28 +286,33 @@ def load_transactions(bank_id: str, prefer_db: bool = True, db_path: Optional[Pa
 
 
 def load_all_bank_data() -> Dict[str, pd.DataFrame]:
-    """Load transaction data for all supported banks.
+    """Load transaction data for all banks defined in accounts.yml.
 
-    This is a convenience function that loads data for all banks defined
-    in the configured bank catalog. It handles errors gracefully - if one bank fails to load,
-    others will still be loaded.
+    Builds the file map dynamically from accounts.yml so that new banks added
+    to config are included automatically without code changes.
 
     Returns:
         Dictionary mapping bank IDs to their transaction DataFrames.
-        Keys: 'santander', 'hsbc'
-        Values: DataFrames (may be empty if loading failed)
-
-    Example:
-        >>> all_data = load_all_bank_data()
-        >>> santander_df = all_data['santander']
-        >>> hsbc_df = all_data['hsbc']
+        Values: DataFrames (may be empty if loading failed or file missing)
     """
     logger.info("Loading transaction data for all banks")
     all_data = {}
 
-    # Load each bank independently - failures are isolated
-    all_data["santander"] = load_transactions_from_csv("santander")
-    all_data["hsbc"] = load_transactions_from_csv("hsbc")
+    bank_file_map = _build_bank_file_map(_accounts_config_path(), _data_dir())
+    seen_paths: set = set()
+    for bank_id, csv_path in bank_file_map.items():
+        resolved = str(csv_path.resolve())
+        if resolved in seen_paths:
+            continue
+        seen_paths.add(resolved)
+        try:
+            if csv_path.exists():
+                all_data[bank_id] = load_transactions_from_csv(bank_id)
+            else:
+                all_data[bank_id] = pd.DataFrame()
+        except Exception as exc:
+            logger.warning("Failed to load data for bank %s: %s", bank_id, exc)
+            all_data[bank_id] = pd.DataFrame()
 
     total_transactions = sum(len(df) for df in all_data.values())
     logger.info(

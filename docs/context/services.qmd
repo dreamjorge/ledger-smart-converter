@@ -416,6 +416,75 @@ stats = calculate_categorization_stats(
 )
 ```
 
+### Manual Entry Service
+
+**File**: `src/services/manual_entry_service.py`
+
+**Key Functions**:
+
+```python
+load_categories_from_rules(rules_path: Path) -> List[str]
+# Reads fallback + rule expense accounts from rules.yml
+
+load_accounts_from_config(accounts_path: Path, rules_path: Optional[Path] = None) -> Dict[str, str]
+# Returns canonical account IDs mapped to UI labels; appends bank display name when available
+
+get_category_label(expense_path: str, lang: str = "es") -> str
+# Converts Firefly expense paths into translated labels for Streamlit/Flet dropdowns
+
+submit_manual_transaction(
+    *,
+    date: str,
+    description: str,
+    amount: float,
+    bank_id: str,
+    account_id: str,
+    canonical_account_id: str,
+    transaction_type: str,
+    category: str,
+    db_path: Optional[Path] = None,
+    user_id: Optional[str] = None,
+) -> Tuple[bool, List[str]]
+# Validates and inserts one manual transaction into SQLite using source_hash deduplication
+```
+
+**Behavior Notes**:
+- Manual entry uses `source_file="manual"` and tags rows with `manual:entry`
+- Duplicate detection uses `DatabaseService.build_source_hash(...)`
+- Category dropdown labels are translated from Firefly expense paths via `CATEGORY_KEY_MAP`
+- `user_id` is passed through to the transaction insert so manual entries stay attributed to the active family profile
+
+### User Service
+
+**File**: `src/services/user_service.py`
+
+**Key Functions**:
+
+```python
+list_users(db) -> List[Dict]
+# Returns all family profiles including password_hash metadata
+
+create_user(
+    db,
+    user_id: str,
+    display_name: str,
+    color: str = "#4fc3f7",
+    is_admin: bool = False,
+    password: Optional[str] = None,
+) -> bool
+# Creates a local profile; hashes password with bcrypt when provided
+
+verify_password(db, user_id: str, password: str) -> bool
+# Validates a PIN; profiles with NULL password_hash are treated as open
+
+set_password(db, user_id: str, password: Optional[str]) -> bool
+# Sets or clears a profile PIN
+```
+
+**Migration Note**:
+- `_ensure_users_columns(db)` adds `password_hash` to older `users` tables lazily before reads/writes
+- The SQLite schema now stores bcrypt hashes in `users.password_hash`; `NULL` means profile switching does not require a PIN
+
 ## CodeGraph Navigation for Services
 
 Use CodeGraph to trace service dependencies before modifying business logic:
@@ -456,4 +525,6 @@ codegraph_node "calculate_categorization_stats"
 - `src/csv_to_db_migrator.py` - CSV migration orchestration
 - `src/db_pipeline.py` - one-command migration+export pipeline
 - `src/services/firefly_export_service.py` - DB view to Firefly CSV export
+- `src/services/manual_entry_service.py` - Manual transaction helpers
+- `src/services/user_service.py` - Family profile + PIN management
 - `tests/test_*_service.py` - Service tests
