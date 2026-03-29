@@ -55,6 +55,7 @@ class DatabaseService:
             ("destination_name", "TEXT"),
             ("import_id", "INTEGER"),
             ("updated_at", "TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP"),
+            ("user_id", "TEXT"),
         ]
         for col, typ in alterations:
             if col not in existing:
@@ -146,7 +147,7 @@ class DatabaseService:
         raw = f"{bank_id}|{source_file}|{date}|{float(amount):.2f}|{(description or '').strip().lower()}"
         return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
-    def insert_transaction(self, txn: Dict[str, Any], import_id: Optional[int] = None) -> bool:
+    def insert_transaction(self, txn: Dict[str, Any], import_id: Optional[int] = None, user_id: Optional[str] = None) -> bool:
         source_hash = txn.get("source_hash") or self.build_source_hash(
             bank_id=txn["bank_id"],
             source_file=txn["source_file"],
@@ -154,6 +155,7 @@ class DatabaseService:
             amount=float(txn["amount"]),
             description=txn.get("description", ""),
         )
+        effective_user_id = user_id or txn.get("user_id")
 
         with self._connect() as conn:
             cur = conn.execute(
@@ -161,8 +163,8 @@ class DatabaseService:
                 INSERT OR IGNORE INTO transactions (
                     source_hash, date, amount, currency, merchant, description, raw_description, normalized_description,
                     account_id, canonical_account_id, bank_id, statement_period,
-                    category, tags, transaction_type, source_name, destination_name, source_file, import_id
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    category, tags, transaction_type, source_name, destination_name, source_file, import_id, user_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     source_hash,
@@ -184,10 +186,77 @@ class DatabaseService:
                     txn.get("destination_name"),
                     txn["source_file"],
                     import_id,
+                    effective_user_id,
                 ),
             )
             conn.commit()
             return cur.rowcount > 0
+
+    def transaction_exists(self, source_hash: str) -> bool:
+        """Return True if a transaction with this source_hash already exists."""
+        row = self.fetch_one(
+            "SELECT 1 FROM transactions WHERE source_hash = ?", (source_hash,)
+        )
+        return row is not None
+
+    def upsert_transaction(self, txn: Dict[str, Any], import_id: Optional[int] = None, user_id: Optional[str] = None) -> bool:
+        """Insert or replace a transaction (overwrite mode).
+        Preserves the original created_at timestamp if the row already exists.
+        Returns True always (the row is guaranteed to exist after this call)."""
+        source_hash = txn.get("source_hash") or self.build_source_hash(
+            bank_id=txn["bank_id"],
+            source_file=txn["source_file"],
+            date=txn["date"],
+            amount=float(txn["amount"]),
+            description=txn.get("description", ""),
+        )
+        effective_user_id = user_id or txn.get("user_id")
+        # Preserve created_at from existing row if present
+        existing = self.fetch_one(
+            "SELECT created_at FROM transactions WHERE source_hash = ?", (source_hash,)
+        )
+        created_at = existing["created_at"] if existing else datetime.now(timezone.utc).isoformat()
+        updated_at = datetime.now(timezone.utc).isoformat()
+
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO transactions (
+                    source_hash, date, amount, currency, merchant, description,
+                    raw_description, normalized_description, account_id,
+                    canonical_account_id, bank_id, statement_period,
+                    category, tags, transaction_type, source_name,
+                    destination_name, source_file, import_id,
+                    user_id, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    source_hash,
+                    txn["date"],
+                    float(txn["amount"]),
+                    txn.get("currency", "MXN"),
+                    txn.get("merchant"),
+                    txn.get("description", ""),
+                    txn.get("raw_description"),
+                    txn.get("normalized_description"),
+                    txn["account_id"],
+                    txn["canonical_account_id"],
+                    txn["bank_id"],
+                    txn.get("statement_period"),
+                    txn.get("category"),
+                    txn.get("tags"),
+                    txn.get("transaction_type", "withdrawal"),
+                    txn.get("source_name", txn.get("account_id")),
+                    txn.get("destination_name"),
+                    txn["source_file"],
+                    import_id,
+                    effective_user_id,
+                    created_at,
+                    updated_at,
+                ),
+            )
+            conn.commit()
+        return True
 
     def insert_rule(
         self,

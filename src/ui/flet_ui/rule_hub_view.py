@@ -2,6 +2,7 @@ import flet as ft
 from pathlib import Path
 from typing import Callable, Dict, List
 from services import rule_service, data_service
+from services.import_service import get_banks_from_config
 from ml_categorizer import TransactionCategorizer
 from smart_matching import find_similar_merchants
 
@@ -33,10 +34,12 @@ def get_rule_hub_view(page: ft.Page, t: Callable, config: Dict):
 
     state["pending_count"] = rule_service.get_pending_count(pending_path)
 
-    # Load real merchants from all banks
+    # Load real merchants from all configured banks
+    _banks_cfg = get_banks_from_config(rules_path)
+
     def _load_all_merchants() -> List[str]:
         merchants = set()
-        for bank_id in ("santander_likeu", "hsbc"):
+        for bank_id in _banks_cfg:
             try:
                 df = data_service.load_transactions(bank_id)
                 if not df.empty and "description" in df.columns:
