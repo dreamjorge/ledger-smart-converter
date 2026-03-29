@@ -77,9 +77,9 @@ data/
 └── santander/        # Santander outputs
 
 scripts/
-├── setup_env.sh           # Environment setup
-├── run_web.sh             # Launch Streamlit
-├── run_import.sh          # CLI import helper
+├── setup_env.sh           # uv-based environment setup (.venv + requirements install)
+├── run_web.sh             # Launch Streamlit from the uv-managed .venv
+├── run_import.sh          # CLI import helper using the uv-managed .venv
 └── generate_dummy_data.py # Generate test data for dashboard
 
 tests/                     # pytest suite (558 collected; 550 fast + 8 slow)
@@ -133,6 +133,8 @@ tests/                     # pytest suite (558 collected; 550 fast + 8 slow)
 **Local**: `./scripts/setup_env.sh && ./scripts/run_web.sh`
 **Server**: Streamlit with `--server.address 0.0.0.0`
 **Healthcheck**: `python src/healthcheck.py`
+
+`setup_env.sh` and `setup_env.ps1` require `uv`, create a repo-local `.venv` via `uv venv`, and install `requirements.txt` via `uv pip install -r`.
 
 ## Recent Enhancements (2026-02-06)
 

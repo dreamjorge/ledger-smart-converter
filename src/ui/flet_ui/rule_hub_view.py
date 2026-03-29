@@ -1,11 +1,7 @@
 import flet as ft
 from pathlib import Path
-from typing import Callable, Dict, List, Optional
-import sys
-
-# Add src to sys.path to resolve internal modules
-sys.path.append(str(Path(__file__).parents[2]))
-from services import rule_service
+from typing import Callable, Dict, List
+from services import rule_service, data_service
 from ml_categorizer import TransactionCategorizer
 from smart_matching import find_similar_merchants
 
@@ -36,6 +32,20 @@ def get_rule_hub_view(page: ft.Page, t: Callable, config: Dict):
     backup_dir = root_dir / "config" / "backups"
 
     state["pending_count"] = rule_service.get_pending_count(pending_path)
+
+    # Load real merchants from all banks
+    def _load_all_merchants() -> List[str]:
+        merchants = set()
+        for bank_id in ("santander_likeu", "hsbc"):
+            try:
+                df = data_service.load_transactions(bank_id)
+                if not df.empty and "description" in df.columns:
+                    merchants.update(df["description"].dropna().unique().tolist())
+            except Exception:
+                pass
+        return sorted(merchants)
+
+    all_merchants = _load_all_merchants()
 
     # UI Components
     search_input = ft.TextField(
@@ -68,10 +78,7 @@ def get_rule_hub_view(page: ft.Page, t: Callable, config: Dict):
 
     # Handlers
     def update_merchants():
-        # This would normally pull from all unique merchants in CSV/DB
-        # For simplicity, we use a mock list for the prototype transition
-        mock_merchants = ["WALMART", "OXXO", "UBER", "NETFLIX", "AMAZON", "7-ELEVEN", "SAMS CLUB"]
-        similar = find_similar_merchants(state["search_query"], mock_merchants)
+        similar = find_similar_merchants(state["search_query"], all_merchants)
         
         merchant_list.controls = [
             ft.ListTile(

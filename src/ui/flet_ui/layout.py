@@ -1,10 +1,5 @@
 import flet as ft
 from typing import Callable, Optional
-import sys
-from pathlib import Path
-
-# Add src to path to import translations
-sys.path.append(str(Path(__file__).parents[2]))
 from translations import TRANSLATIONS
 
 class AppLayout(ft.Row):
@@ -90,8 +85,6 @@ def create_header(lang: str = "en") -> ft.Control:
                 ft.VerticalDivider(),
                 ft.Text("Flet Desktop v1.0", size=14, color=ft.Colors.GREY_500),
                 ft.Row(expand=True), # Spacer
-                ft.IconButton(ft.Icons.LANGUAGE, tooltip=t("language_select")),
-                ft.IconButton(ft.Icons.DARK_MODE, tooltip="Toggle Theme"),
             ],
             alignment=ft.MainAxisAlignment.START,
         ),

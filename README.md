@@ -45,6 +45,8 @@ This project runs as a Streamlit app. You can deploy it locally or on a small VM
 ./scripts/run_web.sh
 ```
 
+`setup_env` now expects [`uv`](https://docs.astral.sh/uv/) on your `PATH`, creates a repo-local `.venv` with `uv venv`, and installs `requirements.txt` into that environment with `uv pip install -r`.
+
 ### Healthcheck
 Run a quick runtime validation for dependencies, paths, and OCR binary:
 ```bash

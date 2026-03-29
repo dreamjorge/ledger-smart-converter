@@ -42,6 +42,7 @@ tests/
 ├── test_rule_service_audit.py
 ├── test_settings.py
 ├── test_smart_matching.py
+├── test_setup_scripts_uv.py     # Guards uv-based setup and runner script conventions
 ├── test_ui_analytics_components.py
 ├── test_ui_pages_imports.py
 ├── test_validation.py

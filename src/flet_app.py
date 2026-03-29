@@ -1,10 +1,4 @@
 import flet as ft
-import sys
-from pathlib import Path
-
-# Add src to sys.path to resolve internal modules
-sys.path.append(str(Path(__file__).parent))
-
 from ui.flet_ui.layout import AppLayout, create_header
 from ui.flet_ui.import_view import get_import_view
 from ui.flet_ui.analytics_view import get_analytics_view

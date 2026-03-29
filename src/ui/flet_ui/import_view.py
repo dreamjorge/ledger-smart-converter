@@ -1,11 +1,7 @@
 import flet as ft
 from pathlib import Path
-from typing import Callable, Dict, Optional
-import os
-import sys
-
-# Add src to sys.path to resolve internal modules
-sys.path.append(str(Path(__file__).parents[2]))
+from typing import Callable, Dict
+import threading
 from services import import_service as imp
 
 def get_import_view(page: ft.Page, t: Callable, config: Dict):
@@ -70,61 +66,58 @@ def get_import_view(page: ft.Page, t: Callable, config: Dict):
         process_btn.disabled = True
         page.update()
 
-        try:
-            # Setup paths (similar to streamlit logic)
-            root_dir = Path.cwd()
-            data_dir = root_dir / "data"
-            temp_dir = root_dir / "temp" / "input"
-            temp_dir.mkdir(parents=True, exist_ok=True)
-            
-            bank_cfg = get_bank_cfg()
-            bank_id = state["selected_bank_id"]
-            bank_label = bank_cfg["label"]
-            
-            # Resolve output paths
-            out_csv, out_unknown, out_suggestions = imp.resolve_output_paths(
-                data_dir=data_dir,
-                bank_label=bank_label,
-                bank_id=bank_id,
-                analytics_targets={} # Simplified for now
-            )
+        def _run():
+            try:
+                root_dir = Path.cwd()
+                data_dir = root_dir / "data"
+                temp_dir = root_dir / "temp" / "input"
+                temp_dir.mkdir(parents=True, exist_ok=True)
 
-            # Note: In a real app, we'd copy the uploaded files to temp_dir first.
-            # For this desktop mock, we use the direct paths.
-            
-            res = imp.run_import_script(
-                root_dir=root_dir,
-                src_dir=root_dir / "src",
-                bank_id=bank_id,
-                rules_path=root_dir / "config" / "rules.yml",
-                out_csv=out_csv,
-                out_unknown=out_unknown,
-                main_path=Path(state["main_file_path"]) if state["main_file_path"] else None,
-                pdf_path=Path(state["pdf_file_path"]) if state["pdf_file_path"] else None,
-                force_pdf_ocr=state["force_ocr"]
-            )
+                bank_cfg = get_bank_cfg()
+                bank_id = state["selected_bank_id"]
+                bank_label = bank_cfg["label"]
 
-            if res.returncode == 0:
-                status_text.value = t("process_complete")
-                status_text.color = ft.Colors.GREEN_400
-                # Show results summary
-                results_col.controls = [
-                    ft.Text(f"CSV Generated: {out_csv.name}", color=ft.Colors.GREEN_200),
-                    ft.Text(f"Unknown Merchants: {out_unknown.name}", color=ft.Colors.ORANGE_200 if out_unknown.exists() else ft.Colors.GREY_400),
-                ]
-            else:
-                status_text.value = t("error_processing")
+                out_csv, out_unknown, out_suggestions = imp.resolve_output_paths(
+                    data_dir=data_dir,
+                    bank_label=bank_label,
+                    bank_id=bank_id,
+                    analytics_targets={}
+                )
+
+                res = imp.run_import_script(
+                    root_dir=root_dir,
+                    src_dir=root_dir / "src",
+                    bank_id=bank_id,
+                    rules_path=root_dir / "config" / "rules.yml",
+                    out_csv=out_csv,
+                    out_unknown=out_unknown,
+                    main_path=Path(state["main_file_path"]) if state["main_file_path"] else None,
+                    pdf_path=Path(state["pdf_file_path"]) if state["pdf_file_path"] else None,
+                    force_pdf_ocr=state["force_ocr"]
+                )
+
+                if res.returncode == 0:
+                    status_text.value = t("process_complete")
+                    status_text.color = ft.Colors.GREEN_400
+                    results_col.controls = [
+                        ft.Text(f"CSV Generated: {out_csv.name}", color=ft.Colors.GREEN_200),
+                        ft.Text(f"Unknown Merchants: {out_unknown.name}", color=ft.Colors.ORANGE_200 if out_unknown.exists() else ft.Colors.GREY_400),
+                    ]
+                else:
+                    status_text.value = t("error_processing")
+                    status_text.color = ft.Colors.RED_400
+                    results_col.controls = [ft.Text(res.stderr, color=ft.Colors.RED_200)]
+
+            except Exception as ex:
+                status_text.value = f"Error: {str(ex)}"
                 status_text.color = ft.Colors.RED_400
-                results_col.controls = [ft.Text(res.stderr, color=ft.Colors.RED_200)]
 
-        except Exception as ex:
-            status_text.value = f"Error: {str(ex)}"
-            status_text.color = ft.Colors.RED_400
+            state["loading"] = False
+            progress_bar.visible = False
+            process_btn.disabled = False
+            page.update()
 
-        state["loading"] = False
-        progress_bar.visible = False
-        process_btn.disabled = False
-        page.update()
+        threading.Thread(target=_run, daemon=True).start()
 
     # View Construction
     process_btn = ft.ElevatedButton(
