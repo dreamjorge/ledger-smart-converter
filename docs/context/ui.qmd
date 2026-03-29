@@ -8,40 +8,13 @@ format: html
 The user interface for importing statements, viewing analytics, and correcting categorizations. 
 The project is currently transitioning from a **Streamlit** web app to a **Flet** desktop application, decoupling the business logic into `ui_service.py` to support both interfaces during the migration.
 
-## Architecture
-
-**Location**: `src/ui/` (Streamlit) and `src/ui/flet_ui/` (Flet)
-
-**Pattern**: Service-First Component Rendering
-
-**Entry Points**: 
-- Desktop (Flet): `src/flet_app.py`
-- Web (Streamlit): `src/web_app.py`
-
-## Flet Desktop Application Structure
-
-### Router & Layout
-
-**File**: `src/flet_app.py` and `src/ui/flet_ui/layout.py`
-
-**Responsibilities**:
-- Main desktop window initialization
-- Sidebar navigation (`NavigationRail`)
-- Routing between `import_view`, `analytics_view`, and `rule_hub_view`
-- Global state management (Language selection)
-
-### Core Views
-- **Import View** (`import_view.py`): Replaces Streamlit `st.file_uploader` with Flet `FilePicker` for bank statements and PDFs.
-- **Analytics View** (`analytics_view.py`): Leverages `ui_service.py` for data formatting. Renders Plotly charts inside Flet containers.
-- **Rule Hub View** (`rule_hub_view.py`): AI-assisted categorization correction with fuzzy search.
-
----
-
-## Streamlit Legacy Application Structure
-
-### Router
-
-**File**: `src/web_app.py`
+**Desktop Startup Notes**:
+- `src/flet_app.py` now starts the desktop app with `ft.run(main)` instead of deprecated `ft.app(target=main)`
+- `scripts/run_flet.ps1` clears stale `%USERPROFILE%\.flet\client\flet-desktop-*` directories before launch to avoid Windows cache rename failures during first-run client extraction
+- `src/ui/flet_ui/import_view.py` avoids direct `ft.FilePickerResultEvent` annotations so the desktop app stays compatible with Flet 0.83.x, where that symbol is no longer exported from `flet`
+- `src/ui/flet_ui/import_view.py` uses the async `await picker.pick_files(...)` API instead of legacy `on_result=` callback wiring required by older Flet releases
+- Flet 0.83.x `Dropdown` uses `on_select=` rather than `on_change=`; the Flet import, analytics, manual-entry, and rule-hub views use the newer callback and read the selection from `e.control.value`
+- The Flet layout uses Material 3 color tokens available in 0.83.x such as `SURFACE_CONTAINER`; older `SURFACE_VARIANT` references are invalid in this version
 
 **Responsibilities**:
 - Session state initialization (including language and bank)

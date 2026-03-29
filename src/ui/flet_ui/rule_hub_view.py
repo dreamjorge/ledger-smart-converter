@@ -71,7 +71,7 @@ def get_rule_hub_view(page: ft.Page, t: Callable, config: Dict):
             ft.dropdown.Option("Expenses:Services:Digital", t("cat_digitalservices")),
             ft.dropdown.Option("Expenses:Other", t("cat_other")),
         ],
-        on_change=lambda e: (state.update({"selected_category": e.data}), page.update())
+        on_select=lambda e: (state.update({"selected_category": e.control.value}), page.update())
     )
 
     regex_input = ft.TextField(

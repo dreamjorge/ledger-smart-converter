@@ -39,7 +39,7 @@ def get_import_view(page: ft.Page, t: Callable, config: Dict):
             state["dedup_decisions"].setdefault(h, "skip")
 
             def make_on_change(hash_key):
-                return lambda e: state["dedup_decisions"].update({hash_key: e.data})
+                return lambda e: state["dedup_decisions"].update({hash_key: e.control.value})
 
             rows.append(ft.DataRow(cells=[
                 ft.DataCell(ft.Text(str(row.get("date", "")), size=12)),
@@ -49,7 +49,7 @@ def get_import_view(page: ft.Page, t: Callable, config: Dict):
                     options=action_options,
                     value="skip",
                     width=160,
-                    on_change=make_on_change(h),
+                    on_select=make_on_change(h),
                 )),
             ]))
 
@@ -108,6 +108,36 @@ def get_import_view(page: ft.Page, t: Callable, config: Dict):
             "type": entry.get("type", "xlsx"),
         }
 
+    def _quick_start_content() -> ft.Control:
+        bank_cfg = get_bank_cfg()
+        bank_label = bank_cfg["label"]
+        file_type_label = "Excel" if bank_cfg["type"] == "xlsx" else "XML"
+        tip_key = "tip_santander" if state["selected_bank_id"] == "santander_likeu" else "tip_hsbc"
+
+        return ft.Container(
+            content=ft.Column(
+                [
+                    ft.Text(t("quick_start"), size=18, weight=ft.FontWeight.BOLD),
+                    ft.Text(t("welcome_bank", bank=bank_label)),
+                    ft.Text(t("steps_desc"), color=ft.Colors.GREY_400),
+                    ft.Text(t("step_1", file_type=file_type_label)),
+                    ft.Text(t("step_2")),
+                    ft.Text(t("step_3")),
+                    ft.Text(t("step_4")),
+                    ft.Container(
+                        content=ft.Text(t(tip_key), color=ft.Colors.BLUE_200),
+                        bgcolor=ft.Colors.SURFACE_CONTAINER_LOW,
+                        border_radius=10,
+                        padding=12,
+                    ),
+                ],
+                spacing=8,
+            ),
+            padding=16,
+            bgcolor=ft.Colors.SURFACE_CONTAINER_LOW,
+            border_radius=12,
+        )
+
     # UI Components
     status_text = ft.Text("", italic=True, color=ft.Colors.BLUE_400)
     progress_bar = ft.ProgressBar(width=400, color=ft.Colors.BLUE_400, visible=False)
@@ -116,23 +146,25 @@ def get_import_view(page: ft.Page, t: Callable, config: Dict):
     pdf_file_text = ft.Text(t("select_pdf"), color=ft.Colors.GREY_400)
 
     # File Pickers
-    def on_main_file_result(e: ft.FilePickerResultEvent):
-        if e.files:
-            state["main_file_path"] = e.files[0].path
-            main_file_text.value = f"✅ {e.files[0].name}"
+    main_picker = ft.FilePicker()
+    pdf_picker = ft.FilePicker()
+    page.services.extend([main_picker, pdf_picker])
+
+    async def handle_pick_main(_):
+        files = await main_picker.pick_files(allow_multiple=False)
+        if files:
+            state["main_file_path"] = files[0].path
+            main_file_text.value = f"✅ {files[0].name}"
             main_file_text.color = ft.Colors.GREEN_400
             page.update()
 
-    def on_pdf_file_result(e: ft.FilePickerResultEvent):
-        if e.files:
-            state["pdf_file_path"] = e.files[0].path
-            pdf_file_text.value = f"✅ {e.files[0].name}"
+    async def handle_pick_pdf(_):
+        files = await pdf_picker.pick_files(allow_multiple=False)
+        if files:
+            state["pdf_file_path"] = files[0].path
+            pdf_file_text.value = f"✅ {files[0].name}"
             pdf_file_text.color = ft.Colors.GREEN_400
             page.update()
-
-    main_picker = ft.FilePicker(on_result=on_main_file_result)
-    pdf_picker = ft.FilePicker(on_result=on_pdf_file_result)
-    page.overlay.extend([main_picker, pdf_picker])
 
     # Handlers
     def handle_process(e):
@@ -245,8 +277,9 @@ def get_import_view(page: ft.Page, t: Callable, config: Dict):
 
     return ft.Column(
         [
-            ft.Text(t("nav_import"), size=32, weight=ft.FontWeight.BOLD),
+            ft.Text(t("import_header", bank=get_bank_cfg()["label"]), size=32, weight=ft.FontWeight.BOLD),
             ft.Text(t("sidebar_desc"), size=16, color=ft.Colors.GREY_400),
+            _quick_start_content(),
             ft.Divider(),
             
             ft.Row([
@@ -258,7 +291,7 @@ def get_import_view(page: ft.Page, t: Callable, config: Dict):
                         for bid, bcfg in banks_cfg.items()
                     ],
                     value=state["selected_bank_id"],
-                    on_change=lambda e: (state.update({"selected_bank_id": e.data}), page.update()),
+                    on_select=lambda e: (state.update({"selected_bank_id": e.control.value}), page.update()),
                 ),
             ]),
 
@@ -268,7 +301,7 @@ def get_import_view(page: ft.Page, t: Callable, config: Dict):
                         content=ft.Column([
                             ft.Icon(ft.Icons.UPLOAD_FILE, size=40, color=ft.Colors.BLUE_400),
                             ft.Text(t("select_xlsx") if get_bank_cfg()["type"] == "xlsx" else t("select_xml"), weight=ft.FontWeight.BOLD),
-                            ft.ElevatedButton("Browse", on_click=lambda _: main_picker.pick_files()),
+                            ft.ElevatedButton("Browse", on_click=handle_pick_main),
                             main_file_text,
                         ], horizontal_alignment=ft.CrossAxisAlignment.CENTER),
                         padding=20, width=280, height=180
@@ -279,7 +312,7 @@ def get_import_view(page: ft.Page, t: Callable, config: Dict):
                         content=ft.Column([
                             ft.Icon(ft.Icons.PICTURE_AS_PDF, size=40, color=ft.Colors.RED_400),
                             ft.Text(t("select_pdf"), weight=ft.FontWeight.BOLD),
-                            ft.ElevatedButton("Browse", on_click=lambda _: pdf_picker.pick_files()),
+                            ft.ElevatedButton("Browse", on_click=handle_pick_pdf),
                             pdf_file_text,
                         ], horizontal_alignment=ft.CrossAxisAlignment.CENTER),
                         padding=20, width=280, height=180
@@ -299,6 +332,7 @@ def get_import_view(page: ft.Page, t: Callable, config: Dict):
             status_text,
             ft.Divider(),
             results_col,
+            ft.Text(f"{t('working_dir')}: {root_dir}", size=12, color=ft.Colors.GREY_500),
         ],
         expand=True,
         spacing=20,

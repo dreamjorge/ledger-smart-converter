@@ -111,6 +111,19 @@ CREATE TABLE rules (
 );
 ```
 
+**`users`** — for family profiles:
+
+```sql
+CREATE TABLE users (
+    user_id      TEXT PRIMARY KEY,
+    display_name TEXT NOT NULL,
+    color        TEXT DEFAULT '#4fc3f7',
+    is_admin     INTEGER DEFAULT 0,
+    password_hash TEXT,          -- bcrypt hash; NULL if no PIN
+    created_at   TEXT DEFAULT (datetime('now'))
+);
+```
+
 ## DatabaseService API
 
 All database access goes through `DatabaseService` in `src/services/db_service.py`.

@@ -38,3 +38,11 @@ def test_runner_scripts_reference_uv_setup_in_error_messages() -> None:
         content = read_repo_file(relative_path)
         assert "setup_env.ps1" in content
         assert "uv" in content.lower()
+
+
+def test_run_flet_ps1_clears_stale_flet_client_cache() -> None:
+    content = read_repo_file("scripts/run_flet.ps1")
+
+    assert ".flet\\client" in content
+    assert "flet-desktop-*" in content
+    assert "Remove-Item" in content

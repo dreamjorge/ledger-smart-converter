@@ -12,7 +12,7 @@ class AppLayout(ft.Row):
         lang: str = "en"
     ):
         super().__init__()
-        self.page = page
+        self._page = page
         self.main_content = content
         self.selected_index = selected_index
         self.on_navigation_change = on_navigation_change
@@ -59,7 +59,7 @@ class AppLayout(ft.Row):
                 ),
             ],
             on_change=self._handle_nav_change,
-            bgcolor=ft.Colors.SURFACE_VARIANT,
+            bgcolor=ft.Colors.SURFACE_CONTAINER,
         )
         
         # Content Area
@@ -99,6 +99,6 @@ def create_header(lang: str = "en") -> ft.Control:
             alignment=ft.MainAxisAlignment.START,
         ),
         padding=ft.padding.only(left=20, right=20, top=10, bottom=10),
-        bgcolor=ft.Colors.SURFACE_VARIANT,
+        bgcolor=ft.Colors.SURFACE_CONTAINER,
         border=ft.border.only(bottom=ft.BorderSide(1, ft.Colors.OUTLINE_VARIANT)),
     )
