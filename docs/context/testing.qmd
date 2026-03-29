@@ -42,6 +42,7 @@ tests/
 ├── test_rule_service_audit.py
 ├── test_settings.py
 ├── test_smart_matching.py
+├── test_setup_scripts_uv.py     # Guards uv-based setup and runner script conventions
 ├── test_ui_analytics_components.py
 ├── test_ui_pages_imports.py
 ├── test_validation.py
@@ -407,10 +408,52 @@ def test_with_temp_file(tmp_path):
 - Rule service workflows
 - Import service command/path orchestration
 - UI analytics components
+- Manual entry service and user-profile PIN flows
 
 **Minimally Tested** (⚠️):
 - End-to-end Streamlit rendering behavior
 - Some CLI argument/error path combinations
+
+### Manual Entry Service Tests
+
+**File**: `tests/test_manual_entry_service.py`
+
+**Coverage**:
+```python
+test_load_categories_from_rules_returns_sorted_unique_values()
+# fallback_expense + rule expenses are deduplicated and sorted
+
+test_load_accounts_from_config_includes_bank_display_names()
+# canonical account labels append bank display_name from rules.yml when available
+
+test_get_category_label_uses_translation_key_and_fallback()
+# mapped expense paths return translated labels; unknown paths fall back to raw value
+
+test_submit_manual_transaction_inserts_transaction_and_user()
+# manual DB insert stores category, source_file="manual", and user_id attribution
+
+test_submit_manual_transaction_rejects_duplicates()
+# duplicate source_hash returns (False, ["duplicate"])
+```
+
+### User Service Tests
+
+**File**: `tests/test_user_service.py`
+
+**Coverage**:
+```python
+test_create_user_hashes_password_and_verifies_it()
+# bcrypt hash is stored instead of plaintext; verify_password() accepts the correct PIN only
+
+test_verify_password_allows_open_profiles()
+# users without password_hash can be activated without a PIN
+
+test_set_password_can_add_and_clear_pin()
+# set_password() adds bcrypt hash and can clear it back to NULL
+
+test_list_users_migrates_old_schema_without_password_hash()
+# legacy users table gets password_hash added lazily before reads
+```
 
 ### Adding New Tests
 
@@ -482,6 +525,8 @@ def test_with_fixture(sample_data):
 - `.github/workflows/ci.yml` - CI configuration
 - `pytest.ini` - pytest configuration (if exists)
 - `conftest.py` - Shared fixtures (if exists)
+- `tests/test_manual_entry_service.py` - Manual-entry helpers + DB insert behavior
+- `tests/test_user_service.py` - Family-profile PIN hashing and migration coverage
 
 ## Token-Efficient Test Research
 

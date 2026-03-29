@@ -95,16 +95,36 @@ python src/generic_importer.py \
 - `--dry-run`: Parse but don't write CSV
 - `--log-json`: Output run manifest as JSON
 
+**Workflow Details**:
+1. **Normalized Description**: All transactions get a `normalized_description` via `normalize_description(...)` in `src/description_normalizer.py`.
+   - This deterministic cleanup (removing accents, dates, and noise) ensures categorization rules are robust and ML predictions are consistent.
+2. **Canonical Account Mapping**: The system uses `src/account_mapping.py` to resolve the `canonical_account_id` based on `bank_id` and the raw `account_id` from the file.
+   - Configuration is defined in `config/accounts.yml`.
+
 **Workflow**:
 1. Load bank configuration
 2. Call bank-specific importer
 3. Build `raw_description` from parsed source text
-4. Build `normalized_description` via `normalize_description(...)` (`src/description_normalizer.py`)
+4. Build `normalized_description` (deterministic cleanup)
 5. Validate transactions
-6. Resolve canonical account id (`config/accounts.yml`) for each canonical transaction
+6. Resolve canonical account id from `accounts.yml`
 7. Apply rules + ML categorization (normalized text by default; fallback via `LSC_USE_NORMALIZED_TEXT=false`)
 8. Write CSV (atomic)
 9. Log manifest
+
+**Account Configuration (`config/accounts.yml`)**:
+```yaml
+canonical_accounts:
+  cc:santander_likeu:
+    display_name: "Santander LikeU CC"
+    bank_ids: ["santander_likeu"]
+    account_ids: ["Liabilities:CC:Santander LikeU"]
+
+  cc:hsbc:
+    display_name: "HSBC Credit"
+    bank_ids: ["hsbc"]
+```
+*Mapping follows: `(bank_id IN bank_ids) AND (account_id IN account_ids OR account_ids is empty)`.*
 
 ## PDF Utilities
 

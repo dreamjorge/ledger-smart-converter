@@ -4,7 +4,7 @@ $SrcDir = "$RepoRoot\src"
 
 # Check for venv
 if (-not (Test-Path $VenvPath)) {
-    Write-Error "Virtual environment not found. Please run setup_env.ps1 first."
+    Write-Error "uv-managed virtual environment not found. Please run setup_env.ps1 first."
     exit 1
 }
 
@@ -13,4 +13,5 @@ if (-not (Test-Path $VenvPath)) {
 # But let's assume dependencies are there.
 
 Write-Host "Starting Web Interface..."
-& "$VenvPath\Scripts\streamlit" run "$SrcDir\web_app.py"
+& "$VenvPath\Scripts\streamlit" run "$SrcDir\web_app.py" --browser.gatherUsageStats false --server.port 8501
+

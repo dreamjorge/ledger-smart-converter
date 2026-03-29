@@ -1,17 +1,20 @@
 from pathlib import Path
+from typing import Dict
 
 import streamlit as st
 import yaml
 
-import ml_categorizer as ml
 from settings import load_settings
 from translations import TRANSLATIONS
-from ui.pages.analytics_page import render_analytics_dashboard
-from ui.pages.import_page import render_import_page
+from services.user_service import get_pref, set_pref, get_active_user, set_active_user, list_users, create_user
 
-# Initialize Session State for Language
+# Initialize Session State for Language (persisted in config/prefs.json)
 if "lang" not in st.session_state:
-    st.session_state.lang = "en"
+    st.session_state.lang = get_pref("lang", "es")
+
+# Initialize active user session state
+if "active_user" not in st.session_state:
+    st.session_state.active_user = get_active_user()
 
 
 def t(key, **kwargs):
@@ -69,10 +72,40 @@ st.markdown(VIEWPORT_META, unsafe_allow_html=True)
 load_css(SRC_DIR / "ui" / "style.css")
 TEMP_DIR = SETTINGS.temp_dir
 
-ANALYTICS_CSV_TARGETS = {
-    "Santander LikeU": ("santander", "firefly_likeu.csv"),
-    "HSBC Mexico": ("hsbc", "firefly_hsbc.csv"),
-}
+@st.cache_data
+def _build_analytics_csv_targets() -> Dict:
+    """Build display_name → (directory, filename) map from accounts.yml csv_output entries."""
+    accounts_path = CONFIG_DIR / "accounts.yml"
+    if not accounts_path.exists():
+        return {
+            "Santander LikeU": ("santander", "firefly_likeu.csv"),
+            "HSBC Mexico": ("hsbc", "firefly_hsbc.csv"),
+        }
+    try:
+        cfg = yaml.safe_load(accounts_path.read_text(encoding="utf-8")) or {}
+        targets = {}
+        for entry in cfg.get("canonical_accounts", {}).values():
+            if not isinstance(entry, dict):
+                continue
+            csv_out = entry.get("csv_output") or {}
+            directory = csv_out.get("directory") or csv_out.get("dir")
+            filename = csv_out.get("filename") or csv_out.get("name")
+            bank_ids = entry.get("bank_ids", [])
+            display = next(iter(bank_ids), directory or "unknown")
+            if directory and filename:
+                targets[display] = (directory, filename)
+        return targets if targets else {
+            "Santander LikeU": ("santander", "firefly_likeu.csv"),
+            "HSBC Mexico": ("hsbc", "firefly_hsbc.csv"),
+        }
+    except Exception:
+        return {
+            "Santander LikeU": ("santander", "firefly_likeu.csv"),
+            "HSBC Mexico": ("hsbc", "firefly_hsbc.csv"),
+        }
+
+
+ANALYTICS_CSV_TARGETS = _build_analytics_csv_targets()
 
 
 @st.cache_data
@@ -93,6 +126,7 @@ TEMP_DIR.mkdir(exist_ok=True)
 
 @st.cache_resource
 def get_ml_engine():
+    import ml_categorizer as ml
     engine = ml.TransactionCategorizer()
     if engine.load_model():
         return engine
@@ -128,18 +162,19 @@ def main():
         st.markdown('<h1 class="premium-header">Ledger Smart Converter</h1>', unsafe_allow_html=True)
         st.markdown(f'<p style="color: var(--text-muted); font-size: 1.1rem; margin-top: -1rem;">{t("app_title")}</p>', unsafe_allow_html=True)
 
-    lang_options = {"🇺🇸 EN": "en", "🇲🇽 ES": "es"}
+    lang_options = {"🇲🇽 ES": "es", "🇺🇸 EN": "en"}
     with col_lang:
         selected_lang_label = st.selectbox(
             t("language_select"),
             options=list(lang_options.keys()),
-            index=0 if st.session_state.lang == "en" else 1,
+            index=0 if st.session_state.lang == "es" else 1,
             key="lang_selector",
             label_visibility="collapsed",
         )
     new_lang = lang_options[selected_lang_label]
     if new_lang != st.session_state.lang:
         st.session_state.lang = new_lang
+        set_pref("lang", new_lang)
         for key in (NAV_KEY, BANK_KEY, COPY_FEEDBACK_KEY):
             if key in st.session_state:
                 del st.session_state[key]
@@ -157,11 +192,37 @@ def main():
             key=BANK_KEY,
             label_visibility="collapsed",
         )
+    # --- Navigation Tabs (Horizontal Radio for Lazy Loading) ---
     bank_id = bank_map[bank_label]
     bank_cfg = banks_cfg.get(bank_id, {})
+    
+    # Using a radio instead of tabs ensures that only the active page imports and runs its code.
+    nav_options = {
+        "import": t("nav_import"),
+        "analytics": t("nav_analytics"),
+        "manual": t("nav_manual_entry"),
+        "settings": t("nav_settings"),
+    }
+    
+    # Selection area
+    st.markdown("<div style='margin-bottom: -1rem;'></div>", unsafe_allow_html=True)
+    selected_nav = st.radio(
+        "Navigation",
+        options=list(nav_options.keys()),
+        format_func=lambda x: nav_options[x],
+        horizontal=True,
+        label_visibility="collapsed",
+        key=NAV_KEY
+    )
+    st.markdown("---")
 
-    # --- Sidebar: info-only (optional, collapsible) ---
+    # --- Sidebar: Active user + system info ---
     st.sidebar.title(t("sidebar_welcome"))
+    active_user = st.session_state.get("active_user")
+    if active_user:
+        st.sidebar.success(f"👤 {t('active_user')}: **{active_user}**")
+    else:
+        st.sidebar.info(f"👤 {t('no_active_user')}")
     st.sidebar.markdown(t("sidebar_desc"))
     rules_path = CONFIG_DIR / "rules.yml"
     if rules_path.exists():
@@ -170,10 +231,9 @@ def main():
         st.sidebar.error(t("no_rules"))
     st.sidebar.info(t("sidebar_info"))
 
-    # --- Main navigation via tabs ---
-    tab_import, tab_analytics = st.tabs([t("nav_import"), t("nav_analytics")])
-
-    with tab_import:
+    # --- Main content: Lazy render based on selection ---
+    if selected_nav == "import":
+        from ui.pages.import_page import render_import_page
         render_import_page(
             t=t,
             root_dir=ROOT_DIR,
@@ -189,8 +249,8 @@ def main():
             nav_key=NAV_KEY,
             bank_key=BANK_KEY,
         )
-
-    with tab_analytics:
+    elif selected_nav == "analytics":
+        from ui.pages.analytics_page import render_analytics_dashboard
         render_analytics_dashboard(
             t=t,
             tc=tc,
@@ -198,6 +258,20 @@ def main():
             data_dir=DATA_DIR,
             copy_feedback_key=COPY_FEEDBACK_KEY,
             ml_engine=get_ml_engine(),
+        )
+    elif selected_nav == "manual":
+        from ui.pages.manual_entry_page import render_manual_entry_page
+        render_manual_entry_page(
+            t=t,
+            config_dir=CONFIG_DIR,
+            user_id=st.session_state.get("active_user"),
+            lang=st.session_state.lang,
+        )
+    else:  # "settings"
+        from ui.pages.settings_page import render_settings_page
+        render_settings_page(
+            t=t,
+            active_user=st.session_state.get("active_user"),
         )
 
 

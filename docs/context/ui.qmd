@@ -5,26 +5,21 @@ format: html
 
 ## Purpose
 
-Streamlit-based web interface for importing statements, viewing analytics, and correcting categorizations.
+The user interface for importing statements, viewing analytics, and correcting categorizations. 
+The project is currently transitioning from a **Streamlit** web app to a **Flet** desktop application, decoupling the business logic into `ui_service.py` to support both interfaces during the migration.
 
-## Architecture
-
-**Location**: `src/ui/`
-
-**Pattern**: Router + Page modules
-
-**Entry Point**: `src/web_app.py`
-
-## Application Structure
-
-### Router
-
-**File**: `src/web_app.py`
+**Desktop Startup Notes**:
+- `src/flet_app.py` now starts the desktop app with `ft.run(main)` instead of deprecated `ft.app(target=main)`
+- `scripts/run_flet.ps1` clears stale `%USERPROFILE%\.flet\client\flet-desktop-*` directories before launch to avoid Windows cache rename failures during first-run client extraction
+- `src/ui/flet_ui/import_view.py` avoids direct `ft.FilePickerResultEvent` annotations so the desktop app stays compatible with Flet 0.83.x, where that symbol is no longer exported from `flet`
+- `src/ui/flet_ui/import_view.py` uses the async `await picker.pick_files(...)` API instead of legacy `on_result=` callback wiring required by older Flet releases
+- Flet 0.83.x `Dropdown` uses `on_select=` rather than `on_change=`; the Flet import, analytics, manual-entry, and rule-hub views use the newer callback and read the selection from `e.control.value`
+- The Flet layout uses Material 3 color tokens available in 0.83.x such as `SURFACE_CONTAINER`; older `SURFACE_VARIANT` references are invalid in this version
 
 **Responsibilities**:
-- Session state initialization
-- Tab-based navigation (Import / Analytics)
-- Language switching (English/Spanish)
+- Session state initialization (including language and bank)
+- Horizontal radio-based navigation (Import / Analytics) with lazy loading
+- Language switching (English/Spanish) with state reset
 - Bank selection (top-bar dropdown, not sidebar)
 - ML model loading and caching
 - Page rendering delegation
@@ -40,15 +35,20 @@ def get_ml_engine():
     engine.load_model()
     return engine
 
-ML_ENGINE = get_ml_engine()
+# Stable internal keys for navigation
+nav_options = {"import": t("nav_import"), "analytics": t("nav_analytics")}
+selected_nav = st.radio("Navigation", options=list(nav_options.keys()), horizontal=True, key="nav_page")
 
-# Two-tab navigation
-tab_import, tab_analytics = st.tabs([t("nav_import"), t("nav_analytics")])
-with tab_import:
+# Lazy rendering logic:
+if selected_nav == "import":
+    from ui.pages.import_page import render_import_page
     render_import_page(...)
-with tab_analytics:
+else:
+    from ui.pages.analytics_page import render_analytics_dashboard
     render_analytics_dashboard(...)
 ```
+
+**Lazy Loading Note**: The app avoids `st.tabs` because it eagerly loads both branches. By using a horizontal radio, the app achieves true lazy-loading of heavy modules (`pandas`, `plotly`, `ml_categorizer`).
 
 **Bank/language controls** live in the top bar (3 columns: title, language, bank).
 Sidebar is info-only (rules status, welcome text).
@@ -111,6 +111,49 @@ Do not set `st.session_state["bank_select"]` from `import_page.py` after widgets
 **Copy-to-Analytics robustness**:
 - `render_import_page(...)` now passes both `bank_label` and `bank_id` to `copy_csv_to_analysis(...)`.
 - This avoids false "unknown bank" errors when localized/display labels differ from analytics target keys.
+
+### Manual Entry Pages
+
+**Files**:
+- `src/ui/pages/manual_entry_page.py`
+- `src/ui/flet_ui/manual_entry_view.py`
+
+**Entry Functions**:
+
+```python
+render_manual_entry_page(*, t, config_dir, db_path=None, user_id=None, lang="es") -> None
+get_manual_entry_view(page, t, config, lang="es") -> ft.Control
+```
+
+**Responsibilities**:
+- Load category options from `config/rules.yml`
+- Load canonical account labels from `config/accounts.yml`
+- Translate Firefly expense paths into friendly labels with `get_category_label(...)`
+- Resolve `bank_id` and `account_id` from the selected canonical account before saving
+- Submit one transaction through `services.manual_entry_service.submit_manual_transaction(...)`
+
+**Behavior Notes**:
+- Streamlit passes `st.session_state.lang` into the page so category labels are localized
+- Flet passes `global_state["lang"]` into the view for the same category-label mapping
+- Validation and duplicate messages are surfaced from the service layer instead of duplicating DB logic in the UI
+
+### Settings Pages
+
+**Files**:
+- `src/ui/pages/settings_page.py`
+- `src/ui/flet_ui/settings_view.py`
+
+**Responsibilities**:
+- List local family profiles from SQLite
+- Switch active profile in `prefs.json`
+- Create new profiles with an optional PIN
+- Require PIN verification before switching into protected profiles
+
+**Behavior Notes**:
+- Protected profiles are identified by a non-NULL `password_hash`
+- Streamlit renders inline PIN confirmation when the user selects a protected profile
+- Flet renders an inline PIN row and lock badge for protected profiles
+- Both UIs delegate all PIN verification to `services.user_service.verify_password(...)`
 
 ---
 
@@ -386,13 +429,30 @@ codegraph_node "_render_rule_hub"
 
 ## Related Files
 
+### Flet Infrastructure
+- `src/flet_app.py` - Desktop entry point and router
+- `src/ui/flet_ui/layout.py` - Persistent Sidebar and Header layout
+- `src/ui/flet_ui/import_view.py` - Flet import workflow
+- `src/ui/flet_ui/analytics_view.py` - Flet analytics dashboard
+- `src/ui/flet_ui/rule_hub_view.py` - Flet Rule Hub drawer
+- `src/ui/flet_ui/manual_entry_view.py` - Flet manual transaction form
+- `src/ui/flet_ui/settings_view.py` - Flet family profiles + PIN switching
+- `src/ui/flet_ui/components.py` - Reusable metric and chart containers for Flet
+
+### Streamlit Legacy Infrastructure
 - `src/web_app.py` - App router, CSS theme, ML caching
 - `src/ui/pages/import_page.py` - Import workflow
 - `src/ui/pages/analytics_page.py` - Analytics dashboard + Rule Hub
+- `src/ui/pages/manual_entry_page.py` - Streamlit manual transaction form
+- `src/ui/pages/settings_page.py` - Streamlit family profiles + PIN switching
 - `src/ui/components/analytics_components.py` - Reusable chart/metric components
+
+### Shared Logic & Services
 - `src/translations.py` - Bilingual string dictionary
 - `src/services/data_service.py` - DB-first transaction loading + CSV fallback
 - `src/services/analytics_service.py` - Stats calculation
 - `src/services/rule_service.py` - Rule staging/merging
+- `src/services/manual_entry_service.py` - Manual-entry helpers shared by Streamlit and Flet
+- `src/services/user_service.py` - Active profile and PIN verification helpers
 - `src/ml_categorizer.py` - ML predictions
 - `src/smart_matching.py` - Fuzzy merchant search

@@ -1,14 +1,20 @@
 # ledger-smart-converter
 
+# ledger-smart-converter
+
 A collection of tools to import bank account and credit card statements (HSBC Mexico, Santander LikeU) into [Firefly III](https://www.firefly-iii.org/).
 
 It features an intelligent **Learning Cycle** that helps you progressively categorize transactions using regex rules and assisted learning.
 
 ## Features
 
+-   **Desktop App (Flet)**: New native-inspired desktop interface for a smoother experience.
 -   **Santander LikeU**: Import from XLSX statements or directly from PDF using OCR.
 -   **HSBC Mexico**: Import from CFDI (XML) statements or PDF (OCR).
 -   **Analytics Dashboard**: Visualize spending metrics, category breakdowns, and bank comparisons.
+-   **👥 Family Profiles**: PIN-protected multi-user support for managing shared/individual accounts.
+-   **📝 Manual Entry**: Add individual transactions directly from the UI.
+-   **🧹 Smart Deduplication**: Interactive resolution of duplicates during batch imports (Skip/Overwrite/Keep Both).
 -   **🧠 AI Smart Suggestions**: Integrated ML predictions suggest categories based on your history.
 -   **🛠️ Rule Correction Hub**: Fix miscategorizations and "teach" the AI with one click.
 -   **🔍 Fuzzy Merchant Search**: Find merchants effortlessly, even with typos or varying descriptions.
@@ -22,113 +28,39 @@ It features an intelligent **Learning Cycle** that helps you progressively categ
 ## Folder Structure
 
 -   `src/`: Python source code (importers, utilities).
--   `src/services/`: Service orchestration layer for import, analytics, and rule workflows.
--   `src/ui/pages/`: Streamlit page modules (import + analytics), keeping `web_app.py` as a thin router.
--   `config/`: Configuration files (`rules.yml`).
--   `scripts/`: PowerShell scripts for execution.
+-   `src/services/`: Service orchestration layer (import, analytics, rules, users, manual entry, dedup).
+-   `src/ui/pages/`: Streamlit page modules (import + analytics + settings).
+-   `src/ui/flet_ui/`: Flet desktop view components and layout.
+-   `config/`: Configuration files (`rules.yml`, `accounts.yml`).
+-   `scripts/`: Automation and execution scripts.
 -   `.github/workflows/`: CI pipelines (test automation on push/PR).
--   `data/`: Persistent storage for each bank (input files and generated CSVs).
+-   `data/`: SQLite database (`ledger.db`) and bank-specific data.
 
 ## Deployment (Local / Server)
 
 This project runs as a Streamlit app. You can deploy it locally or on a small VM.
 
-### Windows (PowerShell)
-```powershell
-.\scripts\setup_env.ps1
-.\scripts\run_web.ps1
-```
+### Option A: Web App (Streamlit)
+Ideal for server deployment or browser-based access.
 
-### Linux/macOS (bash)
-```bash
-./scripts/setup_env.sh
-./scripts/run_web.sh
-```
+**Windows (PowerShell)**: `.\scripts\run_web.ps1`
+**Linux/macOS**: `./scripts/run_web.sh`
 
-### Healthcheck
-Run a quick runtime validation for dependencies, paths, and OCR binary:
-```bash
-python src/healthcheck.py
-```
+### Option B: Desktop App (Flet)
+Recommended for local desktop usage with native feel and navigation.
 
-**OCR (optional):** install Tesseract and ensure it is on your PATH. For example:
-```bash
-sudo apt-get install tesseract-ocr
-```
-
-For a deeper roadmap (deployment, unified accounts, and database improvements), see [`docs/plan_mejoras.md`](docs/plan_mejoras.md).
-
-## Usage
-
-### 1. Launch the App
-
-CLI import example (works in bash/PowerShell):
-```bash
-python src/generic_importer.py --bank santander_likeu --data data/input.csv --out data/santander/firefly_likeu.csv --unknown-out data/santander/unknown_merchants.csv
-```
-
-Additional reliability flags:
-- `--strict`: fail fast on validation issues.
-- `--dry-run`: parse and validate without writing CSVs.
-- `--log-json <path>`: write a JSON manifest with run counters and warnings.
-
-### Testing & CI
-Run tests locally:
-```bash
-python -m pytest -q
-```
-
-Run tests with coverage reporting (requires `pytest-cov`):
-```bash
-python -m pytest --cov=src --cov-report=term --cov-report=html
-```
-
-CI runs automatically on GitHub push/PR and executes:
-- dependency install
-- `py_compile` checks
-- pytest test suite with 60% coverage enforcement (excludes UI files)
-
-### Claude Code Slash Commands
-
-If you use [Claude Code](https://claude.ai/claude-code) as your AI coding assistant, this project includes project-specific slash commands in `.claude/commands/`:
-
-| Command | Description |
-|---|---|
-| `/add-bank [name]` | Step-by-step guide to add a new bank importer |
-| `/run-tests` | Run the pytest suite with test file references |
-| `/add-rule [merchant]` | Safe categorization rule staging workflow |
-| `/health` | System health check and diagnostics |
-| `/import-bank [bank] [file]` | Run a bank statement import |
-| `/fix-ocr [file]` | Debug PDF/OCR parsing issues |
-| `/new-test [module]` | TDD workflow for creating new test files |
-
-These commands are available automatically when you open the project in Claude Code.
-
-### 2. Importing Statements
-Go to the **"Import Files"** tab:
-- **Standard**: Upload your XML (HSBC) or XLSX (Santander) along with the PDF.
-- **OCR (No Data File)**: If you only have a PDF scan, upload it and check the box **"🔍 Use PDF as primary data source (OCR)"**.
-- Click **Process Files** to generate a Firefly-ready CSV.
-
-### 3. Analytics & Exploration
-Switch to the **"Analytics Dashboard"** tab to:
-- See **Total Spent** per bank and per period.
-- Explore **Category Deep Dives** with distribution charts.
-- Use the **Transaction Drill-down** to find specific expenses by category.
-
-### 4. Smart Rule Correction (AI-Powered)
-Found a miscategorized transaction? Scroll to the bottom of the Dashboard:
-1. **Fuzzy Search**: Use the search box to find the merchant (e.g., "WAL" will find "WALMART CASHI").
-2. **AI Prediction**: The system will show: `🤖 ML Prediction: Suggested category is Groceries (95%)`.
-3. **Stage Rule**: Save the rule into `config/rules.pending.yml` (no direct mutation of `rules.yml`).
-4. **Apply Pending Rules**: Merge staged rules safely (with conflict checks and timestamped backup under `config/backups/`).
-5. **Instant Retraining**: The AI retrains after successful merge for future statements.
+**Windows (PowerShell)**: `.\scripts\run_flet.ps1`
+**Linux/macOS**: `./scripts/run_flet.sh`
 
 ---
 
-## Security & Privacy
-- **100% Local**: All processing, OCR, and Machine Learning happen on your machine.
-- **Privacy First**: No data is sent to the cloud. Your `data/` folder and sensitive files are protected by `.gitignore`.
+### Setup Instructions
+All interfaces share the same environment:
+
+**Windows (PowerShell)**: `.\scripts\setup_env.ps1`
+**Linux/macOS**: `./scripts/setup_env.sh`
+
+`setup_env` now expects [`uv`](https://docs.astral.sh/uv/) on your `PATH`, creates a repo-local `.venv` with `uv venv`, and installs `requirements.txt` into that environment with `uv pip install -r`.
 
 ## Statement Cycles & Tagging
 

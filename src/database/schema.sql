@@ -1,5 +1,17 @@
 PRAGMA foreign_keys = ON;
 
+-- Family profiles: lightweight local user accounts.
+-- password_hash stores a bcrypt hash; NULL means no PIN required to switch.
+-- user_id is a short slug (e.g. "maria", "juan").
+CREATE TABLE IF NOT EXISTS users (
+    user_id       TEXT PRIMARY KEY,
+    display_name  TEXT NOT NULL,
+    color         TEXT NOT NULL DEFAULT '#4fc3f7',
+    is_admin      INTEGER NOT NULL DEFAULT 0,
+    password_hash TEXT,
+    created_at    TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS accounts (
     account_id TEXT PRIMARY KEY,
     display_name TEXT NOT NULL,
@@ -56,16 +68,19 @@ CREATE TABLE IF NOT EXISTS transactions (
     destination_name TEXT,
     source_file TEXT NOT NULL,
     import_id INTEGER,
+    user_id TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (canonical_account_id) REFERENCES accounts (account_id),
-    FOREIGN KEY (import_id) REFERENCES imports (import_id)
+    FOREIGN KEY (import_id) REFERENCES imports (import_id),
+    FOREIGN KEY (user_id) REFERENCES users (user_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date);
 CREATE INDEX IF NOT EXISTS idx_transactions_bank_id ON transactions(bank_id);
 CREATE INDEX IF NOT EXISTS idx_transactions_canonical_account ON transactions(canonical_account_id);
 CREATE INDEX IF NOT EXISTS idx_transactions_period ON transactions(statement_period);
+CREATE INDEX IF NOT EXISTS idx_transactions_user_id ON transactions(user_id);
 
 CREATE TABLE IF NOT EXISTS audit_events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

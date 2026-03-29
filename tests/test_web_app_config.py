@@ -60,17 +60,17 @@ def test_build_bank_map_defined():
     assert "build_bank_map" in _get_function_names()
 
 
-def test_navigation_uses_tabs_not_sidebar_radio():
-    """Primary navigation must use st.tabs so it is always visible on mobile.
+def test_navigation_uses_horizontal_radio():
+    """Primary navigation must use horizontal radio for lazy loading.
 
-    When navigation is sidebar-only, collapsing the sidebar on mobile makes
-    it impossible to switch between Import and Analytics pages.
+    When navigation uses tabs, it eagerly loads heavy dependencies.
+    A horizontal radio button ensures true lazy loading while remaining mobile friendly.
     """
     source = WEB_APP.read_text(encoding="utf-8")
-    assert "st.tabs(" in source, "main() must use st.tabs for primary navigation"
+    assert "horizontal=True" in source, "main() must use horizontal radio for navigation"
     # sidebar radio for navigation must not be the routing mechanism anymore
     assert 'sidebar.radio' not in source, (
-        "st.sidebar.radio should not drive page routing — use st.tabs instead "
+        "st.sidebar.radio should not drive page routing — use horizontal radio instead "
         "so navigation is accessible even when the sidebar is hidden on mobile."
     )
 

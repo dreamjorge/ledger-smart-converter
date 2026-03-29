@@ -14,3 +14,5 @@ rapidfuzz
 python-dotenv
 pytest
 pytest-cov
+flet
+bcrypt

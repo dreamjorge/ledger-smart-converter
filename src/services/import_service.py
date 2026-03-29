@@ -7,6 +7,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, Optional, Tuple
 
+import yaml
+
 logger = logging.getLogger(__name__)
 
 
@@ -117,6 +119,34 @@ def copy_csv_to_analysis(
     if src_path != dest_resolved:
         shutil.copy(src_path, dest_resolved)
     return True, str(dest_resolved)
+
+
+_FALLBACK_BANKS = {
+    "santander_likeu": {"display_name": "Santander LikeU (XLSX/PDF)", "type": "xlsx"},
+    "hsbc": {"display_name": "HSBC Mexico (XML/PDF)", "type": "xml"},
+}
+
+
+def get_banks_from_config(rules_path: Path) -> Dict[str, Dict]:
+    """Return {bank_id: {"display_name": ..., "type": ...}} from rules.yml banks section.
+
+    Falls back to the two built-in banks if the file is missing or has no banks key.
+    """
+    if rules_path.exists():
+        try:
+            cfg = yaml.safe_load(rules_path.read_text(encoding="utf-8")) or {}
+            banks = cfg.get("banks", {})
+            if banks:
+                return {
+                    bid: {
+                        "display_name": bcfg.get("display_name", bid),
+                        "type": bcfg.get("type", "xlsx"),
+                    }
+                    for bid, bcfg in banks.items()
+                }
+        except Exception:
+            pass
+    return dict(_FALLBACK_BANKS)
 
 
 def get_csv_last_updated(path: Path) -> Optional[str]:

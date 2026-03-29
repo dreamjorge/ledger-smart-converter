@@ -1,13 +1,14 @@
+from __future__ import annotations
 from pathlib import Path
-from typing import Callable, Dict, Tuple
+from typing import Callable, Dict, Optional, Tuple
 
-import pandas as pd
 import streamlit as st
-
+# Heavy imports moved to functions: pandas
 from services import import_service as imp
 
 
 def _load_csv_if_exists(path):
+    import pandas as pd
     if path and Path(path).exists():
         return pd.read_csv(path)
     return None
@@ -113,6 +114,29 @@ def render_import_page(
                     "pdf_path": str(pdf_path) if pdf_path else None,
                 }
 
+                # Run deduplication migration if import succeeded
+                if res.returncode == 0 and out_csv.exists():
+                    try:
+                        from csv_to_db_migrator import migrate_csvs_to_db_with_dedup
+                        from settings import load_settings
+                        settings = load_settings()
+                        dedup_summary, duplicate_rows = migrate_csvs_to_db_with_dedup(
+                            db_path=settings.data_dir / "ledger.db",
+                            data_dir=data_dir,
+                            accounts_path=config_dir / "accounts.yml",
+                            csv_paths=[out_csv],
+                        )
+                        st.session_state[f"{results_key}_dedup"] = {
+                            "inserted": dedup_summary.get("rows_inserted", 0),
+                            "duplicate_rows": duplicate_rows,
+                        }
+                    except Exception as dedup_exc:
+                        st.session_state[f"{results_key}_dedup"] = {
+                            "inserted": 0,
+                            "duplicate_rows": [],
+                            "error": str(dedup_exc),
+                        }
+
     # Render persisted results (survives re-runs from other widget interactions)
     results = st.session_state.get(results_key)
     if results:
@@ -123,6 +147,66 @@ def render_import_page(
 
         if results["returncode"] == 0:
             st.success(t("process_complete"))
+
+            # Deduplication summary
+            dedup = st.session_state.get(f"{results_key}_dedup")
+            if dedup and not dedup.get("error"):
+                st.info(t("dedup_rows_inserted", n=dedup["inserted"]))
+                duplicate_rows = dedup.get("duplicate_rows", [])
+                if duplicate_rows:
+                    st.warning(t("dedup_rows_skipped", n=len(duplicate_rows)))
+                    with st.expander(t("dedup_review_title")):
+                        decisions: Dict[str, str] = {}
+                        action_options = ["skip", "overwrite", "keep_both"]
+                        action_labels = {
+                            "skip": t("dedup_action_skip"),
+                            "overwrite": t("dedup_action_overwrite"),
+                            "keep_both": t("dedup_action_keep_both"),
+                        }
+                        for row in duplicate_rows[:50]:
+                            h = row.get("source_hash", "")
+                            col_info, col_action = st.columns([3, 1])
+                            col_info.write(
+                                f"**{row.get('date', '')}** | {row.get('description', '')} | `{row.get('amount', '')}`"
+                            )
+                            chosen = col_action.selectbox(
+                                "",
+                                options=action_options,
+                                format_func=lambda x: action_labels[x],
+                                key=f"dedup_{h}",
+                                label_visibility="collapsed",
+                            )
+                            decisions[h] = chosen
+
+                        if len(duplicate_rows) > 50:
+                            st.caption(f"Showing first 50 of {len(duplicate_rows)} duplicates.")
+
+                        if st.button(t("dedup_apply_decisions"), type="primary"):
+                            try:
+                                from services.dedup_service import resolve_duplicates
+                                from services.db_service import DatabaseService
+                                from settings import load_settings
+                                settings = load_settings()
+                                db = DatabaseService(db_path=settings.data_dir / "ledger.db")
+                                counts = resolve_duplicates(
+                                    db=db,
+                                    duplicate_rows=duplicate_rows,
+                                    decisions=decisions,
+                                )
+                                st.success(t(
+                                    "dedup_resolved",
+                                    overwritten=counts["overwritten"],
+                                    kept_both=counts["kept_both"],
+                                    skipped=counts["skipped"],
+                                ))
+                                # Clear dedup state after resolution
+                                st.session_state.pop(f"{results_key}_dedup", None)
+                                st.rerun()
+                            except Exception as exc:
+                                st.error(f"Failed to apply decisions: {exc}")
+            elif dedup and dedup.get("error"):
+                st.warning(f"DB sync skipped: {dedup['error']}")
+
             st.info(
                 f"""
             {t('next_steps_title')}
@@ -142,7 +226,7 @@ def render_import_page(
                 )
                 if copied:
                     st.session_state[copy_feedback_key] = t("copy_success", path=result)
-                    st.session_state[nav_key] = t("nav_analytics")
+                    st.session_state[nav_key] = "analytics"
                     st.rerun()
                 elif result == "missing_src":
                     st.warning(t("copy_error_missing"))
@@ -156,7 +240,7 @@ def render_import_page(
             with tab1:
                 df_csv = _load_csv_if_exists(out_csv)
                 if df_csv is not None:
-                    st.dataframe(df_csv, width="stretch")
+                    st.dataframe(df_csv, use_container_width=True)
                     with open(out_csv, "rb") as f:
                         st.download_button(t("download_csv"), f, "firefly_import.csv", "text/csv")
                 else:
@@ -164,7 +248,7 @@ def render_import_page(
             with tab2:
                 df_unk = _load_csv_if_exists(out_unknown)
                 if df_unk is not None:
-                    st.dataframe(df_unk, width="stretch")
+                    st.dataframe(df_unk, use_container_width=True)
                 else:
                     st.info(t("no_unknown"))
             with tab3:

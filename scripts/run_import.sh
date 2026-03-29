@@ -8,8 +8,9 @@ if [ $# -lt 1 ]; then
   exit 1
 fi
 
-if [ -x "${ROOT_DIR}/.venv/bin/python" ]; then
-  exec "${ROOT_DIR}/.venv/bin/python" "${ROOT_DIR}/src/generic_importer.py" "$@"
+if [ ! -x "${ROOT_DIR}/.venv/bin/python" ]; then
+  echo "uv-managed virtual environment not found at ${ROOT_DIR}/.venv. Please run ./scripts/setup_env.sh first." >&2
+  exit 1
 fi
 
-exec python "${ROOT_DIR}/src/generic_importer.py" "$@"
+exec "${ROOT_DIR}/.venv/bin/python" "${ROOT_DIR}/src/generic_importer.py" "$@"

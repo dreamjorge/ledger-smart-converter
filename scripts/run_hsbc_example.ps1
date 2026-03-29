@@ -21,7 +21,7 @@ Write-Host "  Rules: $Rules"
 
 # Check for venv
 if (-not (Test-Path $VenvPath)) {
-    Write-Error "Virtual environment not found. Please run setup_env.ps1 first."
+    Write-Error "uv-managed virtual environment not found. Please run setup_env.ps1 first."
     exit 1
 }
 
