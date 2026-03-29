@@ -1,13 +1,8 @@
 import flet as ft
-from pathlib import Path
-from typing import Callable, Dict, Optional
-import sys
+from typing import Callable, Dict
 import pandas as pd
-
-# Add src to sys.path to resolve internal modules
-sys.path.append(str(Path(__file__).parents[2]))
-from services import data_service
-from services import ui_service
+from services import data_service, ui_service
+from services.analytics_service import calculate_categorization_stats
 from ui.flet_ui.components import MetricCard, ChartContainer
 
 def get_analytics_view(page: ft.Page, t: Callable, config: Dict):
@@ -43,8 +38,6 @@ def get_analytics_view(page: ft.Page, t: Callable, config: Dict):
                 charts_col.controls = []
             else:
                 status_text.value = ""
-                # Get Stats using analytics_service
-                from services.analytics_service import calculate_categorization_stats
                 stats = calculate_categorization_stats(df)
                 
                 # Update Metrics
