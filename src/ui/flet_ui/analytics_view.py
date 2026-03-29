@@ -92,7 +92,7 @@ def get_analytics_view(page: ft.Page, t: Callable, config: Dict):
                         for bid, bcfg in banks_cfg.items()
                     ],
                     value=state["selected_bank_id"],
-                    on_change=lambda e: (state.update({"selected_bank_id": e.data}), refresh_data()),
+                    on_select=lambda e: (state.update({"selected_bank_id": e.control.value}), refresh_data()),
                 ),
                 ft.IconButton(ft.Icons.REFRESH, on_click=refresh_data, tooltip="Refresh Data"),
             ], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),

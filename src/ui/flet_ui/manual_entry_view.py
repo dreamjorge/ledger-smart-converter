@@ -76,7 +76,7 @@ def get_manual_entry_view(page: ft.Page, t: Callable, config: Dict, lang: str = 
             for canonical_id, label in accounts.items()
         ],
         value=state["canonical_account_id"],
-        on_change=lambda e: state.update({"canonical_account_id": e.data}),
+        on_select=lambda e: state.update({"canonical_account_id": e.control.value}),
     )
 
     type_dropdown = ft.Dropdown(
@@ -88,7 +88,7 @@ def get_manual_entry_view(page: ft.Page, t: Callable, config: Dict, lang: str = 
             ft.dropdown.Option("deposit", t("type_deposit")),
         ],
         value="withdrawal",
-        on_change=lambda e: state.update({"transaction_type": e.data}),
+        on_select=lambda e: state.update({"transaction_type": e.control.value}),
     )
 
     category_dropdown = ft.Dropdown(
@@ -96,7 +96,7 @@ def get_manual_entry_view(page: ft.Page, t: Callable, config: Dict, lang: str = 
         width=350,
         options=[ft.dropdown.Option(c, get_category_label(c, lang)) for c in categories],
         value=state["category"],
-        on_change=lambda e: state.update({"category": e.data}),
+        on_select=lambda e: state.update({"category": e.control.value}),
     )
 
     save_btn = ft.ElevatedButton(

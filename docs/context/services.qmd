@@ -481,17 +481,41 @@ set_password(db, user_id: str, password: Optional[str]) -> bool
 # Sets or clears a profile PIN
 ```
 
+**PIN Implementation**:
+- Uses **bcrypt** with `gensalt()` for secure hashing.
+- A `NULL` `password_hash` in the database indicates a "Public" profile that can be switched into without a PIN.
+
 **Migration Note**:
 - `_ensure_users_columns(db)` adds `password_hash` to older `users` tables lazily before reads/writes
 - The SQLite schema now stores bcrypt hashes in `users.password_hash`; `NULL` means profile switching does not require a PIN
 
+### Deduplication Service
+
+**File**: `src/services/dedup_service.py`
+
+**Key Functions**:
+
+```python
+def check_and_insert_batch(db, txn_rows, import_id=None) -> DeduplicationResult:
+# Inserts unique rows; returns duplicates for UI review.
+
+def resolve_duplicates(db, duplicate_rows, decisions, import_id=None) -> Dict[str, int]:
+# Applies user decisions: skip, overwrite, or keep_both.
+```
+
+**Resolution Logic**:
+1. **Skip**: The default; the existing record in the DB remains untouched.
+2. **Overwrite**: Uses `DatabaseService.upsert_transaction` to replace the existing record while preserving the `created_at` timestamp.
+3. **Keep Both**: This is used when two identical transactions should coexist.
+   - The system appends `_copy_N` to the `source_file` field.
+   - A new `source_hash` is generated based on this modified field.
+   - This ensures the `UNIQUE` constraint on `source_hash` is not violated while allowing the duplicate data to be stored.
+
+**Implementation Note**:
+- Resolution occurs as a secondary step after the initial "check" pass.
+- `DeduplicationResult` holds the list of rows that need manual intervention.
+
 ## CodeGraph Navigation for Services
-
-Use CodeGraph to trace service dependencies before modifying business logic:
-
-```bash
-# Find all service functions
-codegraph_search "analytics_service"
 codegraph_search "import_service"
 codegraph_search "rule_service"
 
