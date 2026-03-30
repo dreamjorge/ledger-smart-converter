@@ -9,7 +9,7 @@ import plotly.express as px
 
 from services import import_service as imp
 from services import rule_service as rulesvc
-from services import data_service, ui_service
+from services import data_service, ui_service, analytics_service
 from ui.components.analytics_components import (
     render_metrics,
     render_charts,
@@ -19,18 +19,12 @@ from ui.components.analytics_components import (
 from ui.components.rule_components import render_rule_staging_hub
 
 
-def render_comparison(df_sant: pd.DataFrame, df_hsbc: pd.DataFrame, *, t: Callable, tc: Callable = None):
-    """Render comparison view between Santander and HSBC banks."""
-    from services.analytics_service import calculate_categorization_stats
-
+def render_comparison(stats_sant: dict, stats_hsbc: dict, *, t: Callable, tc: Callable = None):
+    """Render comparison view between Santander and HSBC banks using pre-calculated stats."""
     # Default tc to t if not provided
     if tc is None:
         tc = lambda x: x
     st.markdown(t("comparison_desc"))
-
-    # Calculate stats for both banks
-    stats_sant = calculate_categorization_stats(df_sant)
-    stats_hsbc = calculate_categorization_stats(df_hsbc)
 
     # Comparison metrics
     st.markdown("### 📊 Overall Comparison")
@@ -68,7 +62,7 @@ def render_comparison(df_sant: pd.DataFrame, df_hsbc: pd.DataFrame, *, t: Callab
             )
             fig_sant.update_traces(textposition="inside", textinfo="percent+label")
             fig_sant.update_layout(showlegend=False, height=400)
-            st.plotly_chart(fig_sant, use_container_width=True)
+            st.plotly_chart(fig_sant, width="stretch", key="comparison_pie_sant")
 
     with col2:
         st.markdown("**HSBC**")
@@ -82,7 +76,7 @@ def render_comparison(df_sant: pd.DataFrame, df_hsbc: pd.DataFrame, *, t: Callab
             )
             fig_hsbc.update_traces(textposition="inside", textinfo="percent+label")
             fig_hsbc.update_layout(showlegend=False, height=400)
-            st.plotly_chart(fig_hsbc, use_container_width=True)
+            st.plotly_chart(fig_hsbc, width="stretch", key="comparison_pie_hsbc")
 
     # Combined category spending bar chart
     st.markdown("---")
@@ -90,7 +84,7 @@ def render_comparison(df_sant: pd.DataFrame, df_hsbc: pd.DataFrame, *, t: Callab
 
     fig_comparison = ui_service.get_bank_comparison_fig(stats_sant, stats_hsbc, tc)
     if fig_comparison.data:
-        st.plotly_chart(fig_comparison, use_container_width=True)
+        st.plotly_chart(fig_comparison, width="stretch", key="comparison_bar_combined")
 
     # Coverage comparison
     st.markdown("---")
@@ -101,13 +95,13 @@ def render_comparison(df_sant: pd.DataFrame, df_hsbc: pd.DataFrame, *, t: Callab
     with col1:
         st.markdown("**Santander**")
         fig_cov_sant = ui_service.get_coverage_pie_fig(stats_sant, t)
-        st.plotly_chart(fig_cov_sant, use_container_width=True)
+        st.plotly_chart(fig_cov_sant, width="stretch", key="comparison_cov_sant")
         st.caption(f"{ui_service.format_percentage(stats_sant['coverage_pct'])} categorized")
 
     with col2:
         st.markdown("**HSBC**")
         fig_cov_hsbc = ui_service.get_coverage_pie_fig(stats_hsbc, t)
-        st.plotly_chart(fig_cov_hsbc, use_container_width=True)
+        st.plotly_chart(fig_cov_hsbc, width="stretch", key="comparison_cov_hsbc")
         st.caption(f"{ui_service.format_percentage(stats_hsbc['coverage_pct'])} categorized")
 
 
@@ -127,83 +121,71 @@ def render_analytics_dashboard(
     st.header(t("analytics_title"))
     db_path = data_dir / "ledger.db"
     
-    # Load data for all banks
-    df_sant = data_service.load_transactions("santander_likeu", prefer_db=True, db_path=db_path)
-    df_hsbc = data_service.load_transactions("hsbc", prefer_db=True, db_path=db_path)
+    # Check if DB has data
+    total_db_rows = 0
+    if db_path.exists():
+        from services.db_service import DatabaseService
+        db = DatabaseService(db_path=db_path)
+        row = db.fetch_one("SELECT COUNT(*) AS c FROM transactions")
+        total_db_rows = row["c"] if row else 0
 
-    if df_sant.empty and df_hsbc.empty:
+    if total_db_rows == 0:
         st.warning(t("no_csv_found"))
+        st.info("Try importing some files or 'Sync Historical Data' in Settings.")
         return
 
-    # Add "Global Overview" if we have data from multiple sources
-    tabs = []
-    if not df_sant.empty or not df_hsbc.empty:
-        tabs.append("🌍 " + t("all"))
-    if not df_sant.empty:
-        tabs.append("Santander")
-    if not df_hsbc.empty:
-        tabs.append("HSBC")
-    if not df_sant.empty and not df_hsbc.empty:
-        tabs.append(t("tab_comparison"))
-
+    # Add tabs for different views
+    tabs = ["🌍 " + t("all"), "Santander", "HSBC", t("tab_comparison")]
     selected_tabs = st.tabs(tabs)
-    tab_idx = 0
     
     # Global Overview Tab
-    if not df_sant.empty or not df_hsbc.empty:
-        with selected_tabs[tab_idx]:
-            # FIX: Only concat non-empty dataframes to avoid crash
-            dfs_to_concat = [df for df in [df_sant, df_hsbc] if not df.empty]
-            if len(dfs_to_concat) > 1:
-                df_all = pd.concat(dfs_to_concat, ignore_index=True)
-            else:
-                df_all = dfs_to_concat[0]
-                
-            render_bank_analytics(
-                df=df_all,
-                bank_name=t("all"),
-                bank_id="all_accounts",
-                t=t,
-                tc=tc,
-                config_dir=config_dir,
-                data_dir=data_dir,
-                ml_engine=ml_engine,
-                show_rule_hub=False # Rule hub is better per-bank
-            )
-        tab_idx += 1
+    with selected_tabs[0]:
+        render_bank_analytics(
+            bank_name=t("all"),
+            bank_id="all_accounts",
+            t=t,
+            tc=tc,
+            config_dir=config_dir,
+            data_dir=data_dir,
+            ml_engine=ml_engine,
+            show_rule_hub=False,
+            db_path=db_path
+        )
 
-    if not df_sant.empty:
-        with selected_tabs[tab_idx]:
-            st.subheader(t("bank_analytics_header", bank="Santander"))
-            render_bank_analytics(
-                df=df_sant,
-                bank_name="Santander",
-                bank_id="santander_likeu",
-                t=t,
-                tc=tc,
-                config_dir=config_dir,
-                data_dir=data_dir,
-                ml_engine=ml_engine,
-            )
-        tab_idx += 1
-    if not df_hsbc.empty:
-        with selected_tabs[tab_idx]:
-            st.subheader(t("bank_analytics_header", bank="HSBC"))
-            render_bank_analytics(
-                df=df_hsbc,
-                bank_name="HSBC",
-                bank_id="hsbc",
-                t=t,
-                tc=tc,
-                config_dir=config_dir,
-                data_dir=data_dir,
-                ml_engine=ml_engine,
-            )
-        tab_idx += 1
-    if not df_sant.empty and not df_hsbc.empty:
-        with selected_tabs[tab_idx]:
-            st.subheader(t("bank_comparison"))
-            render_comparison(df_sant, df_hsbc, t=t, tc=tc)
+    # Santander Tab
+    with selected_tabs[1]:
+        st.subheader(t("bank_analytics_header", bank="Santander"))
+        render_bank_analytics(
+            bank_name="Santander",
+            bank_id="santander_likeu",
+            t=t,
+            tc=tc,
+            config_dir=config_dir,
+            data_dir=data_dir,
+            ml_engine=ml_engine,
+            db_path=db_path
+        )
+
+    # HSBC Tab
+    with selected_tabs[2]:
+        st.subheader(t("bank_analytics_header", bank="HSBC"))
+        render_bank_analytics(
+            bank_name="HSBC",
+            bank_id="hsbc",
+            t=t,
+            tc=tc,
+            config_dir=config_dir,
+            data_dir=data_dir,
+            ml_engine=ml_engine,
+            db_path=db_path
+        )
+
+    # Comparison Tab
+    with selected_tabs[3]:
+        st.subheader(t("bank_comparison"))
+        stats_sant = analytics_service.calculate_categorization_stats_from_db(db_path, bank_id="santander_likeu")
+        stats_hsbc = analytics_service.calculate_categorization_stats_from_db(db_path, bank_id="hsbc")
+        render_comparison(stats_sant, stats_hsbc, t=t, tc=tc)
 
 
 def _render_drilldown(t, tc, stats, df_filtered_for_display, bank_id):
@@ -224,24 +206,12 @@ def _render_drilldown(t, tc, stats, df_filtered_for_display, bank_id):
     if not display_df.empty:
         st.markdown(t("showing_txns", count=len(display_df), cat=tc(selected_cat)))
         view_cols = ["date", "description", "amount", "destination_name", "tags"]
-        st.dataframe(display_df[view_cols], use_container_width=True)
+        st.dataframe(display_df[view_cols], width="stretch")
     else:
         st.info(t("no_txns_found"))
 
 
-def render_bank_analytics(df, bank_name, bank_id, t, tc, config_dir: Path, data_dir: Path, ml_engine, show_rule_hub=True):
-    from services.analytics_service import calculate_categorization_stats
-    
-    if df is None or df.empty:
-        st.error("No data available")
-        return
-
-    # Info caption for last update (if applicable)
-    if bank_id != "all_accounts":
-        last_updated = imp.get_csv_last_updated(data_service.get_csv_path(bank_id))
-        if last_updated:
-            st.caption(t("last_data_update", timestamp=last_updated))
-
+def render_bank_analytics(bank_name, bank_id, t, tc, config_dir: Path, data_dir: Path, ml_engine, db_path: Path, show_rule_hub=True):
     # Global Date Range Selector
     col_date1, col_date2 = st.columns(2)
     with col_date1:
@@ -251,47 +221,40 @@ def render_bank_analytics(df, bank_name, bank_id, t, tc, config_dir: Path, data_
 
     date_range_active = start_date_filter is not None and end_date_filter is not None and start_date_filter <= end_date_filter
 
-    periods = set()
-    if "tags" in df.columns:
-        for tag_str in df["tags"].dropna():
-            for tag in str(tag_str).split(","):
-                if tag.startswith("period:"):
-                    periods.add(tag.split(":")[1])
+    # If it's a specific bank, we can still filter by period from the tags
+    selected_period_value = None
+    if bank_id != "all_accounts":
+        # We need a small DF just to extract periods for the dropdown
+        # This is a bit inefficient but keep it for now for the period UI
+        df_minimal = data_service.load_transactions_from_db(bank_id, db_path=db_path)
+        periods = set()
+        if not df_minimal.empty and "tags" in df_minimal.columns:
+            for tag_str in df_minimal["tags"].dropna():
+                for tag in str(tag_str).split(","):
+                    if tag.startswith("period:"):
+                        periods.add(tag.split(":")[1])
 
-    sorted_periods = sorted(list(periods), reverse=True)
-    selected_period = t("all")
-    if sorted_periods:
-        selected_period = st.selectbox(
-            t("filter_period", bank=bank_name), 
-            [t("all")] + sorted_periods, 
-            key=f"{bank_id}_period_filter",
-            disabled=date_range_active # Disable if date range is active
-        )
+        sorted_periods = sorted(list(periods), reverse=True)
+        if sorted_periods:
+            selected_period = st.selectbox(
+                t("filter_period", bank=bank_name), 
+                [t("all")] + sorted_periods, 
+                key=f"{bank_id}_period_filter",
+                disabled=date_range_active
+            )
+            if selected_period != t("all") and not date_range_active:
+                selected_period_value = selected_period
 
-    # Determine filtering parameters
-    selected_period_value = selected_period if selected_period != t("all") and not date_range_active else None
-    
-    # Re-filter df to create df_filtered based on the selected period or date range for drill-down and rule hub
-    df_filtered_for_display = df.copy()
-    if date_range_active:
-        df_filtered_for_display = df_filtered_for_display[
-            (df_filtered_for_display["date"] >= pd.to_datetime(start_date_filter)) &
-            (df_filtered_for_display["date"] <= pd.to_datetime(end_date_filter))
-        ]
-    elif selected_period_value:
-        df_filtered_for_display = df_filtered_for_display[
-            df_filtered_for_display["tags"].str.contains(f"period:{selected_period_value}", na=False)
-        ]
-
-    # Calculate stats using the date range filters or period filter
-    stats = calculate_categorization_stats(
-        df,
+    # Calculate stats directly from DB
+    stats = analytics_service.calculate_categorization_stats_from_db(
+        db_path=db_path,
+        bank_id=None if bank_id == "all_accounts" else bank_id,
         period=selected_period_value,
         start_date=pd.to_datetime(start_date_filter) if start_date_filter else None,
         end_date=pd.to_datetime(end_date_filter) if end_date_filter else None,
     )
 
-    if stats is None:
+    if stats["total"] == 0:
         st.error(t("no_data_selection"))
         return
 
@@ -299,16 +262,33 @@ def render_bank_analytics(df, bank_name, bank_id, t, tc, config_dir: Path, data_
     render_charts(t, stats, tc, key_suffix=bank_id)
     render_category_deep_dive(t, tc, stats, key_suffix=bank_id)
     render_monthly_spending_trends(t, tc, stats, key_suffix=bank_id)
-    _render_drilldown(t, tc, stats, df_filtered_for_display, bank_id)
     
-    if show_rule_hub:
-        render_rule_staging_hub(
-            t=t,
-            tc=tc,
-            df_filtered_for_display=df_filtered_for_display,
-            bank_name=bank_name,
-            bank_id=bank_id,
-            config_dir=config_dir,
-            data_dir=data_dir,
-            ml_engine=ml_engine
-        )
+    # For drilldown and rule hub, we still need a DataFrame
+    # In Approach 2 we would ideally have a "DataService.get_filtered_transactions"
+    df_filtered = data_service.load_transactions_from_db(
+        bank_id=None if bank_id == "all_accounts" else bank_id,
+        db_path=db_path
+    )
+    if not df_filtered.empty:
+        # Apply the same filtering as the stats query for the UI display
+        if date_range_active:
+            df_filtered = df_filtered[
+                (df_filtered["date"] >= pd.to_datetime(start_date_filter)) &
+                (df_filtered["date"] <= pd.to_datetime(end_date_filter))
+            ]
+        elif selected_period_value:
+            df_filtered = df_filtered[df_filtered["tags"].str.contains(f"period:{selected_period_value}", na=False)]
+
+        _render_drilldown(t, tc, stats, df_filtered, bank_id)
+        
+        if show_rule_hub:
+            render_rule_staging_hub(
+                t=t,
+                tc=tc,
+                df_filtered_for_display=df_filtered,
+                bank_name=bank_name,
+                bank_id=bank_id,
+                config_dir=config_dir,
+                data_dir=data_dir,
+                ml_engine=ml_engine
+            )

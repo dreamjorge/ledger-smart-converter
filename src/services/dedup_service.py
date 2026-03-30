@@ -41,21 +41,43 @@ def check_and_insert_batch(
     """
     result = DeduplicationResult(inserted=0, import_id=import_id)
 
+    # 1. Pre-calculate hashes
     for row in txn_rows:
-        source_hash = row.get("source_hash") or db.build_source_hash(
-            bank_id=row["bank_id"],
-            source_file=row["source_file"],
-            date=row["date"],
-            amount=float(row["amount"]),
-            description=row.get("description", ""),
-        )
-        row_with_hash = {**row, "source_hash": source_hash}
+        if not row.get("source_hash"):
+            row["source_hash"] = db.build_source_hash(
+                bank_id=row["bank_id"],
+                source_file=row["source_file"],
+                date=row["date"],
+                amount=float(row["amount"]),
+                description=row.get("description", ""),
+            )
 
-        if db.transaction_exists(source_hash):
-            result.duplicate_rows.append(row_with_hash)
+    # 2. Find existing hashes in bulk
+    all_hashes = [r["source_hash"] for r in txn_rows]
+    existing_hashes = set()
+    
+    if all_hashes:
+        # SQLite limit for variables in IN clause is 999, so chunk it
+        for i in range(0, len(all_hashes), 900):
+            chunk = all_hashes[i:i+900]
+            placeholders = ",".join(["?"] * len(chunk))
+            query = f"SELECT source_hash FROM transactions WHERE source_hash IN ({placeholders})"
+            rows = db.fetch_all(query, tuple(chunk))
+            existing_hashes.update(r["source_hash"] for r in rows)
+
+    # 3. Separate duplicates and new rows
+    new_rows = []
+    for row in txn_rows:
+        h = row["source_hash"]
+        if h in existing_hashes:
+            result.duplicate_rows.append(row)
         else:
-            db.insert_transaction(row_with_hash, import_id=import_id)
-            result.inserted += 1
+            new_rows.append(row)
+
+    # 4. Insert new rows in bulk using insert_transactions_batch
+    if new_rows:
+        batch_res = db.insert_transactions_batch(new_rows, import_id=import_id)
+        result.inserted = batch_res.get("inserted", 0)
 
     return result
 

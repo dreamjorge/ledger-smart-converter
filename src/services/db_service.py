@@ -192,6 +192,74 @@ class DatabaseService:
             conn.commit()
             return cur.rowcount > 0
 
+    def insert_transactions_batch(self, txn_rows: List[Dict[str, Any]], import_id: Optional[int] = None, user_id: Optional[str] = None) -> Dict[str, int]:
+        """Insert multiple transactions efficiently in a single DB transaction.
+        
+        Returns:
+            Dict with "inserted" and "skipped" counts.
+        """
+        inserted = 0
+        skipped = 0
+        
+        # Prepare parameters for all rows
+        params = []
+        for txn in txn_rows:
+            source_hash = txn.get("source_hash") or self.build_source_hash(
+                bank_id=txn["bank_id"],
+                source_file=txn["source_file"],
+                date=txn["date"],
+                amount=float(txn["amount"]),
+                description=txn.get("description", ""),
+            )
+            effective_user_id = user_id or txn.get("user_id")
+            params.append((
+                source_hash,
+                txn["date"],
+                float(txn["amount"]),
+                txn.get("currency", "MXN"),
+                txn.get("merchant"),
+                txn.get("description", ""),
+                txn.get("raw_description"),
+                txn.get("normalized_description"),
+                txn["account_id"],
+                txn["canonical_account_id"],
+                txn["bank_id"],
+                txn.get("statement_period"),
+                txn.get("category"),
+                txn.get("tags"),
+                txn.get("transaction_type", "withdrawal"),
+                txn.get("source_name", txn.get("account_id")),
+                txn.get("destination_name"),
+                txn["source_file"],
+                import_id,
+                effective_user_id,
+            ))
+
+        with self._connect() as conn:
+            # We use individual execution inside one transaction to get accurate rowcounts per row
+            # Or we could use executemany but we lose individual rowcount feedback.
+            # For exact counts of inserted vs skipped with INSERT OR IGNORE, we iterate.
+            for p in params:
+                cur = conn.execute(
+                    """
+                    INSERT OR IGNORE INTO transactions (
+                        source_hash, date, amount, currency, merchant, description, 
+                        raw_description, normalized_description, account_id, 
+                        canonical_account_id, bank_id, statement_period,
+                        category, tags, transaction_type, source_name, 
+                        destination_name, source_file, import_id, user_id
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    p
+                )
+                if cur.rowcount > 0:
+                    inserted += 1
+                else:
+                    skipped += 1
+            conn.commit()
+            
+        return {"inserted": inserted, "skipped": skipped}
+
     def transaction_exists(self, source_hash: str) -> bool:
         """Return True if a transaction with this source_hash already exists."""
         row = self.fetch_one(

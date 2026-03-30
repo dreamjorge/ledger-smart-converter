@@ -285,7 +285,7 @@ def load_transactions(bank_id: str, prefer_db: bool = True, db_path: Optional[Pa
     return load_transactions_from_csv(bank_id)
 
 
-def load_all_bank_data() -> Dict[str, pd.DataFrame]:
+def load_all_bank_data(db_path: Optional[Path] = None, accounts_path: Optional[Path] = None) -> Dict[str, pd.DataFrame]:
     """Load transaction data for all banks defined in accounts.yml.
 
     Builds the file map dynamically from accounts.yml so that new banks added
@@ -298,18 +298,14 @@ def load_all_bank_data() -> Dict[str, pd.DataFrame]:
     logger.info("Loading transaction data for all banks")
     all_data = {}
 
-    bank_file_map = _build_bank_file_map(_accounts_config_path(), _data_dir())
-    seen_paths: set = set()
-    for bank_id, csv_path in bank_file_map.items():
-        resolved = str(csv_path.resolve())
-        if resolved in seen_paths:
-            continue
-        seen_paths.add(resolved)
+    # Use provided accounts_path or default
+    effective_accounts_path = accounts_path or _accounts_config_path()
+    bank_ids = _supported_bank_ids(effective_accounts_path)
+    
+    for bank_id in bank_ids:
         try:
-            if csv_path.exists():
-                all_data[bank_id] = load_transactions_from_csv(bank_id)
-            else:
-                all_data[bank_id] = pd.DataFrame()
+            # load_transactions already defaults to prefer_db=True
+            all_data[bank_id] = load_transactions(bank_id, db_path=db_path)
         except Exception as exc:
             logger.warning("Failed to load data for bank %s: %s", bank_id, exc)
             all_data[bank_id] = pd.DataFrame()

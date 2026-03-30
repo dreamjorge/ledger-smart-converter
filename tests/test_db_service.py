@@ -232,3 +232,41 @@ def test_dashboard_metrics_aggregates_by_period_and_category(tmp_path):
     assert rows[0]["category"] == "Groceries"
     assert rows[0]["tx_count"] == 2
     assert abs(rows[0]["total_amount"] - 150.0) < 0.01
+
+
+def test_insert_transactions_batch(tmp_path):
+    from services.db_service import DatabaseService
+    db = DatabaseService(db_path=tmp_path / "test.db")
+    db.initialize()
+    db.upsert_account("ACC1", "Test", bank_id="testbank")
+    
+    txn1 = {
+        "date": "2024-01-15", "amount": 100.0, "currency": "MXN",
+        "description": "Txn 1", "account_id": "ACC1", "canonical_account_id": "ACC1",
+        "bank_id": "testbank", "source_file": "test.csv"
+    }
+    txn2 = {
+        "date": "2024-01-16", "amount": 50.0, "currency": "MXN",
+        "description": "Txn 2", "account_id": "ACC1", "canonical_account_id": "ACC1",
+        "bank_id": "testbank", "source_file": "test.csv"
+    }
+    
+    # Insert batch of two unique transactions
+    res1 = db.insert_transactions_batch([txn1, txn2])
+    assert res1["inserted"] == 2
+    assert res1["skipped"] == 0
+    
+    # Insert batch with one new, one duplicate
+    txn3 = {
+        "date": "2024-01-17", "amount": 25.0, "currency": "MXN",
+        "description": "Txn 3", "account_id": "ACC1", "canonical_account_id": "ACC1",
+        "bank_id": "testbank", "source_file": "test.csv"
+    }
+    res2 = db.insert_transactions_batch([txn1, txn3])
+    # txn1 should be skipped, txn3 should be inserted
+    assert res2["inserted"] == 1
+    assert res2["skipped"] == 1
+    
+    # Total rows in db should be 3
+    count = db.fetch_one("SELECT COUNT(*) AS c FROM transactions")["c"]
+    assert count == 3

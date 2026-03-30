@@ -121,3 +121,24 @@ def render_settings_page(*, t: Callable, active_user: Optional[str] = None) -> N
                         st.rerun()
                     else:
                         st.warning(t("user_exists"))
+
+    # -----------------------------------------------------------------------
+    # Database Management
+    # -----------------------------------------------------------------------
+    st.markdown("---")
+    st.subheader("🗄️ Database Management")
+    st.caption("Sync legacy CSV files into the unified SQLite database.")
+    
+    if st.button("🔄 Sync Historical Data", help="Ingest all firefly_*.csv files from data directory"):
+        from csv_to_db_migrator import migrate_csvs_to_db
+        with st.status("Migrating historical data...", expanded=True) as status:
+            settings = load_settings()
+            summary = migrate_csvs_to_db(
+                db_path=settings.data_dir / "ledger.db",
+                data_dir=settings.data_dir,
+                accounts_path=settings.config_dir / "accounts.yml"
+            )
+            st.write(f"✅ Processed {summary['files_processed']} files")
+            st.write(f"📝 Inserted {summary['rows_inserted']} new rows")
+            status.update(label="Migration Complete!", state="complete", expanded=False)
+        st.success("Historical data successfully synced to database.")

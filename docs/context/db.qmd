@@ -22,6 +22,18 @@ Current runtime access pattern:
 - Import and migration flows still seed SQLite from CSV/XML/XLSX source files
 - `config/accounts.yml` is shared with `data_service` for bank aliases and CSV output metadata, so the DB layer and source resolution stay aligned on the same canonical account catalog
 
+### Requirements (SQLite Persistence)
+
+#### DB-First Transaction Loading
+The `data_service` MUST query SQLite as the primary source for all transaction data. CSV files SHOULD only be used as a fallback if the database is uninitialized or missing historical data.
+
+#### Transactional Import Persistence
+The import pipeline MUST ensure that all successfully parsed and categorized transactions are persisted to the database within a single transaction to maintain atomicity.
+
+#### Unique Transaction Identification
+The system MUST use a `source_hash` generated from `(bank_id, date, amount, description)` to identify unique transactions and prevent duplicates. (Previously: Identified primarily by row index or file name in CSVs).
+
+
 ## Schema Overview
 
 Four tables form the core schema (defined in `src/database/schema.sql`):
