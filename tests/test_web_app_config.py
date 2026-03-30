@@ -31,21 +31,21 @@ def _get_function_names():
     return {node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)}
 
 
-def test_sidebar_collapsed_by_default():
-    """Sidebar is info-only; controls live in main content so sidebar can start collapsed."""
+def test_sidebar_auto_state():
+    """Sidebar should be in 'auto' state to allow st.navigation to work correctly."""
     kwargs = _get_page_config_kwargs()
-    assert kwargs.get("initial_sidebar_state") == "collapsed", (
-        "initial_sidebar_state should be 'collapsed' — language/bank selectors "
-        "are now in the top bar, so the sidebar holds only optional info."
+    assert kwargs.get("initial_sidebar_state") == "auto", (
+        "initial_sidebar_state should be 'auto' to allow Streamlit's native navigation "
+        "to manage the sidebar visibility."
     )
 
 
-def test_lang_and_bank_selectors_in_main_content():
-    """Language and bank selectors must be in the main content area, not sidebar-only."""
+def test_sidebar_contains_controls():
+    """Language and bank selectors are now in the sidebar for consistency."""
     source = WEB_APP.read_text(encoding="utf-8")
-    assert "sidebar.selectbox" not in source, (
-        "st.sidebar.selectbox should not be used for language or bank selection. "
-        "Move these controls to the main content so they are visible on mobile."
+    assert "st.sidebar.selectbox" in source, (
+        "st.sidebar.selectbox should be used for language or bank selection "
+        "to maintain consistent controls across all pages."
     )
 
 
@@ -55,56 +55,17 @@ def test_page_config_layout_wide():
     assert kwargs.get("layout") == "wide"
 
 
-def test_build_bank_map_defined():
-    """build_bank_map helper must exist for testable bank mapping logic."""
-    assert "build_bank_map" in _get_function_names()
-
-
-def test_navigation_uses_horizontal_radio():
-    """Primary navigation must use horizontal radio for lazy loading.
-
-    When navigation uses tabs, it eagerly loads heavy dependencies.
-    A horizontal radio button ensures true lazy loading while remaining mobile friendly.
-    """
+def test_navigation_is_native():
+    """Application must use native st.navigation."""
     source = WEB_APP.read_text(encoding="utf-8")
-    assert "horizontal=True" in source, "main() must use horizontal radio for navigation"
-    # sidebar radio for navigation must not be the routing mechanism anymore
-    assert 'sidebar.radio' not in source, (
-        "st.sidebar.radio should not drive page routing — use horizontal radio instead "
-        "so navigation is accessible even when the sidebar is hidden on mobile."
-    )
+    assert "st.navigation" in source, "web_app.py must use st.navigation for routing"
+    assert "st.Page" in source, "web_app.py must use st.Page objects"
 
 
-def test_build_bank_map_with_config():
-    """build_bank_map returns display_name→id mapping when config is provided."""
-    sys.path.insert(0, str(WEB_APP.parent))
-    from web_app import build_bank_map
-
-    banks_cfg = {
-        "santander_likeu": {"display_name": "Santander LikeU"},
-        "hsbc": {"display_name": "HSBC Mexico"},
-    }
-    result = build_bank_map(banks_cfg, lambda k: k)
-    assert result == {"Santander LikeU": "santander_likeu", "HSBC Mexico": "hsbc"}
-
-
-def test_build_bank_map_fallback_empty_config():
-    """build_bank_map falls back to translated defaults when config is empty."""
-    sys.path.insert(0, str(WEB_APP.parent))
-    from web_app import build_bank_map
-
-    def mock_t(key):
-        return {"bank_santander": "Santander", "bank_hsbc": "HSBC"}[key]
-
-    result = build_bank_map({}, mock_t)
-    assert result == {"Santander": "santander_likeu", "HSBC": "hsbc"}
-
-
-def test_build_bank_map_uses_bid_when_no_display_name():
-    """build_bank_map falls back to bank_id when display_name is missing."""
-    sys.path.insert(0, str(WEB_APP.parent))
-    from web_app import build_bank_map
-
-    banks_cfg = {"mybank": {}}  # no display_name key
-    result = build_bank_map(banks_cfg, lambda k: k)
-    assert result == {"mybank": "mybank"}
+def test_page_functions_defined():
+    """Page wrapper functions must be defined for navigation."""
+    funcs = _get_function_names()
+    assert "page_import" in funcs
+    assert "page_analytics" in funcs
+    assert "page_manual" in funcs
+    assert "page_settings" in funcs

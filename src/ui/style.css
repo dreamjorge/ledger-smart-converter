@@ -129,12 +129,47 @@ h3 {
     min-height: 44px !important;
 }
 
-/* ===== EXPANDERS ===== */
-.streamlit-expanderHeader {
+/* ===== EXPANDERS & STATUS ===== */
+.streamlit-expanderHeader,
+[data-testid="stStatusContainer"] {
     background: var(--card-bg) !important;
     border-radius: 8px !important;
     padding: 1rem !important;
     min-height: 44px !important;
+    border: 1px solid var(--border) !important;
+}
+
+[data-testid="stStatusContainer"] {
+    margin-bottom: 1rem !important;
+}
+
+/* ===== NATIVE NAVIGATION ===== */
+[data-testid="stSidebarNav"] {
+    background-color: transparent !important;
+    padding-top: 0 !important;
+}
+
+[data-testid="stSidebarNav"] [data-testid="stSidebarNavSeparator"] {
+    border-color: var(--border) !important;
+}
+
+/* Fix visibility of navigation links */
+[data-testid="stSidebarNav"] a span {
+    color: var(--text-main) !important;
+    font-weight: 500 !important;
+}
+
+[data-testid="stSidebarNav"] a:hover span {
+    color: white !important;
+}
+
+[data-testid="stSidebarNav"] a[aria-current="page"] {
+    background-color: var(--primary) !important;
+}
+
+[data-testid="stSidebarNav"] a[aria-current="page"] span {
+    color: white !important;
+    font-weight: 700 !important;
 }
 
 /* ===== CHARTS (Responsive) ===== */
