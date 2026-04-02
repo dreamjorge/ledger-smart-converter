@@ -1,7 +1,7 @@
 import argparse
 import re
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import pandas as pd
 import yaml
@@ -10,6 +10,7 @@ from account_mapping import resolve_canonical_account_id
 from description_normalizer import normalize_description
 from logging_config import get_logger
 from services.db_service import DatabaseService
+from services.dedup_service import DeduplicationResult, check_and_insert_batch
 from settings import load_settings
 
 logger = get_logger("csv_to_db_migrator")
@@ -193,6 +194,142 @@ def migrate_csvs_to_db(
     }
     logger.info("migration summary: %s", summary)
     return summary
+
+
+def _build_txn_rows_from_csv(
+    csv_path: Path,
+    bank_id: str,
+    data_dir: Path,
+    accounts_path: Optional[Path],
+    db: DatabaseService,
+) -> List[Dict[str, Any]]:
+    """Read a CSV file and return a list of transaction dicts ready for DB insertion."""
+    frame = pd.read_csv(csv_path)
+    rows: List[Dict[str, Any]] = []
+    for _, row in frame.iterrows():
+        source_name = str(row.get("source_name", "")).strip()
+        canonical_id = resolve_canonical_account_id(
+            bank_id=bank_id,
+            account_id=source_name,
+            accounts_path=accounts_path,
+        )
+        db.upsert_account(
+            account_id=canonical_id,
+            display_name=source_name or canonical_id,
+            account_type="credit_card",
+            bank_id=bank_id,
+            currency=str(row.get("currency_code", "MXN") or "MXN"),
+        )
+        tags = str(row.get("tags", "") or "")
+        raw_description = str(row.get("description", "")).strip()
+        normalized_description = normalize_description(raw_description, bank_id=bank_id)
+        rows.append({
+            "date": str(row.get("date", "")).strip(),
+            "amount": float(row.get("amount", 0.0)),
+            "currency": str(row.get("currency_code", "MXN") or "MXN"),
+            "merchant": _extract_merchant(tags),
+            "description": raw_description,
+            "raw_description": raw_description,
+            "normalized_description": normalized_description,
+            "account_id": source_name,
+            "canonical_account_id": canonical_id,
+            "bank_id": bank_id,
+            "statement_period": _extract_period(tags),
+            "category": str(row.get("category_name", "")).strip() or None,
+            "tags": tags or None,
+            "transaction_type": str(row.get("type", "withdrawal") or "withdrawal"),
+            "source_name": source_name,
+            "destination_name": str(row.get("destination_name", "")).strip() or None,
+            "source_file": str(csv_path),
+        })
+    return rows
+
+
+def migrate_csvs_to_db_with_dedup(
+    db_path: Path,
+    data_dir: Path,
+    accounts_path: Optional[Path] = None,
+    csv_paths: Optional[Iterable[Path]] = None,
+) -> Tuple[Dict[str, int], List[Dict[str, Any]]]:
+    """Migrate CSV files to the database with duplicate detection.
+
+    Same behaviour as ``migrate_csvs_to_db`` except:
+    - New rows are inserted immediately.
+    - Rows whose source_hash already exists in the DB are collected and returned
+      for the caller (UI) to present to the user for resolution.
+
+    Args:
+        db_path: Path to the SQLite database file.
+        data_dir: Directory to scan for firefly*.csv files if csv_paths is None.
+        accounts_path: Optional path to accounts.yml for canonical account resolution.
+        csv_paths: Optional explicit list of CSV paths to process.
+
+    Returns:
+        A tuple of (summary_dict, all_duplicate_rows).
+        summary_dict has keys: files_processed, rows_seen, rows_inserted, rows_duplicates.
+        all_duplicate_rows is a list of transaction dicts (each with "source_hash" key).
+    """
+    db = DatabaseService(db_path=db_path)
+    db.initialize()
+
+    accounts_catalog = _load_accounts_catalog(accounts_path)
+    _seed_accounts(db, accounts_catalog)
+
+    files = [Path(p) for p in (csv_paths or discover_firefly_csvs(data_dir))]
+    total_inserted = 0
+    total_seen = 0
+    files_processed = 0
+    all_duplicate_rows: List[Dict[str, Any]] = []
+
+    for csv_path in files:
+        if not csv_path.exists():
+            logger.warning("skipping missing csv: %s", csv_path)
+            continue
+
+        bank_id = _infer_bank_id_from_csv(csv_path, data_dir)
+        import_id = db.record_import(
+            bank_id=bank_id,
+            source_file=str(csv_path),
+            status="started",
+            row_count=0,
+        )
+
+        try:
+            txn_rows = _build_txn_rows_from_csv(
+                csv_path=csv_path,
+                bank_id=bank_id,
+                data_dir=data_dir,
+                accounts_path=accounts_path,
+                db=db,
+            )
+            total_seen += len(txn_rows)
+
+            dedup_result: DeduplicationResult = check_and_insert_batch(
+                db=db,
+                txn_rows=txn_rows,
+                import_id=import_id,
+            )
+            total_inserted += dedup_result.inserted
+            all_duplicate_rows.extend(dedup_result.duplicate_rows)
+
+            db.update_import_status(
+                import_id=import_id,
+                status="success",
+                row_count=dedup_result.inserted,
+            )
+            files_processed += 1
+        except Exception as exc:
+            db.update_import_status(import_id=import_id, status="failed", error=str(exc))
+            logger.error("failed migrating %s: %s", csv_path, exc)
+
+    summary = {
+        "files_processed": files_processed,
+        "rows_seen": total_seen,
+        "rows_inserted": total_inserted,
+        "rows_duplicates": len(all_duplicate_rows),
+    }
+    logger.info("dedup migration summary: %s", summary)
+    return summary, all_duplicate_rows
 
 
 def main() -> int:

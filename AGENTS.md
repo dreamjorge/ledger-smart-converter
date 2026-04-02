@@ -255,7 +255,7 @@ Example: "Analyze project status and create improvement plan"
 **Full Suite**: `python -m pytest -q` — includes all tests (~55+ min)
 **Slow Only**: `python -m pytest -m "slow" -q --tb=short`
 **CI**: `.github/workflows/ci.yml` runs on push/PR (fast tests with 80% coverage + separate slow step)
-**Current**: 554 tests total (546 fast + 8 slow `@pytest.mark.slow`)
+ **Current**: 566 tests total (558 fast + 8 slow `@pytest.mark.slow`)
 
 ### ⚠️ CRITICAL: Test-Driven Development Policy
 
@@ -376,11 +376,24 @@ python src/generic_importer.py --bank <name> --data <file> --out <csv>
 - ❌ Don't mutate dataframes in place → create filtered copies
 - ❌ **Don't leave QMD context files stale** → update the matching QMD in the same commit as the code change; outdated context misleads future agents
 
-## Recent Enhancements (2026-03-16)
-
-**SQLite Persistence**:
-- `DatabaseService` (`src/services/db_service.py`) with hash-based deduplication (`source_hash`)
-- CSV→DB migration: `src/csv_to_db_migrator.py` + `scripts/migrate_csv_to_db.py`
+## Recent Enhancements (2026-03-29)
+ 
+ **Flet Desktop UI**:
+ - Modular desktop interface in `src/ui/flet_ui/`
+ - NavigationRail sidebar, AppLayout, and custom Chart containers
+ - Family profile switching with PIN protection
+ 
+ **Family Profiles & Security**:
+ - `UserService` with bcrypt PIN hashing
+ - Profile migration and PIN-protected switching in both UIs
+ 
+ **Manual Entry & Resolution**:
+ - `ManualEntryService` for single-transaction injection
+ - `DedupService` for interactive batch resolution (Skip/Overwrite/Keep Both)
+ 
+**SQLite Persistence (Previous)**:
+ - `DatabaseService` (`src/services/db_service.py`) with hash-based deduplication (`source_hash`)
+ - CSV→DB migration: `src/csv_to_db_migrator.py` + `scripts/migrate_csv_to_db.py`
 - One-command DB pipeline: `scripts/run_db_pipeline.py`
 - DB-backed analytics: `calculate_categorization_stats_from_db()` in analytics service
 - See: `docs/context/db.qmd`

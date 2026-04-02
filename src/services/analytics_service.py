@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Any, Dict, Optional
 import pandas as pd
 from services.db_service import DatabaseService
@@ -255,3 +256,26 @@ def calculate_categorization_stats_from_db(
 
     df = pd.DataFrame(rows)
     return calculate_categorization_stats(df)
+
+
+def get_unified_dashboard_stats(
+    db_path: Path,
+    start_date: Optional[pd.Timestamp] = None,
+    end_date: Optional[pd.Timestamp] = None,
+) -> Dict[str, Any]:
+    """Calculate statistics for ALL bank accounts using direct SQL.
+    
+    Args:
+        db_path: Path to the SQLite database.
+        start_date: Optional start date for filtering.
+        end_date: Optional end date for filtering.
+        
+    Returns:
+        Unified statistics dictionary.
+    """
+    return calculate_categorization_stats_from_db(
+        db_path=db_path,
+        bank_id=None, # None means all banks
+        start_date=start_date,
+        end_date=end_date
+    )

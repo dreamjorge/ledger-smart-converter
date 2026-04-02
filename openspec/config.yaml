@@ -1,0 +1,49 @@
+# openspec/config.yaml
+schema: spec-driven
+
+context: |
+  Tech stack: Python 3.11+, Streamlit, pandas, scikit-learn, SQLite
+  Architecture: Layered (Domain, Services, UI, Importers)
+  Testing: pytest, pytest-cov
+  Style: PEP 8, Type Hints, Structured Logging
+
+strict_tdd: true
+
+testing:
+  runner:
+    command: ".venv\\Scripts\\python.exe -m pytest"
+    framework: "pytest"
+  layers:
+    unit: true
+    integration: true
+    e2e: false
+  coverage:
+    available: true
+    command: ".venv\\Scripts\\python.exe -m pytest --cov=src"
+  quality:
+    linter: false
+    type_checker: false
+    formatter: false
+
+rules:
+  proposal:
+    - Include rollback plan for risky changes
+    - Identify affected modules/packages
+  specs:
+    - Use Given/When/Then format for scenarios
+    - Use RFC 2119 keywords (MUST, SHALL, SHOULD, MAY)
+  design:
+    - Include sequence diagrams for complex flows
+    - Document architecture decisions with rationale
+  tasks:
+    - Group tasks by phase (infrastructure, implementation, testing)
+    - Use hierarchical numbering (1.1, 1.2, etc.)
+    - Keep tasks small enough to complete in one session
+  apply:
+    - Follow existing code patterns and conventions
+    - Load relevant coding skills for the project stack
+  verify:
+    - Run tests using the virtual environment (.venv)
+    - Compare implementation against every spec scenario
+  archive:
+    - Warn before merging destructive deltas (large removals)

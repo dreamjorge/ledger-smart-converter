@@ -2,26 +2,27 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+VENV_DIR="${ROOT_DIR}/.venv"
+VENV_PYTHON="${VENV_DIR}/bin/python"
 
-if ! command -v python >/dev/null 2>&1; then
-  echo "python is not installed or not in PATH" >&2
+if ! command -v uv >/dev/null 2>&1; then
+  echo "uv is not installed or not in PATH" >&2
   exit 1
 fi
 
-if [ ! -d "${ROOT_DIR}/.venv" ]; then
-  if ! python -m venv "${ROOT_DIR}/.venv"; then
-    echo "venv creation failed; falling back to system pip install." >&2
-    python -m pip install --break-system-packages -r "${ROOT_DIR}/requirements.txt"
-    echo "Setup complete."
-    exit 0
-  fi
-fi
-
-if [ -x "${ROOT_DIR}/.venv/bin/python" ] && [ -x "${ROOT_DIR}/.venv/bin/pip" ]; then
-  "${ROOT_DIR}/.venv/bin/python" -m pip install --upgrade pip
-  "${ROOT_DIR}/.venv/bin/pip" install -r "${ROOT_DIR}/requirements.txt"
+if [ ! -d "${VENV_DIR}" ]; then
+  echo "Creating uv-managed virtual environment at ${VENV_DIR}..."
+  uv venv "${VENV_DIR}"
 else
-  python -m pip install --break-system-packages -r "${ROOT_DIR}/requirements.txt"
+  echo "uv-managed virtual environment already exists."
 fi
 
-echo "Setup complete."
+if [ ! -x "${VENV_PYTHON}" ]; then
+  echo "uv-managed Python executable not found at ${VENV_PYTHON}" >&2
+  exit 1
+fi
+
+echo "Installing requirements with uv..."
+uv pip install --python "${VENV_PYTHON}" -r "${ROOT_DIR}/requirements.txt"
+
+echo "Setup complete. Use the uv-managed environment at ${VENV_DIR}."

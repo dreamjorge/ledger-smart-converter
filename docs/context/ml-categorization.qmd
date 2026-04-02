@@ -59,19 +59,23 @@ class TransactionCategorizer:
 **Backfill**: If `normalized_description` is NULL for any row, run `DatabaseService.backfill_normalized_descriptions(normalize_description)` before retraining to maximize coverage of normalized text.
 
 **Retraining Triggers**:
-- On web app startup when no persisted model is available
+- On **Analytics Dashboard** access if no persisted model is available (lazy-loaded).
 - Manual retraining by calling `train_global_model()` (CLI or code path)
 
 ### Prediction Usage
 
 **In Categorization Flow**:
-```python
-from ml_categorizer import TransactionCategorizer, train_global_model
 
-engine = TransactionCategorizer()
-if not engine.load_model():
-    train_global_model()
+# In web_app.py (deferred load):
+@st.cache_resource
+def get_ml_engine():
+    import ml_categorizer as ml
+    engine = ml.TransactionCategorizer()
+    if engine.load_model():
+        return engine
+    ml.train_global_model()
     engine.load_model()
+    return engine
 
 # For each transaction (input will be normalized internally when feature flag is enabled)
 predictions = engine.predict("OXXO STORE 123")

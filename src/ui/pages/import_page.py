@@ -1,16 +1,10 @@
+from __future__ import annotations
 from pathlib import Path
-from typing import Callable, Dict, Tuple
+from typing import Callable, Dict, Optional, Tuple
 
-import pandas as pd
 import streamlit as st
-
 from services import import_service as imp
-
-
-def _load_csv_if_exists(path):
-    if path and Path(path).exists():
-        return pd.read_csv(path)
-    return None
+from ui.components.import_components import render_file_uploaders, render_import_results
 
 
 def _results_key(bank_id: str) -> str:
@@ -57,22 +51,14 @@ def render_import_page(
         - Keep screen active during upload
         """)
 
-    uploaded_main = None
-    uploaded_pdf = None
-
-    col1, col2 = st.columns([1, 1])
-    with col1:
-        if bank_cfg.get("type") == "xlsx":
-            uploaded_main = st.file_uploader(t("select_xlsx"), type=["xlsx"], help=t("help_xlsx"), key="main_uploader")
-        else:
-            uploaded_main = st.file_uploader(t("select_xml"), type=["xml", "csv", "xlsx"], help=t("help_xml"), key="main_uploader")
-    with col2:
-        uploaded_pdf = st.file_uploader(t("select_pdf"), type=["pdf"], help=t("help_pdf"), key="pdf_uploader")
+    # Use extracted component for file uploaders
+    uploaded_main, uploaded_pdf = render_file_uploaders(t, bank_cfg)
 
     # Clear cached results when a new file is uploaded
     results_key = _results_key(bank_id)
     if uploaded_main is not None and st.session_state.get(f"{results_key}_file_name") != uploaded_main.name:
         st.session_state.pop(results_key, None)
+        st.session_state.pop(f"{results_key}_dedup", None)
         st.session_state[f"{results_key}_file_name"] = uploaded_main.name
 
     force_pdf_ocr = False
@@ -82,15 +68,20 @@ def render_import_page(
     rules_path = config_dir / "rules.yml"
     if uploaded_main or (force_pdf_ocr and uploaded_pdf):
         if st.button(t("process_files"), type="primary"):
-            with st.spinner(t("processing")):
+            # Use st.status for better real-time feedback
+            with st.status(t("processing_status"), expanded=True) as status:
+                st.write(t("step_parsing"))
                 main_path = imp.save_uploaded_file(uploaded_main, temp_dir, "input")
                 pdf_path = imp.save_uploaded_file(uploaded_pdf, temp_dir, "input")
+                
                 out_csv, out_unknown, out_suggestions = imp.resolve_output_paths(
                     data_dir=data_dir,
                     bank_label=bank_label,
                     bank_id=bank_id,
                     analytics_targets=analytics_csv_targets,
                 )
+                
+                st.write(t("step_processing"))
                 res = imp.run_import_script(
                     root_dir=root_dir,
                     src_dir=src_dir,
@@ -113,72 +104,49 @@ def render_import_page(
                     "pdf_path": str(pdf_path) if pdf_path else None,
                 }
 
-    # Render persisted results (survives re-runs from other widget interactions)
+                # Run deduplication migration if import succeeded
+                if res.returncode == 0 and out_csv.exists():
+                    try:
+                        st.write("🔄 Syncing with database and deduplicating...")
+                        from csv_to_db_migrator import migrate_csvs_to_db_with_dedup
+                        from settings import load_settings
+                        settings = load_settings()
+                        dedup_summary, duplicate_rows = migrate_csvs_to_db_with_dedup(
+                            db_path=settings.data_dir / "ledger.db",
+                            data_dir=data_dir,
+                            accounts_path=config_dir / "accounts.yml",
+                            csv_paths=[out_csv],
+                        )
+                        st.session_state[f"{results_key}_dedup"] = {
+                            "inserted": dedup_summary.get("rows_inserted", 0),
+                            "duplicate_rows": duplicate_rows,
+                        }
+                    except Exception as dedup_exc:
+                        st.session_state[f"{results_key}_dedup"] = {
+                            "inserted": 0,
+                            "duplicate_rows": [],
+                            "error": str(dedup_exc),
+                        }
+                
+                if res.returncode == 0:
+                    status.update(label=t("step_complete"), state="complete", expanded=False)
+                else:
+                    status.update(label=t("error_processing"), state="error", expanded=True)
+
+    # Render persisted results using extracted component
     results = st.session_state.get(results_key)
     if results:
-        out_csv = Path(results["out_csv"])
-        out_unknown = Path(results["out_unknown"])
-        out_suggestions = Path(results["out_suggestions"])
-        had_pdf = bool(results.get("pdf_path"))
-
-        if results["returncode"] == 0:
-            st.success(t("process_complete"))
-            st.info(
-                f"""
-            {t('next_steps_title')}
-            {t('next_step_1')}
-            {t('next_step_2')}
-            {t('next_step_3')}
-            {t('next_step_4')}
-            """
-            )
-            if st.button(t("copy_to_analysis"), key=f"copy_btn_{bank_id}"):
-                copied, result = imp.copy_csv_to_analysis(
-                    data_dir=data_dir,
-                    analytics_targets=analytics_csv_targets,
-                    bank_label=bank_label,
-                    csv_path=out_csv,
-                    bank_id=bank_id,
-                )
-                if copied:
-                    st.session_state[copy_feedback_key] = t("copy_success", path=result)
-                    st.session_state[nav_key] = t("nav_analytics")
-                    st.rerun()
-                elif result == "missing_src":
-                    st.warning(t("copy_error_missing"))
-                else:
-                    st.warning(t("copy_error_unknown_bank"))
-
-            with st.expander(t("view_logs"), expanded=had_pdf):
-                st.code(results["stdout"], language="text")
-
-            tab1, tab2, tab3 = st.tabs([t("tab_csv"), t("tab_unknown"), t("tab_suggestions")])
-            with tab1:
-                df_csv = _load_csv_if_exists(out_csv)
-                if df_csv is not None:
-                    st.dataframe(df_csv, width="stretch")
-                    with open(out_csv, "rb") as f:
-                        st.download_button(t("download_csv"), f, "firefly_import.csv", "text/csv")
-                else:
-                    st.warning(t("no_csv"))
-            with tab2:
-                df_unk = _load_csv_if_exists(out_unknown)
-                if df_unk is not None:
-                    st.dataframe(df_unk, width="stretch")
-                else:
-                    st.info(t("no_unknown"))
-            with tab3:
-                if out_suggestions.exists():
-                    with open(out_suggestions, "r", encoding="utf-8") as f:
-                        sugg_content = f.read()
-                    st.code(sugg_content, language="yaml")
-                    st.download_button(t("download_suggestions"), sugg_content, "suggestions.yml", "text/yaml")
-                else:
-                    st.info(t("no_suggestions"))
-        else:
-            st.error(t("error_processing"))
-            st.error(results["stderr"])
-            st.code(results["stdout"], language="text")
+        render_import_results(
+            t=t,
+            results=results,
+            results_key=results_key,
+            bank_id=bank_id,
+            bank_label=bank_label,
+            data_dir=data_dir,
+            analytics_csv_targets=analytics_csv_targets,
+            copy_feedback_key=copy_feedback_key,
+            nav_key=nav_key,
+        )
 
     st.markdown("---")
     st.caption(f"{t('working_dir')}: {root_dir}")

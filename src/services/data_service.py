@@ -23,6 +23,7 @@ _SETTINGS = load_settings()
 def _data_dir() -> Path:
     return _SETTINGS.data_dir
 
+
 def _normalize_bank_id(bank_id: str) -> str:
     return (bank_id or "").strip().lower()
 
@@ -33,12 +34,20 @@ def _accounts_config_path() -> Path:
 
 def _load_accounts_config(config_path: Path) -> Dict:
     if not config_path.exists():
-        logger.warning("Accounts config not found at %s; falling back to legacy CSV map", config_path)
+        logger.warning(
+            "Accounts config not found at %s; falling back to legacy CSV map",
+            config_path,
+        )
         return {}
     try:
         return yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
     except Exception as exc:
-        logger.error("Failed to load accounts config from %s: %s", config_path, exc, exc_info=True)
+        logger.error(
+            "Failed to load accounts config from %s: %s",
+            config_path,
+            exc,
+            exc_info=True,
+        )
         return {}
 
 
@@ -78,11 +87,17 @@ def _resolve_csv_output_path(canonical_id: str, entry: Dict) -> Optional[Path]:
         if directory and filename:
             return _data_dir() / str(directory) / str(filename)
 
-    bank_ids = [_normalize_bank_id(v) for v in entry.get("bank_ids", []) if isinstance(v, str) and v.strip()]
+    bank_ids = [
+        _normalize_bank_id(v)
+        for v in entry.get("bank_ids", [])
+        if isinstance(v, str) and v.strip()
+    ]
     canonical_norm = _normalize_bank_id(canonical_id)
     if "hsbc" in bank_ids or "hsbc" in canonical_norm:
         return _legacy_csv_path("hsbc")
-    if {"santander", "santander_likeu"} & set(bank_ids) or "santander" in canonical_norm:
+    if {"santander", "santander_likeu"} & set(
+        bank_ids
+    ) or "santander" in canonical_norm:
         return _legacy_csv_path("santander")
     if bank_ids:
         return _legacy_csv_path(bank_ids[0])
@@ -104,8 +119,11 @@ def _build_bank_file_map(config_path: Path, data_dir: Path) -> Dict[str, Path]:
             target = _resolve_csv_output_path(canonical_id, entry)
             if not target:
                 continue
-            for bank_id in [_normalize_bank_id(v) for v in entry.get("bank_ids", [])
-                            if isinstance(v, str) and v.strip()]:
+            for bank_id in [
+                _normalize_bank_id(v)
+                for v in entry.get("bank_ids", [])
+                if isinstance(v, str) and v.strip()
+            ]:
                 bank_map[bank_id] = target
     return bank_map
 
@@ -177,6 +195,11 @@ def load_transactions_from_csv(bank_id: str) -> pd.DataFrame:
 
     _require_supported_bank(bank_id)
     file_path = get_csv_path(bank_id)
+    if file_path is None:
+        logger.warning(
+            "No CSV path configured for bank '%s'. Returning empty DataFrame.", bank_id
+        )
+        return pd.DataFrame()
 
     # Check file existence before attempting to read
     if not file_path.exists():
@@ -195,10 +218,12 @@ def load_transactions_from_csv(bank_id: str) -> pd.DataFrame:
             return df
 
         # Ensure 'date' column exists and is datetime
-        if 'date' in df.columns:
+        if "date" in df.columns:
             try:
-                df['date'] = pd.to_datetime(df['date'])
-                logger.debug(f"Successfully parsed {len(df)} transactions for '{bank_id}'")
+                df["date"] = pd.to_datetime(df["date"])
+                logger.debug(
+                    f"Successfully parsed {len(df)} transactions for '{bank_id}'"
+                )
             except Exception as date_err:
                 logger.error(
                     f"Failed to parse date column for bank '{bank_id}': {date_err}. "
@@ -226,12 +251,14 @@ def load_transactions_from_csv(bank_id: str) -> pd.DataFrame:
     except Exception as e:
         logger.error(
             f"Unexpected error loading data for bank '{bank_id}' from {file_path}: {e}",
-            exc_info=True
+            exc_info=True,
         )
         return pd.DataFrame()
 
 
-def load_transactions_from_db(bank_id: str, db_path: Optional[Path] = None) -> pd.DataFrame:
+def load_transactions_from_db(
+    bank_id: str, db_path: Optional[Path] = None
+) -> pd.DataFrame:
     """Load transaction data for a given bank from SQLite.
 
     The same bank-catalog validation used by CSV loading applies here so unsupported
@@ -272,11 +299,50 @@ def load_transactions_from_db(bank_id: str, db_path: Optional[Path] = None) -> p
             df["date"] = pd.to_datetime(df["date"], errors="coerce")
         return df
     except Exception as exc:
-        logger.error(f"Failed loading DB transactions for '{bank_id}': {exc}", exc_info=True)
+        logger.error(
+            f"Failed loading DB transactions for '{bank_id}': {exc}", exc_info=True
+        )
         return pd.DataFrame()
 
 
-def load_transactions(bank_id: str, prefer_db: bool = True, db_path: Optional[Path] = None) -> pd.DataFrame:
+def load_all_transactions_from_db(db_path: Optional[Path] = None) -> pd.DataFrame:
+    """Load transaction data for all banks from SQLite."""
+    effective_db = Path(db_path) if db_path else (_data_dir() / "ledger.db")
+    if not effective_db.exists():
+        logger.info(f"SQLite DB not found at {effective_db}; returning empty DataFrame")
+        return pd.DataFrame()
+
+    try:
+        db = DatabaseService(db_path=effective_db)
+        rows = db.fetch_all(
+            """
+            SELECT
+                date,
+                amount,
+                description,
+                bank_id,
+                COALESCE(transaction_type, 'withdrawal') AS type,
+                destination_name,
+                category AS category_name,
+                tags
+            FROM transactions
+            ORDER BY date
+            """
+        )
+        if not rows:
+            return pd.DataFrame()
+        df = pd.DataFrame(rows)
+        if "date" in df.columns:
+            df["date"] = pd.to_datetime(df["date"], errors="coerce")
+        return df
+    except Exception as exc:
+        logger.error("Failed loading all DB transactions: %s", exc, exc_info=True)
+        return pd.DataFrame()
+
+
+def load_transactions(
+    bank_id: str, prefer_db: bool = True, db_path: Optional[Path] = None
+) -> pd.DataFrame:
     """Load transactions from preferred source (DB first, CSV fallback)."""
     if prefer_db:
         df_db = load_transactions_from_db(bank_id, db_path=db_path)
@@ -285,29 +351,31 @@ def load_transactions(bank_id: str, prefer_db: bool = True, db_path: Optional[Pa
     return load_transactions_from_csv(bank_id)
 
 
-def load_all_bank_data() -> Dict[str, pd.DataFrame]:
-    """Load transaction data for all supported banks.
+def load_all_bank_data(
+    db_path: Optional[Path] = None, accounts_path: Optional[Path] = None
+) -> Dict[str, pd.DataFrame]:
+    """Load transaction data for all banks defined in accounts.yml.
 
-    This is a convenience function that loads data for all banks defined
-    in the configured bank catalog. It handles errors gracefully - if one bank fails to load,
-    others will still be loaded.
+    Builds the file map dynamically from accounts.yml so that new banks added
+    to config are included automatically without code changes.
 
     Returns:
         Dictionary mapping bank IDs to their transaction DataFrames.
-        Keys: 'santander', 'hsbc'
-        Values: DataFrames (may be empty if loading failed)
-
-    Example:
-        >>> all_data = load_all_bank_data()
-        >>> santander_df = all_data['santander']
-        >>> hsbc_df = all_data['hsbc']
+        Values: DataFrames (may be empty if loading failed or file missing)
     """
     logger.info("Loading transaction data for all banks")
     all_data = {}
 
-    # Load each bank independently - failures are isolated
-    all_data["santander"] = load_transactions_from_csv("santander")
-    all_data["hsbc"] = load_transactions_from_csv("hsbc")
+    # Use provided accounts_path or default
+    effective_accounts_path = accounts_path or _accounts_config_path()
+    bank_ids = _supported_bank_ids(effective_accounts_path)
+
+    for bank_id in bank_ids:
+        try:
+            all_data[bank_id] = load_transactions_from_csv(bank_id)
+        except Exception as exc:
+            logger.warning("Failed to load data for bank %s: %s", bank_id, exc)
+            all_data[bank_id] = pd.DataFrame()
 
     total_transactions = sum(len(df) for df in all_data.values())
     logger.info(

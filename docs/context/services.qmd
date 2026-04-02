@@ -123,7 +123,7 @@ record_recategorization_event(
 2. Rule staged in `rules.pending.yml`
 3. Conflict detection runs
 4. If clean, merge with backup
-5. ML model retrains
+5. ML model retrains only after a successful merge
 6. Pending file cleared
 
 **Conflict Detection**:
@@ -210,6 +210,9 @@ load_transactions_from_csv(bank_id: str) -> pd.DataFrame
 load_transactions_from_db(bank_id: str, db_path: Optional[Path] = None) -> pd.DataFrame
 # Load transactions from SQLite `transactions` table
 
+load_all_transactions_from_db(db_path: Optional[Path] = None) -> pd.DataFrame
+# Load transactions for all banks from SQLite `transactions` table
+
 load_transactions(bank_id: str, prefer_db: bool = True, db_path: Optional[Path] = None) -> pd.DataFrame
 # DB-first loader with CSV fallback
 
@@ -229,6 +232,7 @@ load_all_bank_data() -> Dict[str, pd.DataFrame]
 - `load_transactions_from_db()` and `load_transactions_from_csv()` both fail fast for unsupported bank IDs, so CSV fallback is never attempted for an unknown bank.
 - `get_csv_path()` re-reads the accounts config on each lookup, so config edits are picked up without restarting a long-lived process.
 - `load_all_bank_data()` still reads the supported CSV paths directly for bulk-loading compatibility.
+- `load_all_transactions_from_db()` is the global-safe analytics loader and is the only supported DB path for "all accounts" drilldown.
 
 ### Database Service
 
@@ -416,13 +420,108 @@ stats = calculate_categorization_stats(
 )
 ```
 
+### Manual Entry Service
+
+**File**: `src/services/manual_entry_service.py`
+
+**Key Functions**:
+
+```python
+load_categories_from_rules(rules_path: Path) -> List[str]
+# Reads fallback + canonical `rules[*].set.expense` values from rules.yml
+
+load_accounts_from_config(accounts_path: Path, rules_path: Optional[Path] = None) -> Dict[str, str]
+# Returns canonical account IDs mapped to UI labels; appends bank display name when available
+
+get_category_label(expense_path: str, lang: str = "es") -> str
+# Converts Firefly expense paths into translated labels for Streamlit/Flet dropdowns
+
+submit_manual_transaction(
+    *,
+    date: str,
+    description: str,
+    amount: float,
+    bank_id: str,
+    account_id: str,
+    canonical_account_id: str,
+    transaction_type: str,
+    category: str,
+    db_path: Optional[Path] = None,
+    user_id: Optional[str] = None,
+) -> Tuple[bool, List[str]]
+# Validates and inserts one manual transaction into SQLite using source_hash deduplication
+```
+
+**Behavior Notes**:
+- Manual entry uses `source_file="manual"` and tags rows with `manual:entry`
+- Duplicate detection uses `DatabaseService.build_source_hash(...)` with `canonical_account_id`
+- Category dropdown labels are translated from Firefly expense paths via `CATEGORY_KEY_MAP`
+- `user_id` is passed through to the transaction insert so manual entries stay attributed to the active family profile
+- `submit_manual_transaction(...)` calls `db.initialize()` before duplicate checks/inserts, so a fresh local DB can accept manual entries without requiring a prior import or settings visit
+
+### User Service
+
+**File**: `src/services/user_service.py`
+
+**Key Functions**:
+
+```python
+list_users(db) -> List[Dict]
+# Returns all family profiles including password_hash metadata
+
+create_user(
+    db,
+    user_id: str,
+    display_name: str,
+    color: str = "#4fc3f7",
+    is_admin: bool = False,
+    password: Optional[str] = None,
+) -> bool
+# Creates a local profile; hashes password with bcrypt when provided
+
+verify_password(db, user_id: str, password: str) -> bool
+# Validates a PIN; profiles with NULL password_hash are treated as open
+
+set_password(db, user_id: str, password: Optional[str]) -> bool
+# Sets or clears a profile PIN
+```
+
+**PIN Implementation**:
+- Uses **bcrypt** with `gensalt()` for secure hashing.
+- A `NULL` `password_hash` in the database indicates a "Public" profile that can be switched into without a PIN.
+
+**Migration Note**:
+- `_ensure_users_columns(db)` adds `password_hash` to older `users` tables lazily before reads/writes
+- The SQLite schema now stores bcrypt hashes in `users.password_hash`; `NULL` means profile switching does not require a PIN
+
+### Deduplication Service
+
+**File**: `src/services/dedup_service.py`
+
+**Key Functions**:
+
+```python
+def check_and_insert_batch(db, txn_rows, import_id=None) -> DeduplicationResult:
+# Inserts unique rows; returns duplicates for UI review.
+
+def resolve_duplicates(db, duplicate_rows, decisions, import_id=None) -> Dict[str, int]:
+# Applies user decisions: skip, overwrite, or keep_both.
+```
+
+**Resolution Logic**:
+1. **Skip**: The default; the existing record in the DB remains untouched.
+2. **Overwrite**: Uses `DatabaseService.upsert_transaction` to replace the existing record while preserving the `created_at` timestamp.
+3. **Keep Both**: This is used when two identical transactions should coexist.
+   - The system appends `_copy_N` to the `source_file` field.
+   - A new `source_hash` is generated based on this modified field.
+   - This ensures the `UNIQUE` constraint on `source_hash` is not violated while allowing the duplicate data to be stored.
+
+**Implementation Note**:
+- Resolution occurs as a secondary step after the initial "check" pass.
+- `DeduplicationResult` holds the list of rows that need manual intervention.
+- `check_and_insert_batch(...)` treats a repeated `source_hash` inside the same input batch as a duplicate even if SQLite does not contain that hash yet.
+
 ## CodeGraph Navigation for Services
-
-Use CodeGraph to trace service dependencies before modifying business logic:
-
-```bash
-# Find all service functions
-codegraph_search "analytics_service"
 codegraph_search "import_service"
 codegraph_search "rule_service"
 
@@ -456,4 +555,6 @@ codegraph_node "calculate_categorization_stats"
 - `src/csv_to_db_migrator.py` - CSV migration orchestration
 - `src/db_pipeline.py` - one-command migration+export pipeline
 - `src/services/firefly_export_service.py` - DB view to Firefly CSV export
+- `src/services/manual_entry_service.py` - Manual transaction helpers
+- `src/services/user_service.py` - Family profile + PIN management
 - `tests/test_*_service.py` - Service tests

@@ -1,24 +1,30 @@
 $RepoRoot = Resolve-Path "$PSScriptRoot\.."
+$VenvPath = "$RepoRoot\.venv"
+$VenvPython = "$VenvPath\Scripts\python.exe"
 
-# Check for python
-if (-not (Get-Command "python" -ErrorAction SilentlyContinue)) {
-    Write-Error "Python is not installed or not in PATH."
+# Check for uv
+if (-not (Get-Command "uv" -ErrorAction SilentlyContinue)) {
+    Write-Error "uv is not installed or not in PATH."
     exit 1
 }
 
-# Create venv if not exists
-$VenvPath = "$RepoRoot\.venv"
+# Create uv-managed venv if not exists
 if (-not (Test-Path $VenvPath)) {
-    Write-Host "Creating virtual environment at $VenvPath..."
-    python -m venv $VenvPath
+    Write-Host "Creating uv-managed virtual environment at $VenvPath..."
+    & uv venv $VenvPath
+    if ($LASTEXITCODE -ne 0) {
+        exit $LASTEXITCODE
+    }
 }
 else {
-    Write-Host "Virtual environment already exists."
+    Write-Host "uv-managed virtual environment already exists."
 }
 
-# Activate and install requirements
-Write-Host "Installing/Upgrading requirements..."
-& "$VenvPath\Scripts\python" -m pip install --upgrade pip
-& "$VenvPath\Scripts\pip" install -r "$RepoRoot\requirements.txt"
+# Install requirements via uv
+Write-Host "Installing requirements with uv..."
+& uv pip install --python $VenvPython -r "$RepoRoot\requirements.txt"
+if ($LASTEXITCODE -ne 0) {
+    exit $LASTEXITCODE
+}
 
-Write-Host "Setup complete."
+Write-Host "Setup complete. Use the uv-managed environment at $VenvPath."

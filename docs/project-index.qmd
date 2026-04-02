@@ -30,6 +30,38 @@ format: html
 - `analytics_service.py`: Dashboard metrics and aggregations
 - `data_service.py`: DB-first loading with CSV fallback for analytics/UI
 - `db_service.py`: SQLite persistence, deduplication, audit events
+---
+title: "Ledger Smart Converter - Project Index"
+format: html
+---
+
+## Project Overview
+
+**Purpose**: Import bank statements (HSBC Mexico, Santander LikeU) into Firefly III with AI-powered categorization.
+
+**Key Features**: OCR PDF parsing, ML predictions, rule-based categorization, analytics dashboard, bilingual support.
+
+**Big Picture / Roadmap**: `docs/big_picture_roadmap.md`
+
+## Architecture
+
+### Core Components
+
+**Importers** (`src/`)
+- `generic_importer.py`: CLI entry point with validation flags (`--strict`, `--dry-run`, `--log-json`)
+- `import_hsbc_cfdi_firefly.py`: HSBC XML/PDF importer
+- `import_likeu_firefly.py`: Santander XLSX/PDF importer
+- `pdf_utils.py`: PDF text extraction + OCR fallback (enhanced logging, robust error handling)
+
+**Domain** (`src/domain/`)
+- `transaction.py`: Canonical transaction model with validation
+
+**Services** (`src/services/`)
+- `import_service.py`: Orchestrates import workflow
+- `rule_service.py`: Manages rules staging, conflict detection, merge with backup
+- `analytics_service.py`: Dashboard metrics and aggregations
+- `data_service.py`: DB-first loading with CSV fallback for analytics/UI
+- `db_service.py`: SQLite persistence, deduplication, audit events
 - `firefly_export_service.py`: Firefly CSV export from SQLite views
 
 **ML & Matching**
@@ -37,9 +69,11 @@ format: html
 - `smart_matching.py`: Fuzzy merchant search (rapidfuzz)
 
 **UI** (`src/ui/`)
-- `web_app.py`: Streamlit router
-- `pages/import_page.py`: File upload and processing
-- `pages/analytics_page.py`: Spending metrics, category breakdowns, rule correction
+- `flet_app.py`: Desktop application entry point and router
+- `web_app.py`: Streamlit web application router
+- `pages/`: Streamlit-specific view modules
+- `flet_ui/`: Flet-specific view components and layout
+- `flet_ui/components.py`: Reusable Flet UI elements
 
 **Utilities**
 - `validation.py`: Transaction/tag validation layer
@@ -77,12 +111,13 @@ data/
 └── santander/        # Santander outputs
 
 scripts/
-├── setup_env.sh           # Environment setup
-├── run_web.sh             # Launch Streamlit
-├── run_import.sh          # CLI import helper
+├── setup_env.sh           # uv-based environment setup (.venv + requirements install)
+├── run_web.sh             # Launch Streamlit from the uv-managed .venv
+├── run_flet.sh            # Launch Flet Desktop from the uv-managed .venv
+├── run_import.sh          # CLI import helper using the uv-managed .venv
 └── generate_dummy_data.py # Generate test data for dashboard
 
-tests/                     # pytest suite (558 collected; 550 fast + 8 slow)
+tests/                     # pytest suite (566 collected; 558 fast + 8 slow)
 ```
 
 ## Key Workflows
@@ -121,7 +156,7 @@ tests/                     # pytest suite (558 collected; 550 fast + 8 slow)
 ## Technology Stack
 
 - **Runtime**: Python 3.8+
-- **UI**: Streamlit
+- **UI**: Streamlit, Flet
 - **ML**: scikit-learn (category prediction)
 - **Fuzzy Search**: rapidfuzz
 - **OCR**: Tesseract (optional)
@@ -133,6 +168,8 @@ tests/                     # pytest suite (558 collected; 550 fast + 8 slow)
 **Local**: `./scripts/setup_env.sh && ./scripts/run_web.sh`
 **Server**: Streamlit with `--server.address 0.0.0.0`
 **Healthcheck**: `python src/healthcheck.py`
+
+`setup_env.sh` and `setup_env.ps1` require `uv`, create a repo-local `.venv` via `uv venv`, and install `requirements.txt` via `uv pip install -r`.
 
 ## Recent Enhancements (2026-02-06)
 
@@ -151,5 +188,5 @@ tests/                     # pytest suite (558 collected; 550 fast + 8 slow)
 
 ## Roadmap (see `plan_mejoras.md`)
 
-**Completed**: Validation layer, service architecture, safe rules workflow, SQLite persistence, account mapping, DB pipeline, normalized-description categorization, DB-backed analytics, Firefly export service, audit events
+**Completed**: Validation layer, service architecture, safe rules workflow, SQLite persistence, account mapping, DB pipeline, normalized-description categorization, DB-backed analytics, Firefly export service, audit events, **Flet Desktop UI**, **Family Profiles (multi-user)**, **Manual Entry**, **Batch Deduplication Resolution**.
 **Upcoming**: Service-boundary cleanup, configuration contract consolidation, observability improvements, higher critical-path coverage
