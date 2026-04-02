@@ -1,6 +1,6 @@
 from __future__ import annotations
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Optional, cast
 import re
 
 import streamlit as st
@@ -19,7 +19,13 @@ from ui.components.analytics_components import (
 from ui.components.rule_components import render_rule_staging_hub
 
 
-def render_comparison(stats_sant: dict, stats_hsbc: dict, *, t: Callable, tc: Callable = None):
+def render_comparison(
+    stats_sant: dict,
+    stats_hsbc: dict,
+    *,
+    t: Callable,
+    tc: Optional[Callable[[str], str]] = None,
+):
     """Render comparison view between Santander and HSBC banks using pre-calculated stats."""
     # Default tc to t if not provided
     if tc is None:
@@ -32,11 +38,13 @@ def render_comparison(stats_sant: dict, stats_hsbc: dict, *, t: Callable, tc: Ca
 
     with col1:
         st.metric("Santander Total", stats_sant["total"])
-        st.metric("Santander Spent", ui_service.format_currency(stats_sant['total_spent']))
+        st.metric(
+            "Santander Spent", ui_service.format_currency(stats_sant["total_spent"])
+        )
 
     with col2:
         st.metric("HSBC Total", stats_hsbc["total"])
-        st.metric("HSBC Spent", ui_service.format_currency(stats_hsbc['total_spent']))
+        st.metric("HSBC Spent", ui_service.format_currency(stats_hsbc["total_spent"]))
 
     with col3:
         total_txns = stats_sant["total"] + stats_hsbc["total"]
@@ -96,13 +104,17 @@ def render_comparison(stats_sant: dict, stats_hsbc: dict, *, t: Callable, tc: Ca
         st.markdown("**Santander**")
         fig_cov_sant = ui_service.get_coverage_pie_fig(stats_sant, t)
         st.plotly_chart(fig_cov_sant, width="stretch", key="comparison_cov_sant")
-        st.caption(f"{ui_service.format_percentage(stats_sant['coverage_pct'])} categorized")
+        st.caption(
+            f"{ui_service.format_percentage(stats_sant['coverage_pct'])} categorized"
+        )
 
     with col2:
         st.markdown("**HSBC**")
         fig_cov_hsbc = ui_service.get_coverage_pie_fig(stats_hsbc, t)
         st.plotly_chart(fig_cov_hsbc, width="stretch", key="comparison_cov_hsbc")
-        st.caption(f"{ui_service.format_percentage(stats_hsbc['coverage_pct'])} categorized")
+        st.caption(
+            f"{ui_service.format_percentage(stats_hsbc['coverage_pct'])} categorized"
+        )
 
 
 def render_analytics_dashboard(
@@ -120,11 +132,12 @@ def render_analytics_dashboard(
 
     st.header(t("analytics_title"))
     db_path = data_dir / "ledger.db"
-    
+
     # Check if DB has data
     total_db_rows = 0
     if db_path.exists():
         from services.db_service import DatabaseService
+
         db = DatabaseService(db_path=db_path)
         row = db.fetch_one("SELECT COUNT(*) AS c FROM transactions")
         total_db_rows = row["c"] if row else 0
@@ -137,7 +150,7 @@ def render_analytics_dashboard(
     # Add tabs for different views
     tabs = ["🌍 " + t("all"), "Santander", "HSBC", t("tab_comparison")]
     selected_tabs = st.tabs(tabs)
-    
+
     # Global Overview Tab
     with selected_tabs[0]:
         render_bank_analytics(
@@ -149,7 +162,7 @@ def render_analytics_dashboard(
             data_dir=data_dir,
             ml_engine=ml_engine,
             show_rule_hub=False,
-            db_path=db_path
+            db_path=db_path,
         )
 
     # Santander Tab
@@ -163,7 +176,7 @@ def render_analytics_dashboard(
             config_dir=config_dir,
             data_dir=data_dir,
             ml_engine=ml_engine,
-            db_path=db_path
+            db_path=db_path,
         )
 
     # HSBC Tab
@@ -177,14 +190,18 @@ def render_analytics_dashboard(
             config_dir=config_dir,
             data_dir=data_dir,
             ml_engine=ml_engine,
-            db_path=db_path
+            db_path=db_path,
         )
 
     # Comparison Tab
     with selected_tabs[3]:
         st.subheader(t("bank_comparison"))
-        stats_sant = analytics_service.calculate_categorization_stats_from_db(db_path, bank_id="santander_likeu")
-        stats_hsbc = analytics_service.calculate_categorization_stats_from_db(db_path, bank_id="hsbc")
+        stats_sant = analytics_service.calculate_categorization_stats_from_db(
+            db_path, bank_id="santander_likeu"
+        )
+        stats_hsbc = analytics_service.calculate_categorization_stats_from_db(
+            db_path, bank_id="hsbc"
+        )
         render_comparison(stats_sant, stats_hsbc, t=t, tc=tc)
 
 
@@ -201,8 +218,10 @@ def _render_drilldown(t, tc, stats, df_filtered_for_display, bank_id):
     display_df = df_filtered_for_display.copy()
     if selected_cat != t("all"):
         # Improved filtering to match full category name or leaf
-        display_df = display_df[display_df["destination_name"].str.contains(f":{selected_cat}$", na=False) | 
-                                (display_df["destination_name"] == selected_cat)]
+        display_df = display_df[
+            display_df["destination_name"].str.contains(f":{selected_cat}$", na=False)
+            | (display_df["destination_name"] == selected_cat)
+        ]
     if not display_df.empty:
         st.markdown(t("showing_txns", count=len(display_df), cat=tc(selected_cat)))
         view_cols = ["date", "description", "amount", "destination_name", "tags"]
@@ -211,15 +230,33 @@ def _render_drilldown(t, tc, stats, df_filtered_for_display, bank_id):
         st.info(t("no_txns_found"))
 
 
-def render_bank_analytics(bank_name, bank_id, t, tc, config_dir: Path, data_dir: Path, ml_engine, db_path: Path, show_rule_hub=True):
+def render_bank_analytics(
+    bank_name,
+    bank_id,
+    t,
+    tc,
+    config_dir: Path,
+    data_dir: Path,
+    ml_engine,
+    db_path: Path,
+    show_rule_hub=True,
+):
     # Global Date Range Selector
     col_date1, col_date2 = st.columns(2)
     with col_date1:
-        start_date_filter = st.date_input(t("start_date_filter"), value=None, key=f"{bank_id}_start_date")
+        start_date_filter = st.date_input(
+            t("start_date_filter"), value=None, key=f"{bank_id}_start_date"
+        )
     with col_date2:
-        end_date_filter = st.date_input(t("end_date_filter"), value=None, key=f"{bank_id}_end_date")
+        end_date_filter = st.date_input(
+            t("end_date_filter"), value=None, key=f"{bank_id}_end_date"
+        )
 
-    date_range_active = start_date_filter is not None and end_date_filter is not None and start_date_filter <= end_date_filter
+    date_range_active = (
+        start_date_filter is not None
+        and end_date_filter is not None
+        and start_date_filter <= end_date_filter
+    )
 
     # If it's a specific bank, we can still filter by period from the tags
     selected_period_value = None
@@ -237,21 +274,28 @@ def render_bank_analytics(bank_name, bank_id, t, tc, config_dir: Path, data_dir:
         sorted_periods = sorted(list(periods), reverse=True)
         if sorted_periods:
             selected_period = st.selectbox(
-                t("filter_period", bank=bank_name), 
-                [t("all")] + sorted_periods, 
+                t("filter_period", bank=bank_name),
+                [t("all")] + sorted_periods,
                 key=f"{bank_id}_period_filter",
-                disabled=date_range_active
+                disabled=date_range_active,
             )
             if selected_period != t("all") and not date_range_active:
                 selected_period_value = selected_period
 
     # Calculate stats directly from DB
+    start_ts: Optional[pd.Timestamp] = None
+    if start_date_filter is not None:
+        start_ts = cast(pd.Timestamp, pd.Timestamp(start_date_filter))
+    end_ts: Optional[pd.Timestamp] = None
+    if end_date_filter is not None:
+        end_ts = cast(pd.Timestamp, pd.Timestamp(end_date_filter))
+
     stats = analytics_service.calculate_categorization_stats_from_db(
         db_path=db_path,
         bank_id=None if bank_id == "all_accounts" else bank_id,
         period=selected_period_value,
-        start_date=pd.to_datetime(start_date_filter) if start_date_filter else None,
-        end_date=pd.to_datetime(end_date_filter) if end_date_filter else None,
+        start_date=start_ts,
+        end_date=end_ts,
     )
 
     if stats["total"] == 0:
@@ -262,25 +306,33 @@ def render_bank_analytics(bank_name, bank_id, t, tc, config_dir: Path, data_dir:
     render_charts(t, stats, tc, key_suffix=bank_id)
     render_category_deep_dive(t, tc, stats, key_suffix=bank_id)
     render_monthly_spending_trends(t, tc, stats, key_suffix=bank_id)
-    
+
     # For drilldown and rule hub, we still need a DataFrame
     # In Approach 2 we would ideally have a "DataService.get_filtered_transactions"
-    df_filtered = data_service.load_transactions_from_db(
-        bank_id=None if bank_id == "all_accounts" else bank_id,
-        db_path=db_path
-    )
+    if bank_id == "all_accounts":
+        df_filtered = data_service.load_all_transactions_from_db(db_path=db_path)
+    else:
+        df_filtered = data_service.load_transactions_from_db(
+            bank_id=bank_id,
+            db_path=db_path,
+        )
     if not df_filtered.empty:
         # Apply the same filtering as the stats query for the UI display
         if date_range_active:
+            start_dt = cast(pd.Timestamp, start_ts)
+            end_dt = cast(pd.Timestamp, end_ts)
             df_filtered = df_filtered[
-                (df_filtered["date"] >= pd.to_datetime(start_date_filter)) &
-                (df_filtered["date"] <= pd.to_datetime(end_date_filter))
+                (df_filtered["date"] >= start_dt) & (df_filtered["date"] <= end_dt)
             ]
         elif selected_period_value:
-            df_filtered = df_filtered[df_filtered["tags"].str.contains(f"period:{selected_period_value}", na=False)]
+            df_filtered = df_filtered[
+                df_filtered["tags"].str.contains(
+                    f"period:{selected_period_value}", na=False
+                )
+            ]
 
         _render_drilldown(t, tc, stats, df_filtered, bank_id)
-        
+
         if show_rule_hub:
             render_rule_staging_hub(
                 t=t,
@@ -290,5 +342,5 @@ def render_bank_analytics(bank_name, bank_id, t, tc, config_dir: Path, data_dir:
                 bank_id=bank_id,
                 config_dir=config_dir,
                 data_dir=data_dir,
-                ml_engine=ml_engine
+                ml_engine=ml_engine,
             )

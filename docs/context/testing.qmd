@@ -20,11 +20,13 @@ tests/
 ├── test_common_utils.py           # String/money/regex utils
 ├── test_csv_to_db_migrator.py     # CSV to SQLite migration
 ├── test_data_service.py           # File loading/discovery
+├── test_dedup_service.py          # Batch duplicate detection and resolution flows
 ├── test_date_utils.py             # Date parsing logic
 ├── test_db_pipeline.py            # End-to-end DB pipeline
 ├── test_db_service.py             # SQLite operations
 ├── test_description_normalizer.py # Text cleaning/abbreviations
 ├── test_errors.py                 # Custom exception behavior
+├── test_flet_rule_hub_view.py     # Flet Rule Hub canonical categories + retraining helpers
 ├── test_firefly_export_service.py # Firefly CSV generation
 ├── test_generic_importer.py       # Main ingestion engine
 ├── test_generic_importer_branches.py # HSBC/Standard paths
@@ -150,6 +152,9 @@ class TestLoadAllBankData:
     # - Returns dict with both banks
     # - Calls load for each bank
     # - Handles empty dataframes gracefully
+
+def test_load_all_transactions_from_db_returns_all_banks(...):
+    # Global DB analytics loader returns mixed-bank rows for all-accounts drilldown
 ```
 
 **Fixtures**:
@@ -434,6 +439,19 @@ test_submit_manual_transaction_inserts_transaction_and_user()
 
 test_submit_manual_transaction_rejects_duplicates()
 # duplicate source_hash returns (False, ["duplicate"])
+# canonical categories come from rules[*].set.expense
+
+### Dedup and Flet Rule Hub Regression Tests
+
+**Files**:
+- `tests/test_dedup_service.py`
+- `tests/test_flet_rule_hub_view.py`
+
+**Coverage**:
+- In-batch duplicates are surfaced before SQLite silently ignores them
+- `DatabaseService.build_source_hash(...)` differs across canonical accounts
+- Flet Rule Hub category options stay aligned with canonical taxonomy values
+- Rule merge messaging only claims retraining when retraining actually runs
 ```
 
 ### User Service Tests

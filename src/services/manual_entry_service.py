@@ -5,6 +5,7 @@ Provides helpers to:
 - Load category and account options from config files.
 - Validate and persist a single manually-entered transaction to the database.
 """
+
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -34,10 +35,12 @@ def get_category_label(expense_path: str, lang: str = "es") -> str:
     Falls back to the raw path if no mapping exists.
     """
     from translations import TRANSLATIONS
+
     key = CATEGORY_KEY_MAP.get(expense_path)
     if key:
         return TRANSLATIONS.get(lang, {}).get(key, expense_path)
     return expense_path
+
 
 from domain.transaction import CanonicalTransaction
 from services.db_service import DatabaseService
@@ -47,7 +50,7 @@ from validation import validate_transaction
 def load_categories_from_rules(rules_path: Path) -> List[str]:
     """Return a sorted list of unique expense account strings from rules.yml.
 
-    Reads the ``defaults.fallback_expense`` value plus every ``rules[*].expense``
+    Reads the ``defaults.fallback_expense`` value plus every ``rules[*].set.expense``
     entry and returns them deduplicated and sorted.
     """
     if not rules_path.exists():
@@ -60,7 +63,7 @@ def load_categories_from_rules(rules_path: Path) -> List[str]:
     if fallback:
         expenses.add(fallback)
     for rule in cfg.get("rules", []):
-        exp = rule.get("expense")
+        exp = (rule.get("set") or {}).get("expense")
         if exp:
             expenses.add(exp)
     return sorted(expenses)
@@ -148,7 +151,15 @@ def submit_manual_transaction(
         return False, errors
 
     db = DatabaseService(db_path=db_path)
-    source_hash = db.build_source_hash(bank_id, "manual", date, amount, description)
+    db.initialize()
+    source_hash = db.build_source_hash(
+        bank_id,
+        "manual",
+        date,
+        amount,
+        description,
+        canonical_account_id=canonical_account_id,
+    )
 
     if db.transaction_exists(source_hash):
         return False, ["duplicate"]

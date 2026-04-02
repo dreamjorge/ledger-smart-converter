@@ -136,6 +136,7 @@ get_manual_entry_view(page, t, config, lang="es") -> ft.Control
 - Streamlit passes `st.session_state.lang` into the page so category labels are localized
 - Flet passes `global_state["lang"]` into the view for the same category-label mapping
 - Validation and duplicate messages are surfaced from the service layer instead of duplicating DB logic in the UI
+- Both UIs load category choices from canonical `rules[*].set.expense` values rather than hardcoded aliases
 
 ### Settings Pages
 
@@ -181,6 +182,8 @@ The analytics dashboard MUST use direct SQL queries (or database views, like `ca
 
 #### Unified Cross-Account View
 The "Global Overview" MUST be implemented using a single SQL query that aggregates data from all accounts in the `transactions` table when `bank_id=None`.
+
+For drilldown tables, the page MUST use `data_service.load_all_transactions_from_db(...)` instead of passing `None` into `load_transactions_from_db(...)`, which remains bank-scoped.
 
 #### render_bank_analytics
 
@@ -239,6 +242,10 @@ date_range_active = start_date_filter and end_date_filter and start_date_filter 
 5. Edit expense account and regex pattern
 6. "Stage Rule Change" → `rulesvc.stage_rule_change(..., db_path=data_dir / "ledger.db")`
 7. "Apply Pending Rules" → `rulesvc.merge_pending_rules(..., db_path=data_dir / "ledger.db")` → `ml.train_global_model()` → `st.cache_resource.clear()`
+
+**Flet Rule Hub notes**:
+- `src/ui/flet_ui/rule_hub_view.py` loads category options from `load_canonical_rule_hub_categories(rules_path)`.
+- Merge feedback is driven by `merge_pending_rules_with_retrain(...)`, which only claims retraining success when the retrain step actually ran successfully.
 
 **ML prediction (safe pattern)**:
 ```python

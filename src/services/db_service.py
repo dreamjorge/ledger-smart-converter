@@ -12,10 +12,16 @@ logger = get_logger("db_service")
 
 
 class DatabaseService:
-    def __init__(self, db_path: Optional[Path] = None, schema_path: Optional[Path] = None):
+    def __init__(
+        self, db_path: Optional[Path] = None, schema_path: Optional[Path] = None
+    ):
         settings = load_settings()
         self.db_path = Path(db_path) if db_path else (settings.data_dir / "ledger.db")
-        self.schema_path = Path(schema_path) if schema_path else (settings.root_dir / "src" / "database" / "schema.sql")
+        self.schema_path = (
+            Path(schema_path)
+            if schema_path
+            else (settings.root_dir / "src" / "database" / "schema.sql")
+        )
 
     def _connect(self) -> sqlite3.Connection:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -61,7 +67,9 @@ class DatabaseService:
             if col not in existing:
                 conn.execute(f"ALTER TABLE transactions ADD COLUMN {col} {typ}")
 
-    def fetch_one(self, query: str, params: Iterable[Any] = ()) -> Optional[Dict[str, Any]]:
+    def fetch_one(
+        self, query: str, params: Iterable[Any] = ()
+    ) -> Optional[Dict[str, Any]]:
         with self._connect() as conn:
             row = conn.execute(query, tuple(params)).fetchone()
             return dict(row) if row else None
@@ -92,7 +100,14 @@ class DatabaseService:
                     closing_day = excluded.closing_day,
                     currency = excluded.currency
                 """,
-                (account_id, display_name, account_type, bank_id, closing_day, currency),
+                (
+                    account_id,
+                    display_name,
+                    account_type,
+                    bank_id,
+                    closing_day,
+                    currency,
+                ),
             )
             conn.commit()
 
@@ -143,17 +158,27 @@ class DatabaseService:
         date: str,
         amount: float,
         description: str,
+        canonical_account_id: Optional[str] = None,
     ) -> str:
-        raw = f"{bank_id}|{source_file}|{date}|{float(amount):.2f}|{(description or '').strip().lower()}"
+        raw = (
+            f"{bank_id}|{canonical_account_id or ''}|{source_file}|{date}|"
+            f"{float(amount):.2f}|{(description or '').strip().lower()}"
+        )
         return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
-    def insert_transaction(self, txn: Dict[str, Any], import_id: Optional[int] = None, user_id: Optional[str] = None) -> bool:
+    def insert_transaction(
+        self,
+        txn: Dict[str, Any],
+        import_id: Optional[int] = None,
+        user_id: Optional[str] = None,
+    ) -> bool:
         source_hash = txn.get("source_hash") or self.build_source_hash(
             bank_id=txn["bank_id"],
             source_file=txn["source_file"],
             date=txn["date"],
             amount=float(txn["amount"]),
             description=txn.get("description", ""),
+            canonical_account_id=txn.get("canonical_account_id"),
         )
         effective_user_id = user_id or txn.get("user_id")
 
@@ -192,15 +217,20 @@ class DatabaseService:
             conn.commit()
             return cur.rowcount > 0
 
-    def insert_transactions_batch(self, txn_rows: List[Dict[str, Any]], import_id: Optional[int] = None, user_id: Optional[str] = None) -> Dict[str, int]:
+    def insert_transactions_batch(
+        self,
+        txn_rows: List[Dict[str, Any]],
+        import_id: Optional[int] = None,
+        user_id: Optional[str] = None,
+    ) -> Dict[str, int]:
         """Insert multiple transactions efficiently in a single DB transaction.
-        
+
         Returns:
             Dict with "inserted" and "skipped" counts.
         """
         inserted = 0
         skipped = 0
-        
+
         # Prepare parameters for all rows
         params = []
         for txn in txn_rows:
@@ -210,30 +240,33 @@ class DatabaseService:
                 date=txn["date"],
                 amount=float(txn["amount"]),
                 description=txn.get("description", ""),
+                canonical_account_id=txn.get("canonical_account_id"),
             )
             effective_user_id = user_id or txn.get("user_id")
-            params.append((
-                source_hash,
-                txn["date"],
-                float(txn["amount"]),
-                txn.get("currency", "MXN"),
-                txn.get("merchant"),
-                txn.get("description", ""),
-                txn.get("raw_description"),
-                txn.get("normalized_description"),
-                txn["account_id"],
-                txn["canonical_account_id"],
-                txn["bank_id"],
-                txn.get("statement_period"),
-                txn.get("category"),
-                txn.get("tags"),
-                txn.get("transaction_type", "withdrawal"),
-                txn.get("source_name", txn.get("account_id")),
-                txn.get("destination_name"),
-                txn["source_file"],
-                import_id,
-                effective_user_id,
-            ))
+            params.append(
+                (
+                    source_hash,
+                    txn["date"],
+                    float(txn["amount"]),
+                    txn.get("currency", "MXN"),
+                    txn.get("merchant"),
+                    txn.get("description", ""),
+                    txn.get("raw_description"),
+                    txn.get("normalized_description"),
+                    txn["account_id"],
+                    txn["canonical_account_id"],
+                    txn["bank_id"],
+                    txn.get("statement_period"),
+                    txn.get("category"),
+                    txn.get("tags"),
+                    txn.get("transaction_type", "withdrawal"),
+                    txn.get("source_name", txn.get("account_id")),
+                    txn.get("destination_name"),
+                    txn["source_file"],
+                    import_id,
+                    effective_user_id,
+                )
+            )
 
         with self._connect() as conn:
             # We use individual execution inside one transaction to get accurate rowcounts per row
@@ -250,14 +283,14 @@ class DatabaseService:
                         destination_name, source_file, import_id, user_id
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
-                    p
+                    p,
                 )
                 if cur.rowcount > 0:
                     inserted += 1
                 else:
                     skipped += 1
             conn.commit()
-            
+
         return {"inserted": inserted, "skipped": skipped}
 
     def transaction_exists(self, source_hash: str) -> bool:
@@ -267,7 +300,12 @@ class DatabaseService:
         )
         return row is not None
 
-    def upsert_transaction(self, txn: Dict[str, Any], import_id: Optional[int] = None, user_id: Optional[str] = None) -> bool:
+    def upsert_transaction(
+        self,
+        txn: Dict[str, Any],
+        import_id: Optional[int] = None,
+        user_id: Optional[str] = None,
+    ) -> bool:
         """Insert or replace a transaction (overwrite mode).
         Preserves the original created_at timestamp if the row already exists.
         Returns True always (the row is guaranteed to exist after this call)."""
@@ -277,13 +315,18 @@ class DatabaseService:
             date=txn["date"],
             amount=float(txn["amount"]),
             description=txn.get("description", ""),
+            canonical_account_id=txn.get("canonical_account_id"),
         )
         effective_user_id = user_id or txn.get("user_id")
         # Preserve created_at from existing row if present
         existing = self.fetch_one(
             "SELECT created_at FROM transactions WHERE source_hash = ?", (source_hash,)
         )
-        created_at = existing["created_at"] if existing else datetime.now(timezone.utc).isoformat()
+        created_at = (
+            existing["created_at"]
+            if existing
+            else datetime.now(timezone.utc).isoformat()
+        )
         updated_at = datetime.now(timezone.utc).isoformat()
 
         with self._connect() as conn:

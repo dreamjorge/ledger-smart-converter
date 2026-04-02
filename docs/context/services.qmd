@@ -123,7 +123,7 @@ record_recategorization_event(
 2. Rule staged in `rules.pending.yml`
 3. Conflict detection runs
 4. If clean, merge with backup
-5. ML model retrains
+5. ML model retrains only after a successful merge
 6. Pending file cleared
 
 **Conflict Detection**:
@@ -210,6 +210,9 @@ load_transactions_from_csv(bank_id: str) -> pd.DataFrame
 load_transactions_from_db(bank_id: str, db_path: Optional[Path] = None) -> pd.DataFrame
 # Load transactions from SQLite `transactions` table
 
+load_all_transactions_from_db(db_path: Optional[Path] = None) -> pd.DataFrame
+# Load transactions for all banks from SQLite `transactions` table
+
 load_transactions(bank_id: str, prefer_db: bool = True, db_path: Optional[Path] = None) -> pd.DataFrame
 # DB-first loader with CSV fallback
 
@@ -229,6 +232,7 @@ load_all_bank_data() -> Dict[str, pd.DataFrame]
 - `load_transactions_from_db()` and `load_transactions_from_csv()` both fail fast for unsupported bank IDs, so CSV fallback is never attempted for an unknown bank.
 - `get_csv_path()` re-reads the accounts config on each lookup, so config edits are picked up without restarting a long-lived process.
 - `load_all_bank_data()` still reads the supported CSV paths directly for bulk-loading compatibility.
+- `load_all_transactions_from_db()` is the global-safe analytics loader and is the only supported DB path for "all accounts" drilldown.
 
 ### Database Service
 
@@ -424,7 +428,7 @@ stats = calculate_categorization_stats(
 
 ```python
 load_categories_from_rules(rules_path: Path) -> List[str]
-# Reads fallback + rule expense accounts from rules.yml
+# Reads fallback + canonical `rules[*].set.expense` values from rules.yml
 
 load_accounts_from_config(accounts_path: Path, rules_path: Optional[Path] = None) -> Dict[str, str]
 # Returns canonical account IDs mapped to UI labels; appends bank display name when available
@@ -450,9 +454,10 @@ submit_manual_transaction(
 
 **Behavior Notes**:
 - Manual entry uses `source_file="manual"` and tags rows with `manual:entry`
-- Duplicate detection uses `DatabaseService.build_source_hash(...)`
+- Duplicate detection uses `DatabaseService.build_source_hash(...)` with `canonical_account_id`
 - Category dropdown labels are translated from Firefly expense paths via `CATEGORY_KEY_MAP`
 - `user_id` is passed through to the transaction insert so manual entries stay attributed to the active family profile
+- `submit_manual_transaction(...)` calls `db.initialize()` before duplicate checks/inserts, so a fresh local DB can accept manual entries without requiring a prior import or settings visit
 
 ### User Service
 
@@ -514,6 +519,7 @@ def resolve_duplicates(db, duplicate_rows, decisions, import_id=None) -> Dict[st
 **Implementation Note**:
 - Resolution occurs as a secondary step after the initial "check" pass.
 - `DeduplicationResult` holds the list of rows that need manual intervention.
+- `check_and_insert_batch(...)` treats a repeated `source_hash` inside the same input batch as a duplicate even if SQLite does not contain that hash yet.
 
 ## CodeGraph Navigation for Services
 codegraph_search "import_service"

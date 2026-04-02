@@ -31,7 +31,7 @@ The `data_service` MUST query SQLite as the primary source for all transaction d
 The import pipeline MUST ensure that all successfully parsed and categorized transactions are persisted to the database within a single transaction to maintain atomicity.
 
 #### Unique Transaction Identification
-The system MUST use a `source_hash` generated from `(bank_id, date, amount, description)` to identify unique transactions and prevent duplicates. (Previously: Identified primarily by row index or file name in CSVs).
+The system MUST use a `source_hash` generated from `(bank_id, canonical_account_id, source_file, date, amount, description)` to identify unique transactions and prevent duplicates. Cross-account transactions with the same amount/date/description MUST remain distinct rows.
 
 
 ## Schema Overview
@@ -206,9 +206,11 @@ class DatabaseService:
 
 Every transaction is fingerprinted before insert.
 
-`source_hash` is a SHA-256 digest computed from a canonical combination of key fields (date, amount, description, account, bank). The schema declares it `UNIQUE`.
+`source_hash` is a SHA-256 digest computed from a canonical combination of key fields (bank, canonical account, source file, date, amount, description). The schema declares it `UNIQUE`.
 
 `insert_transaction()` uses `INSERT OR IGNORE`, so a row with a colliding `source_hash` is silently dropped rather than raising an error.
+
+`check_and_insert_batch()` in the dedup service now performs a second in-memory duplicate pass over the incoming batch, so duplicates already repeated in the same import payload are surfaced for review instead of being silently skipped by SQLite.
 
 The return value of `insert_transaction()` communicates the outcome:
 

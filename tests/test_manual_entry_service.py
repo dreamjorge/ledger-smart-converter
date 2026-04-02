@@ -17,9 +17,12 @@ def test_load_categories_from_rules_returns_sorted_unique_values(tmp_path):
 defaults:
   fallback_expense: Expenses:Other:Uncategorized
 rules:
-  - expense: Expenses:Food:Groceries
-  - expense: Expenses:Food:Restaurants
-  - expense: Expenses:Food:Groceries
+  - set:
+      expense: Expenses:Food:Groceries
+  - set:
+      expense: Expenses:Food:Restaurants
+  - set:
+      expense: Expenses:Food:Groceries
 """.strip(),
         encoding="utf-8",
     )
@@ -65,7 +68,9 @@ banks:
 
 def test_get_category_label_uses_translation_key_and_fallback():
     assert get_category_label("Expenses:Transport:Fuel", "es") == "Gasolina"
-    assert get_category_label("Expenses:Unknown:Other", "es") == "Expenses:Unknown:Other"
+    assert (
+        get_category_label("Expenses:Unknown:Other", "es") == "Expenses:Unknown:Other"
+    )
 
 
 def test_submit_manual_transaction_inserts_transaction_and_user(tmp_path):
@@ -91,7 +96,9 @@ def test_submit_manual_transaction_inserts_transaction_and_user(tmp_path):
         user_id="maria",
     )
 
-    row = db.fetch_one("SELECT * FROM transactions WHERE description = ?", ("Supermercado",))
+    row = db.fetch_one(
+        "SELECT * FROM transactions WHERE description = ?", ("Supermercado",)
+    )
 
     assert ok is True
     assert errors == []

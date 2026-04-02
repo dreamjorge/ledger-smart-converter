@@ -5,6 +5,7 @@ Provides two public functions:
 - check_and_insert_batch: Insert new rows immediately; return duplicate rows for UI review.
 - resolve_duplicates: Apply per-row user decisions (skip / overwrite / keep_both).
 """
+
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
@@ -50,16 +51,17 @@ def check_and_insert_batch(
                 date=row["date"],
                 amount=float(row["amount"]),
                 description=row.get("description", ""),
+                canonical_account_id=row.get("canonical_account_id"),
             )
 
     # 2. Find existing hashes in bulk
     all_hashes = [r["source_hash"] for r in txn_rows]
     existing_hashes = set()
-    
+
     if all_hashes:
         # SQLite limit for variables in IN clause is 999, so chunk it
         for i in range(0, len(all_hashes), 900):
-            chunk = all_hashes[i:i+900]
+            chunk = all_hashes[i : i + 900]
             placeholders = ",".join(["?"] * len(chunk))
             query = f"SELECT source_hash FROM transactions WHERE source_hash IN ({placeholders})"
             rows = db.fetch_all(query, tuple(chunk))
@@ -67,11 +69,15 @@ def check_and_insert_batch(
 
     # 3. Separate duplicates and new rows
     new_rows = []
+    seen_new_hashes = set()
     for row in txn_rows:
         h = row["source_hash"]
         if h in existing_hashes:
             result.duplicate_rows.append(row)
+        elif h in seen_new_hashes:
+            result.duplicate_rows.append(row)
         else:
+            seen_new_hashes.add(h)
             new_rows.append(row)
 
     # 4. Insert new rows in bulk using insert_transactions_batch
@@ -123,6 +129,7 @@ def resolve_duplicates(
                     date=row["date"],
                     amount=float(row["amount"]),
                     description=row.get("description", ""),
+                    canonical_account_id=row.get("canonical_account_id"),
                 )
                 if not db.transaction_exists(candidate_hash):
                     copy_row["source_file"] = candidate_file
