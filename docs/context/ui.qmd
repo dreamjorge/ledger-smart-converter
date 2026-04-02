@@ -18,11 +18,11 @@ The project is currently transitioning from a **Streamlit** web app to a **Flet*
 
 **Responsibilities**:
 - Session state initialization (including language and bank)
-- Horizontal radio-based navigation (Import / Analytics) with lazy loading
+- Native Streamlit navigation via `st.navigation` + `st.Page`
 - Language switching (English/Spanish) with state reset
-- Bank selection (top-bar dropdown, not sidebar)
+- Bank selection from the sidebar so controls remain visible across all pages
 - ML model loading and caching
-- Page rendering delegation
+- Page rendering delegation through top-level wrapper functions in `src/web_app.py`
 
 **Key Setup**:
 ```python
@@ -35,23 +35,22 @@ def get_ml_engine():
     engine.load_model()
     return engine
 
-# Stable internal keys for navigation
-nav_options = {"import": t("nav_import"), "analytics": t("nav_analytics")}
-selected_nav = st.radio("Navigation", options=list(nav_options.keys()), horizontal=True, key="nav_page")
+# Sidebar controls stay outside page wrappers
+selected_lang = st.sidebar.selectbox(...)
+selected_bank = st.sidebar.selectbox(...)
 
-# Lazy rendering logic:
-if selected_nav == "import":
-    from ui.pages.import_page import render_import_page
-    render_import_page(...)
-else:
-    from ui.pages.analytics_page import render_analytics_dashboard
-    render_analytics_dashboard(...)
+navigation = st.navigation([
+    st.Page(page_import, title=t("nav_import"), icon="💳"),
+    st.Page(page_analytics, title=t("nav_analytics"), icon="📊"),
+    st.Page(page_manual, title=t("nav_manual_entry"), icon="✍️"),
+    st.Page(page_settings, title=t("nav_settings"), icon="⚙️"),
+])
+navigation.run()
 ```
 
-**Lazy Loading Note**: The app avoids `st.tabs` because it eagerly loads both branches. By using a horizontal radio, the app achieves true lazy-loading of heavy modules (`pandas`, `plotly`, `ml_categorizer`).
+**Lazy Loading Note**: The app avoids `st.tabs` because it eagerly loads both branches. By using `st.navigation` with page wrapper functions, the app keeps native routing while still lazy-loading heavy modules (`pandas`, `plotly`, `ml_categorizer`).
 
-**Bank/language controls** live in the top bar (3 columns: title, language, bank).
-Sidebar is info-only (rules status, welcome text).
+**Bank/language controls** live in the sidebar so they persist consistently across Import, Analytics, Manual Entry, and Settings.
 
 ---
 
