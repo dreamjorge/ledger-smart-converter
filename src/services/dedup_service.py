@@ -7,21 +7,22 @@ Provides two public functions:
 """
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 
+from services.contracts import DedupDecision, TransactionInsertRow
 from services.db_service import DatabaseService
 
 
 @dataclass
 class DeduplicationResult:
     inserted: int
-    duplicate_rows: List[Dict[str, Any]] = field(default_factory=list)
+    duplicate_rows: List[TransactionInsertRow] = field(default_factory=list)
     import_id: Optional[int] = None
 
 
 def check_and_insert_batch(
     db: DatabaseService,
-    txn_rows: List[Dict[str, Any]],
+    txn_rows: List[TransactionInsertRow],
     import_id: Optional[int] = None,
 ) -> DeduplicationResult:
     """Insert new rows immediately; collect duplicates for user review.
@@ -90,8 +91,8 @@ def check_and_insert_batch(
 
 def resolve_duplicates(
     db: DatabaseService,
-    duplicate_rows: List[Dict[str, Any]],
-    decisions: Dict[str, str],
+    duplicate_rows: List[TransactionInsertRow],
+    decisions: dict[str, DedupDecision],
     import_id: Optional[int] = None,
 ) -> Dict[str, int]:
     """Apply per-row user decisions to duplicate transactions.

@@ -2,6 +2,7 @@ import flet as ft
 from typing import Callable, Optional
 from translations import TRANSLATIONS
 
+
 class AppLayout(ft.Row):
     def __init__(
         self,
@@ -9,7 +10,7 @@ class AppLayout(ft.Row):
         content: ft.Control,
         selected_index: int = 0,
         on_navigation_change: Optional[Callable] = None,
-        lang: str = "en"
+        lang: str = "en",
     ):
         super().__init__()
         self._page = page
@@ -17,13 +18,13 @@ class AppLayout(ft.Row):
         self.selected_index = selected_index
         self.on_navigation_change = on_navigation_change
         self.lang = lang
-        
+
         self.expand = True
         self.spacing = 0
-        
+
         # Translations helper
         self.t = lambda key: TRANSLATIONS.get(self.lang, {}).get(key, key)
-        
+
         # Sidebar (Navigation Rail)
         self.rail = ft.NavigationRail(
             selected_index=self.selected_index,
@@ -61,15 +62,15 @@ class AppLayout(ft.Row):
             on_change=self._handle_nav_change,
             bgcolor=ft.Colors.SURFACE_CONTAINER,
         )
-        
+
         # Content Area
         self.content_container = ft.Container(
             content=self.main_content,
             expand=True,
-            padding=ft.padding.all(30),
+            padding=ft.Padding.all(30),
             bgcolor=ft.Colors.SURFACE,
         )
-        
+
         self.controls = [
             self.rail,
             ft.VerticalDivider(width=1),
@@ -80,12 +81,15 @@ class AppLayout(ft.Row):
         if self.on_navigation_change:
             self.on_navigation_change(e.control.selected_index)
 
+
 def create_header(lang: str = "en") -> ft.Control:
     t = lambda key: TRANSLATIONS.get(lang, {}).get(key, key)
     return ft.Container(
         content=ft.Row(
             [
-                ft.Icon(ft.Icons.ACCOUNT_BALANCE_WALLET, color=ft.Colors.BLUE_400, size=30),
+                ft.Icon(
+                    ft.Icons.ACCOUNT_BALANCE_WALLET, color=ft.Colors.BLUE_400, size=30
+                ),
                 ft.Text(
                     t("app_title"),
                     size=24,
@@ -94,11 +98,11 @@ def create_header(lang: str = "en") -> ft.Control:
                 ),
                 ft.VerticalDivider(),
                 ft.Text("Flet Desktop v1.0", size=14, color=ft.Colors.GREY_500),
-                ft.Row(expand=True), # Spacer
+                ft.Row(expand=True),  # Spacer
             ],
             alignment=ft.MainAxisAlignment.START,
         ),
-        padding=ft.padding.only(left=20, right=20, top=10, bottom=10),
+        padding=ft.Padding.only(left=20, right=20, top=10, bottom=10),
         bgcolor=ft.Colors.SURFACE_CONTAINER,
-        border=ft.border.only(bottom=ft.BorderSide(1, ft.Colors.OUTLINE_VARIANT)),
+        border=ft.Border.only(bottom=ft.BorderSide(1, ft.Colors.OUTLINE_VARIANT)),
     )

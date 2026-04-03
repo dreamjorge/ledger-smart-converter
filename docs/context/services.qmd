@@ -136,6 +136,47 @@ record_recategorization_event(
 - `merge_pending_rules(..., db_path=...)` logs `rules_merged`
 - `record_recategorization_event(...)` logs `recategorization` with payload metadata
 
+### Rules Config Service
+
+**File**: `src/services/rules_config_service.py`
+
+**Key Functions**:
+
+```python
+load_rules_config(rules_path: Path) -> Dict[str, Any]
+# Loads canonical `config/rules.yml` data, returning `{}` when the file is absent
+
+load_expense_categories(rules_path: Path) -> List[str]
+# Reads `defaults.fallback_expense` plus unique `rules[*].set.expense` values
+
+load_bank_display_names(rules_path: Path) -> Dict[str, str]
+# Maps `banks.<bank_id>.display_name` values for UI labels
+```
+
+**Responsibilities**:
+- Centralize read-only helpers for the canonical `config/rules.yml` contract
+- Keep fallback expense/category extraction consistent across manual-entry and rule-hub flows
+- Expose bank display labels without duplicating YAML parsing in UI-facing services
+
+### Shared Service Contracts
+
+**File**: `src/services/contracts.py`
+
+**Key Contracts**:
+
+```python
+ManualEntryResult = Tuple[bool, List[str]]
+DedupDecision = Literal["skip", "overwrite", "keep_both"]
+
+class TransactionInsertRow(TypedDict, total=False)
+# Shared typed dict for DB insert / dedup / manual-entry transaction payloads
+```
+
+**Responsibilities**:
+- Keep the highest-risk service payloads typed without forcing a repo-wide migration away from dict-based persistence helpers
+- Provide one shared transaction-row contract for manual entry and dedup flows before rows cross into `DatabaseService`
+- Make service annotations explicit enough for targeted tests and future incremental typing work
+
 ### Analytics Service
 
 **File**: `src/services/analytics_service.py`
@@ -170,6 +211,7 @@ calculate_categorization_stats_from_db(
 - `calculate_categorization_stats()` now normalizes analytics inputs once at the service boundary before aggregation.
 - The boundary coerces `date`, `amount`, `type`, `destination_name`, `category_name`, and `tags` into a stable frame shape when those columns are present or implied by the source.
 - `calculate_categorization_stats_from_db()` uses the same boundary so DB-derived and CSV-derived analytics share the same normalization rules.
+- `calculate_categorization_stats_from_db()` reapplies the requested `period` / `start_date` / `end_date` filters through `calculate_categorization_stats()` after fetching rows so malformed DB date strings are dropped the same way CSV-loaded `NaT` rows are dropped.
 - Missing optional columns stay safe: the normalization layer fills them with nullable values rather than changing business meaning.
 
 **Stats Returned**:
@@ -428,10 +470,10 @@ stats = calculate_categorization_stats(
 
 ```python
 load_categories_from_rules(rules_path: Path) -> List[str]
-# Reads fallback + canonical `rules[*].set.expense` values from rules.yml
+# Delegates to `rules_config_service.load_expense_categories()`
 
 load_accounts_from_config(accounts_path: Path, rules_path: Optional[Path] = None) -> Dict[str, str]
-# Returns canonical account IDs mapped to UI labels; appends bank display name when available
+# Returns canonical account IDs mapped to UI labels; appends bank display name from `rules_config_service.load_bank_display_names()` when available
 
 get_category_label(expense_path: str, lang: str = "es") -> str
 # Converts Firefly expense paths into translated labels for Streamlit/Flet dropdowns
@@ -458,6 +500,7 @@ submit_manual_transaction(
 - Category dropdown labels are translated from Firefly expense paths via `CATEGORY_KEY_MAP`
 - `user_id` is passed through to the transaction insert so manual entries stay attributed to the active family profile
 - `submit_manual_transaction(...)` calls `db.initialize()` before duplicate checks/inserts, so a fresh local DB can accept manual entries without requiring a prior import or settings visit
+- `_build_manual_transaction_row(...) -> TransactionInsertRow` is the local contract builder so the SQLite payload shape is defined once inside the service
 
 ### User Service
 
@@ -520,6 +563,7 @@ def resolve_duplicates(db, duplicate_rows, decisions, import_id=None) -> Dict[st
 - Resolution occurs as a secondary step after the initial "check" pass.
 - `DeduplicationResult` holds the list of rows that need manual intervention.
 - `check_and_insert_batch(...)` treats a repeated `source_hash` inside the same input batch as a duplicate even if SQLite does not contain that hash yet.
+- `check_and_insert_batch(...)` and `resolve_duplicates(...)` now annotate duplicate-review payloads with the shared `TransactionInsertRow` / `DedupDecision` contracts rather than raw `Dict[str, Any]` types.
 
 ## CodeGraph Navigation for Services
 codegraph_search "import_service"

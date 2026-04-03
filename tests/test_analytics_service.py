@@ -71,10 +71,30 @@ class TestBasicCategorization:
         """
         df = pd.DataFrame(
             [
-                {"type": "withdrawal", "amount": 100.0, "destination_name": "Expenses:Food", "date": pd.Timestamp("2024-01-15")},
-                {"type": "withdrawal", "amount": 50.0, "destination_name": "", "date": pd.Timestamp("2024-01-16")},
-                {"type": "withdrawal", "amount": 75.0, "destination_name": None, "date": pd.Timestamp("2024-01-17")},
-                {"type": "withdrawal", "amount": 25.0, "destination_name": "NoColon", "date": pd.Timestamp("2024-01-18")},
+                {
+                    "type": "withdrawal",
+                    "amount": 100.0,
+                    "destination_name": "Expenses:Food",
+                    "date": pd.Timestamp("2024-01-15"),
+                },
+                {
+                    "type": "withdrawal",
+                    "amount": 50.0,
+                    "destination_name": "",
+                    "date": pd.Timestamp("2024-01-16"),
+                },
+                {
+                    "type": "withdrawal",
+                    "amount": 75.0,
+                    "destination_name": None,
+                    "date": pd.Timestamp("2024-01-17"),
+                },
+                {
+                    "type": "withdrawal",
+                    "amount": 25.0,
+                    "destination_name": "NoColon",
+                    "date": pd.Timestamp("2024-01-18"),
+                },
             ]
         )
         stats = calculate_categorization_stats(df)
@@ -90,9 +110,27 @@ class TestBasicCategorization:
     def test_calculate_categorization_stats_basic(self):
         df = pd.DataFrame(
             [
-                {"type": "withdrawal", "amount": 100.0, "destination_name": "Expenses:Food:Groceries", "category_name": "Food", "date": pd.Timestamp("2024-01-15")},
-                {"type": "transfer", "amount": 200.0, "destination_name": "Assets:Cash", "category_name": "", "date": pd.Timestamp("2024-01-16")},
-                {"type": "withdrawal", "amount": 50.0, "destination_name": "Unstructured Name", "category_name": "Other", "date": pd.Timestamp("2024-01-17")},  # No colon = uncategorized
+                {
+                    "type": "withdrawal",
+                    "amount": 100.0,
+                    "destination_name": "Expenses:Food:Groceries",
+                    "category_name": "Food",
+                    "date": pd.Timestamp("2024-01-15"),
+                },
+                {
+                    "type": "transfer",
+                    "amount": 200.0,
+                    "destination_name": "Assets:Cash",
+                    "category_name": "",
+                    "date": pd.Timestamp("2024-01-16"),
+                },
+                {
+                    "type": "withdrawal",
+                    "amount": 50.0,
+                    "destination_name": "Unstructured Name",
+                    "category_name": "Other",
+                    "date": pd.Timestamp("2024-01-17"),
+                },  # No colon = uncategorized
             ]
         )
         stats = calculate_categorization_stats(df)
@@ -119,10 +157,30 @@ class TestBasicCategorization:
         """Test uncategorized detection for names without colon structure."""
         df = pd.DataFrame(
             [
-                {"type": "withdrawal", "amount": 100.0, "destination_name": "Expenses:Food", "date": pd.Timestamp("2024-01-15")},  # Categorized
-                {"type": "withdrawal", "amount": 200.0, "destination_name": "Assets:Cash", "date": pd.Timestamp("2024-01-16")},  # Categorized
-                {"type": "withdrawal", "amount": 50.0, "destination_name": "PlainName", "date": pd.Timestamp("2024-01-17")},  # Uncategorized (no colon)
-                {"type": "withdrawal", "amount": 75.0, "destination_name": "Another Name", "date": pd.Timestamp("2024-01-18")},  # Uncategorized (no colon)
+                {
+                    "type": "withdrawal",
+                    "amount": 100.0,
+                    "destination_name": "Expenses:Food",
+                    "date": pd.Timestamp("2024-01-15"),
+                },  # Categorized
+                {
+                    "type": "withdrawal",
+                    "amount": 200.0,
+                    "destination_name": "Assets:Cash",
+                    "date": pd.Timestamp("2024-01-16"),
+                },  # Categorized
+                {
+                    "type": "withdrawal",
+                    "amount": 50.0,
+                    "destination_name": "PlainName",
+                    "date": pd.Timestamp("2024-01-17"),
+                },  # Uncategorized (no colon)
+                {
+                    "type": "withdrawal",
+                    "amount": 75.0,
+                    "destination_name": "Another Name",
+                    "date": pd.Timestamp("2024-01-18"),
+                },  # Uncategorized (no colon)
             ]
         )
         stats = calculate_categorization_stats(df)
@@ -134,10 +192,30 @@ class TestBasicCategorization:
         """Test edge cases: None and empty strings."""
         df = pd.DataFrame(
             [
-                {"type": "withdrawal", "amount": 100.0, "destination_name": "Expenses:Food", "date": pd.Timestamp("2024-01-15")},
-                {"type": "withdrawal", "amount": 50.0, "destination_name": "", "date": pd.Timestamp("2024-01-16")},
-                {"type": "withdrawal", "amount": 75.0, "destination_name": None, "date": pd.Timestamp("2024-01-17")},
-                {"type": "withdrawal", "amount": 200.0, "destination_name": "UnstructuredName", "date": pd.Timestamp("2024-01-18")},
+                {
+                    "type": "withdrawal",
+                    "amount": 100.0,
+                    "destination_name": "Expenses:Food",
+                    "date": pd.Timestamp("2024-01-15"),
+                },
+                {
+                    "type": "withdrawal",
+                    "amount": 50.0,
+                    "destination_name": "",
+                    "date": pd.Timestamp("2024-01-16"),
+                },
+                {
+                    "type": "withdrawal",
+                    "amount": 75.0,
+                    "destination_name": None,
+                    "date": pd.Timestamp("2024-01-17"),
+                },
+                {
+                    "type": "withdrawal",
+                    "amount": 200.0,
+                    "destination_name": "UnstructuredName",
+                    "date": pd.Timestamp("2024-01-18"),
+                },
             ]
         )
         stats = calculate_categorization_stats(df)
@@ -149,8 +227,18 @@ class TestBasicCategorization:
         """CSV-like inputs with string dates should still normalize cleanly."""
         df = pd.DataFrame(
             [
-                {"type": "withdrawal", "amount": "100.0", "destination_name": "Expenses:Food", "date": "2024-01-15"},
-                {"type": "withdrawal", "amount": "200.0", "destination_name": "Expenses:Transport", "date": "2024-01-20"},
+                {
+                    "type": "withdrawal",
+                    "amount": "100.0",
+                    "destination_name": "Expenses:Food",
+                    "date": "2024-01-15",
+                },
+                {
+                    "type": "withdrawal",
+                    "amount": "200.0",
+                    "destination_name": "Expenses:Transport",
+                    "date": "2024-01-20",
+                },
             ]
         )
 
@@ -170,8 +258,20 @@ class TestBasicCategorization:
         """Analytics should tolerate missing values in optional columns."""
         df = pd.DataFrame(
             [
-                {"type": pd.NA, "amount": 100.0, "destination_name": "Expenses:Food", "category_name": "", "date": "2024-01-15"},
-                {"type": "deposit", "amount": 50.0, "destination_name": "PlainName", "category_name": None, "date": "2024-01-16"},
+                {
+                    "type": pd.NA,
+                    "amount": 100.0,
+                    "destination_name": "Expenses:Food",
+                    "category_name": "",
+                    "date": "2024-01-15",
+                },
+                {
+                    "type": "deposit",
+                    "amount": 50.0,
+                    "destination_name": "PlainName",
+                    "category_name": None,
+                    "date": "2024-01-16",
+                },
             ]
         )
 
@@ -190,7 +290,11 @@ class TestBasicCategorization:
         """Analytics should tolerate frames without a type column at all."""
         df = pd.DataFrame(
             [
-                {"amount": 100.0, "destination_name": "Expenses:Food", "date": "2024-01-15"},
+                {
+                    "amount": 100.0,
+                    "destination_name": "Expenses:Food",
+                    "date": "2024-01-15",
+                },
                 {"amount": 50.0, "destination_name": "PlainName", "date": "2024-01-16"},
             ]
         )
@@ -209,24 +313,92 @@ class TestBasicCategorization:
 class TestDateFiltering:
     """Test date range filtering functionality."""
 
+    def test_date_filters_drop_rows_with_unparseable_dates(self):
+        df = pd.DataFrame(
+            [
+                {
+                    "type": "withdrawal",
+                    "amount": 100.0,
+                    "destination_name": "Expenses:Food",
+                    "date": "2024-01-15",
+                },
+                {
+                    "type": "withdrawal",
+                    "amount": 999.0,
+                    "destination_name": "Expenses:Ghost",
+                    "date": "not-a-date",
+                },
+            ]
+        )
+
+        stats = calculate_categorization_stats(
+            df,
+            start_date=pd.Timestamp("2024-01-01"),
+            end_date=pd.Timestamp("2024-01-31"),
+        )
+
+        assert stats["total"] == 1
+        assert stats["categorized"] == 1
+        assert stats["uncategorized"] == 0
+        assert stats["total_spent"] == 100.0
+        assert stats["categories"] == {"Food": 1}
+
     def test_filters_by_start_date(self):
         df = pd.DataFrame(
             [
-                {"type": "withdrawal", "amount": 100.0, "destination_name": "Expenses:Food", "category_name": "Food", "date": pd.Timestamp("2024-01-10")},
-                {"type": "withdrawal", "amount": 200.0, "destination_name": "Expenses:Transport", "category_name": "Transport", "date": pd.Timestamp("2024-01-20")},
-                {"type": "withdrawal", "amount": 300.0, "destination_name": "Expenses:Entertainment", "category_name": "Entertainment", "date": pd.Timestamp("2024-01-30")},
+                {
+                    "type": "withdrawal",
+                    "amount": 100.0,
+                    "destination_name": "Expenses:Food",
+                    "category_name": "Food",
+                    "date": pd.Timestamp("2024-01-10"),
+                },
+                {
+                    "type": "withdrawal",
+                    "amount": 200.0,
+                    "destination_name": "Expenses:Transport",
+                    "category_name": "Transport",
+                    "date": pd.Timestamp("2024-01-20"),
+                },
+                {
+                    "type": "withdrawal",
+                    "amount": 300.0,
+                    "destination_name": "Expenses:Entertainment",
+                    "category_name": "Entertainment",
+                    "date": pd.Timestamp("2024-01-30"),
+                },
             ]
         )
-        stats = calculate_categorization_stats(df, start_date=pd.Timestamp("2024-01-15"))
+        stats = calculate_categorization_stats(
+            df, start_date=pd.Timestamp("2024-01-15")
+        )
         assert stats["total"] == 2  # Only Jan 20 and Jan 30
         assert stats["total_spent"] == 500.0
 
     def test_filters_by_end_date(self):
         df = pd.DataFrame(
             [
-                {"type": "withdrawal", "amount": 100.0, "destination_name": "Expenses:Food", "category_name": "Food", "date": pd.Timestamp("2024-01-10")},
-                {"type": "withdrawal", "amount": 200.0, "destination_name": "Expenses:Transport", "category_name": "Transport", "date": pd.Timestamp("2024-01-20")},
-                {"type": "withdrawal", "amount": 300.0, "destination_name": "Expenses:Entertainment", "category_name": "Entertainment", "date": pd.Timestamp("2024-01-30")},
+                {
+                    "type": "withdrawal",
+                    "amount": 100.0,
+                    "destination_name": "Expenses:Food",
+                    "category_name": "Food",
+                    "date": pd.Timestamp("2024-01-10"),
+                },
+                {
+                    "type": "withdrawal",
+                    "amount": 200.0,
+                    "destination_name": "Expenses:Transport",
+                    "category_name": "Transport",
+                    "date": pd.Timestamp("2024-01-20"),
+                },
+                {
+                    "type": "withdrawal",
+                    "amount": 300.0,
+                    "destination_name": "Expenses:Entertainment",
+                    "category_name": "Entertainment",
+                    "date": pd.Timestamp("2024-01-30"),
+                },
             ]
         )
         stats = calculate_categorization_stats(df, end_date=pd.Timestamp("2024-01-25"))
@@ -236,16 +408,40 @@ class TestDateFiltering:
     def test_filters_by_date_range(self):
         df = pd.DataFrame(
             [
-                {"type": "withdrawal", "amount": 100.0, "destination_name": "Expenses:Food", "category_name": "Food", "date": pd.Timestamp("2024-01-05")},
-                {"type": "withdrawal", "amount": 200.0, "destination_name": "Expenses:Transport", "category_name": "Transport", "date": pd.Timestamp("2024-01-15")},
-                {"type": "withdrawal", "amount": 300.0, "destination_name": "Expenses:Entertainment", "category_name": "Entertainment", "date": pd.Timestamp("2024-01-25")},
-                {"type": "withdrawal", "amount": 400.0, "destination_name": "Expenses:Shopping", "category_name": "Shopping", "date": pd.Timestamp("2024-02-05")},
+                {
+                    "type": "withdrawal",
+                    "amount": 100.0,
+                    "destination_name": "Expenses:Food",
+                    "category_name": "Food",
+                    "date": pd.Timestamp("2024-01-05"),
+                },
+                {
+                    "type": "withdrawal",
+                    "amount": 200.0,
+                    "destination_name": "Expenses:Transport",
+                    "category_name": "Transport",
+                    "date": pd.Timestamp("2024-01-15"),
+                },
+                {
+                    "type": "withdrawal",
+                    "amount": 300.0,
+                    "destination_name": "Expenses:Entertainment",
+                    "category_name": "Entertainment",
+                    "date": pd.Timestamp("2024-01-25"),
+                },
+                {
+                    "type": "withdrawal",
+                    "amount": 400.0,
+                    "destination_name": "Expenses:Shopping",
+                    "category_name": "Shopping",
+                    "date": pd.Timestamp("2024-02-05"),
+                },
             ]
         )
         stats = calculate_categorization_stats(
             df,
             start_date=pd.Timestamp("2024-01-10"),
-            end_date=pd.Timestamp("2024-01-31")
+            end_date=pd.Timestamp("2024-01-31"),
         )
         assert stats["total"] == 2  # Only Jan 15 and Jan 25
         assert stats["total_spent"] == 500.0
@@ -253,10 +449,17 @@ class TestDateFiltering:
     def test_returns_empty_stats_when_date_filter_yields_no_results(self):
         df = pd.DataFrame(
             [
-                {"type": "withdrawal", "amount": 100.0, "destination_name": "Expenses:Food", "date": pd.Timestamp("2024-01-15")},
+                {
+                    "type": "withdrawal",
+                    "amount": 100.0,
+                    "destination_name": "Expenses:Food",
+                    "date": pd.Timestamp("2024-01-15"),
+                },
             ]
         )
-        stats = calculate_categorization_stats(df, start_date=pd.Timestamp("2024-02-01"))
+        stats = calculate_categorization_stats(
+            df, start_date=pd.Timestamp("2024-02-01")
+        )
         assert stats["total"] == 0
         assert stats["categorized"] == 0
         assert stats["total_spent"] == 0.0
@@ -268,9 +471,27 @@ class TestPeriodFiltering:
     def test_filters_by_period_tag(self):
         df = pd.DataFrame(
             [
-                {"type": "withdrawal", "amount": 100.0, "destination_name": "Expenses:Food", "tags": "period:2024-01", "date": pd.Timestamp("2024-01-15")},
-                {"type": "withdrawal", "amount": 200.0, "destination_name": "Expenses:Transport", "tags": "period:2024-02", "date": pd.Timestamp("2024-02-15")},
-                {"type": "withdrawal", "amount": 300.0, "destination_name": "Expenses:Entertainment", "tags": "period:2024-02", "date": pd.Timestamp("2024-02-20")},
+                {
+                    "type": "withdrawal",
+                    "amount": 100.0,
+                    "destination_name": "Expenses:Food",
+                    "tags": "period:2024-01",
+                    "date": pd.Timestamp("2024-01-15"),
+                },
+                {
+                    "type": "withdrawal",
+                    "amount": 200.0,
+                    "destination_name": "Expenses:Transport",
+                    "tags": "period:2024-02",
+                    "date": pd.Timestamp("2024-02-15"),
+                },
+                {
+                    "type": "withdrawal",
+                    "amount": 300.0,
+                    "destination_name": "Expenses:Entertainment",
+                    "tags": "period:2024-02",
+                    "date": pd.Timestamp("2024-02-20"),
+                },
             ]
         )
         stats = calculate_categorization_stats(df, period="2024-02")
@@ -280,9 +501,27 @@ class TestPeriodFiltering:
     def test_period_filter_with_multiple_tags(self):
         df = pd.DataFrame(
             [
-                {"type": "withdrawal", "amount": 100.0, "destination_name": "Expenses:Food", "tags": "automated,period:2024-01,reviewed", "date": pd.Timestamp("2024-01-15")},
-                {"type": "withdrawal", "amount": 200.0, "destination_name": "Expenses:Transport", "tags": "period:2024-01", "date": pd.Timestamp("2024-01-20")},
-                {"type": "withdrawal", "amount": 300.0, "destination_name": "Expenses:Entertainment", "tags": "automated,period:2024-02", "date": pd.Timestamp("2024-02-15")},
+                {
+                    "type": "withdrawal",
+                    "amount": 100.0,
+                    "destination_name": "Expenses:Food",
+                    "tags": "automated,period:2024-01,reviewed",
+                    "date": pd.Timestamp("2024-01-15"),
+                },
+                {
+                    "type": "withdrawal",
+                    "amount": 200.0,
+                    "destination_name": "Expenses:Transport",
+                    "tags": "period:2024-01",
+                    "date": pd.Timestamp("2024-01-20"),
+                },
+                {
+                    "type": "withdrawal",
+                    "amount": 300.0,
+                    "destination_name": "Expenses:Entertainment",
+                    "tags": "automated,period:2024-02",
+                    "date": pd.Timestamp("2024-02-15"),
+                },
             ]
         )
         stats = calculate_categorization_stats(df, period="2024-01")
@@ -292,7 +531,13 @@ class TestPeriodFiltering:
     def test_period_filter_returns_empty_when_no_matches(self):
         df = pd.DataFrame(
             [
-                {"type": "withdrawal", "amount": 100.0, "destination_name": "Expenses:Food", "tags": "period:2024-01", "date": pd.Timestamp("2024-01-15")},
+                {
+                    "type": "withdrawal",
+                    "amount": 100.0,
+                    "destination_name": "Expenses:Food",
+                    "tags": "period:2024-01",
+                    "date": pd.Timestamp("2024-01-15"),
+                },
             ]
         )
         stats = calculate_categorization_stats(df, period="2024-12")
@@ -303,16 +548,34 @@ class TestPeriodFiltering:
         """Period filtering should only apply if no date range filtering is active."""
         df = pd.DataFrame(
             [
-                {"type": "withdrawal", "amount": 100.0, "destination_name": "Expenses:Food", "tags": "period:2024-01", "date": pd.Timestamp("2024-01-10")},
-                {"type": "withdrawal", "amount": 200.0, "destination_name": "Expenses:Transport", "tags": "period:2024-01", "date": pd.Timestamp("2024-01-20")},
-                {"type": "withdrawal", "amount": 300.0, "destination_name": "Expenses:Entertainment", "tags": "period:2024-02", "date": pd.Timestamp("2024-02-15")},
+                {
+                    "type": "withdrawal",
+                    "amount": 100.0,
+                    "destination_name": "Expenses:Food",
+                    "tags": "period:2024-01",
+                    "date": pd.Timestamp("2024-01-10"),
+                },
+                {
+                    "type": "withdrawal",
+                    "amount": 200.0,
+                    "destination_name": "Expenses:Transport",
+                    "tags": "period:2024-01",
+                    "date": pd.Timestamp("2024-01-20"),
+                },
+                {
+                    "type": "withdrawal",
+                    "amount": 300.0,
+                    "destination_name": "Expenses:Entertainment",
+                    "tags": "period:2024-02",
+                    "date": pd.Timestamp("2024-02-15"),
+                },
             ]
         )
         # When start_date is provided, period should be ignored
         stats = calculate_categorization_stats(
             df,
             period="2024-01",  # This should be ignored
-            start_date=pd.Timestamp("2024-01-15")
+            start_date=pd.Timestamp("2024-01-15"),
         )
         # Should use date filter, not period filter
         assert stats["total"] == 2  # Jan 20 and Feb 15 (based on date, not period tag)
@@ -325,10 +588,30 @@ class TestMonthlySpendingTrends:
     def test_calculates_monthly_trends_by_category(self):
         df = pd.DataFrame(
             [
-                {"type": "withdrawal", "amount": 100.0, "destination_name": "Expenses:Food", "date": pd.Timestamp("2024-01-15")},
-                {"type": "withdrawal", "amount": 150.0, "destination_name": "Expenses:Food", "date": pd.Timestamp("2024-01-20")},
-                {"type": "withdrawal", "amount": 200.0, "destination_name": "Expenses:Transport", "date": pd.Timestamp("2024-01-25")},
-                {"type": "withdrawal", "amount": 300.0, "destination_name": "Expenses:Food", "date": pd.Timestamp("2024-02-10")},
+                {
+                    "type": "withdrawal",
+                    "amount": 100.0,
+                    "destination_name": "Expenses:Food",
+                    "date": pd.Timestamp("2024-01-15"),
+                },
+                {
+                    "type": "withdrawal",
+                    "amount": 150.0,
+                    "destination_name": "Expenses:Food",
+                    "date": pd.Timestamp("2024-01-20"),
+                },
+                {
+                    "type": "withdrawal",
+                    "amount": 200.0,
+                    "destination_name": "Expenses:Transport",
+                    "date": pd.Timestamp("2024-01-25"),
+                },
+                {
+                    "type": "withdrawal",
+                    "amount": 300.0,
+                    "destination_name": "Expenses:Food",
+                    "date": pd.Timestamp("2024-02-10"),
+                },
             ]
         )
         stats = calculate_categorization_stats(df)
@@ -346,9 +629,24 @@ class TestMonthlySpendingTrends:
     def test_monthly_trends_ignores_non_withdrawal_transactions(self):
         df = pd.DataFrame(
             [
-                {"type": "withdrawal", "amount": 100.0, "destination_name": "Expenses:Food", "date": pd.Timestamp("2024-01-15")},
-                {"type": "deposit", "amount": 500.0, "destination_name": "Expenses:Food", "date": pd.Timestamp("2024-01-16")},
-                {"type": "transfer", "amount": 200.0, "destination_name": "Expenses:Transport", "date": pd.Timestamp("2024-01-17")},
+                {
+                    "type": "withdrawal",
+                    "amount": 100.0,
+                    "destination_name": "Expenses:Food",
+                    "date": pd.Timestamp("2024-01-15"),
+                },
+                {
+                    "type": "deposit",
+                    "amount": 500.0,
+                    "destination_name": "Expenses:Food",
+                    "date": pd.Timestamp("2024-01-16"),
+                },
+                {
+                    "type": "transfer",
+                    "amount": 200.0,
+                    "destination_name": "Expenses:Transport",
+                    "date": pd.Timestamp("2024-01-17"),
+                },
             ]
         )
         stats = calculate_categorization_stats(df)
@@ -362,9 +660,24 @@ class TestMonthlySpendingTrends:
     def test_monthly_trends_only_for_expenses_categories(self):
         df = pd.DataFrame(
             [
-                {"type": "withdrawal", "amount": 100.0, "destination_name": "Expenses:Food", "date": pd.Timestamp("2024-01-15")},
-                {"type": "withdrawal", "amount": 200.0, "destination_name": "Assets:Savings", "date": pd.Timestamp("2024-01-16")},
-                {"type": "withdrawal", "amount": 300.0, "destination_name": "Liabilities:Debt", "date": pd.Timestamp("2024-01-17")},
+                {
+                    "type": "withdrawal",
+                    "amount": 100.0,
+                    "destination_name": "Expenses:Food",
+                    "date": pd.Timestamp("2024-01-15"),
+                },
+                {
+                    "type": "withdrawal",
+                    "amount": 200.0,
+                    "destination_name": "Assets:Savings",
+                    "date": pd.Timestamp("2024-01-16"),
+                },
+                {
+                    "type": "withdrawal",
+                    "amount": 300.0,
+                    "destination_name": "Liabilities:Debt",
+                    "date": pd.Timestamp("2024-01-17"),
+                },
             ]
         )
         stats = calculate_categorization_stats(df)
@@ -378,8 +691,18 @@ class TestMonthlySpendingTrends:
     def test_monthly_trends_empty_when_no_expense_withdrawals(self):
         df = pd.DataFrame(
             [
-                {"type": "deposit", "amount": 100.0, "destination_name": "Expenses:Food", "date": pd.Timestamp("2024-01-15")},
-                {"type": "transfer", "amount": 200.0, "destination_name": "Assets:Cash", "date": pd.Timestamp("2024-01-16")},
+                {
+                    "type": "deposit",
+                    "amount": 100.0,
+                    "destination_name": "Expenses:Food",
+                    "date": pd.Timestamp("2024-01-15"),
+                },
+                {
+                    "type": "transfer",
+                    "amount": 200.0,
+                    "destination_name": "Assets:Cash",
+                    "date": pd.Timestamp("2024-01-16"),
+                },
             ]
         )
         stats = calculate_categorization_stats(df)
@@ -393,9 +716,24 @@ class TestCategorySpending:
     def test_category_spending_sums_by_category(self):
         df = pd.DataFrame(
             [
-                {"type": "withdrawal", "amount": 100.0, "destination_name": "Expenses:Food", "date": pd.Timestamp("2024-01-15")},
-                {"type": "withdrawal", "amount": 150.0, "destination_name": "Expenses:Food", "date": pd.Timestamp("2024-01-20")},
-                {"type": "withdrawal", "amount": 200.0, "destination_name": "Expenses:Transport", "date": pd.Timestamp("2024-01-25")},
+                {
+                    "type": "withdrawal",
+                    "amount": 100.0,
+                    "destination_name": "Expenses:Food",
+                    "date": pd.Timestamp("2024-01-15"),
+                },
+                {
+                    "type": "withdrawal",
+                    "amount": 150.0,
+                    "destination_name": "Expenses:Food",
+                    "date": pd.Timestamp("2024-01-20"),
+                },
+                {
+                    "type": "withdrawal",
+                    "amount": 200.0,
+                    "destination_name": "Expenses:Transport",
+                    "date": pd.Timestamp("2024-01-25"),
+                },
             ]
         )
         stats = calculate_categorization_stats(df)
@@ -405,11 +743,28 @@ class TestCategorySpending:
     def test_category_counts_transactions(self):
         df = pd.DataFrame(
             [
-                {"type": "withdrawal", "amount": 100.0, "destination_name": "Expenses:Food", "date": pd.Timestamp("2024-01-15")},
-                {"type": "withdrawal", "amount": 150.0, "destination_name": "Expenses:Food", "date": pd.Timestamp("2024-01-20")},
-                {"type": "deposit", "amount": 200.0, "destination_name": "Expenses:Transport", "date": pd.Timestamp("2024-01-25")},
+                {
+                    "type": "withdrawal",
+                    "amount": 100.0,
+                    "destination_name": "Expenses:Food",
+                    "date": pd.Timestamp("2024-01-15"),
+                },
+                {
+                    "type": "withdrawal",
+                    "amount": 150.0,
+                    "destination_name": "Expenses:Food",
+                    "date": pd.Timestamp("2024-01-20"),
+                },
+                {
+                    "type": "deposit",
+                    "amount": 200.0,
+                    "destination_name": "Expenses:Transport",
+                    "date": pd.Timestamp("2024-01-25"),
+                },
             ]
         )
         stats = calculate_categorization_stats(df)
         assert stats["categories"]["Food"] == 2  # Two transactions
-        assert stats["categories"]["Transport"] == 1  # One transaction (even though it's deposit)
+        assert (
+            stats["categories"]["Transport"] == 1
+        )  # One transaction (even though it's deposit)

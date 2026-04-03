@@ -95,6 +95,10 @@ if predictions:
     st.success(f"ML suggests: {top_cat} ({conf:.0%})")
 ```
 
+**Category Option Source**:
+- Rule-correction and manual-entry UIs now rely on `services.rules_config_service.load_expense_categories()` for canonical category dropdown values.
+- `services.manual_entry_service.load_categories_from_rules()` remains as a thin compatibility wrapper over the shared helper so existing callers and tests keep a stable import path while YAML parsing logic stays centralized.
+
 ### Model Characteristics
 
 **Strengths**:
@@ -193,16 +197,28 @@ if search_term:
 
 **Structure**:
 ```yaml
-categorization_rules:
-  - merchant: "OXXO"                          # Display name
-    regex: "OXXO.*"                           # Matching pattern
-    expense_account: "Expenses:Food:Groceries" # Firefly account
-    bucket_tag: "groceries"                   # Category tag
+defaults:
+  fallback_expense: Expenses:Other:Uncategorized
 
-  - merchant: "Uber"
-    regex: "UBER.*"
-    expense_account: "Expenses:Transport:Uber"
-    bucket_tag: "transport"
+banks:
+  santander_likeu:
+    display_name: Santander LikeU (XLSX/PDF)
+
+rules:
+  - name: Groceries
+    any_regex:
+      - oxxo
+      - walmart
+    set:
+      expense: Expenses:Food:Groceries
+      tags: [bucket:groceries]
+
+  - name: Transport
+    any_regex:
+      - uber
+    set:
+      expense: Expenses:Transport:RideShare
+      tags: [bucket:transport]
 ```
 
 ### Matching Logic
@@ -214,10 +230,11 @@ categorization_rules:
 ```python
 match_text = normalize_description(raw_description)
 
-for rule in categorization_rules:
-    pattern = re.compile(rule["regex"], re.IGNORECASE)
-    if pattern.match(match_text):
-        return rule["expense_account"], rule["bucket_tag"]
+for rule in rules_cfg["rules"]:
+    for pattern_text in rule["any_regex"]:
+        pattern = re.compile(pattern_text, re.IGNORECASE)
+        if pattern.match(match_text):
+            return rule["set"]["expense"], rule["set"]["tags"]
 
 # No match → try ML prediction
 ml_predictions = ml_engine.predict(match_text)

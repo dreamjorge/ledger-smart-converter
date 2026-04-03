@@ -34,16 +34,24 @@ def _normalize_analytics_frame(df: pd.DataFrame) -> pd.DataFrame:
     if "amount" in normalized.columns:
         normalized["amount"] = pd.to_numeric(normalized["amount"], errors="coerce")
     else:
-        normalized["amount"] = pd.Series([0.0] * len(normalized), index=normalized.index, dtype="float64")
+        normalized["amount"] = pd.Series(
+            [0.0] * len(normalized), index=normalized.index, dtype="float64"
+        )
 
     if "type" in normalized.columns:
-        normalized["type"] = normalized["type"].astype("object").where(normalized["type"].notna(), None)
+        normalized["type"] = (
+            normalized["type"].astype("object").where(normalized["type"].notna(), None)
+        )
     else:
-        normalized["type"] = pd.Series([None] * len(normalized), index=normalized.index, dtype="object")
+        normalized["type"] = pd.Series(
+            [None] * len(normalized), index=normalized.index, dtype="object"
+        )
 
     for column in ("destination_name", "category_name", "tags"):
         if column not in normalized.columns:
-            normalized[column] = pd.Series([None] * len(normalized), index=normalized.index, dtype="object")
+            normalized[column] = pd.Series(
+                [None] * len(normalized), index=normalized.index, dtype="object"
+            )
 
     return normalized
 
@@ -161,25 +169,38 @@ def calculate_categorization_stats(
         # Spending trends over time
         # Filter for withdrawal transactions
         withdrawals_df = df[df["type"] == "withdrawal"].copy()
-        withdrawals_df.dropna(subset=["amount", "date", "destination_name"], inplace=True)
+        withdrawals_df.dropna(
+            subset=["amount", "date", "destination_name"], inplace=True
+        )
 
         # Extract main category from destination_name (e.g., "Expenses:Food" -> "Food")
         # Only consider entries that look like categories, i.e., contain a colon and start with "Expenses"
         withdrawals_df["main_category"] = withdrawals_df["destination_name"].apply(
-            lambda x: str(x).split(":")[1] if pd.notna(x) and ":" in str(x) and str(x).startswith("Expenses") else None
+            lambda x: (
+                str(x).split(":")[1]
+                if pd.notna(x) and ":" in str(x) and str(x).startswith("Expenses")
+                else None
+            )
         )
         withdrawals_df.dropna(subset=["main_category"], inplace=True)
 
-
         if not withdrawals_df.empty:
-            withdrawals_df["date"] = pd.to_datetime(withdrawals_df["date"], errors="coerce")
+            withdrawals_df["date"] = pd.to_datetime(
+                withdrawals_df["date"], errors="coerce"
+            )
             withdrawals_df = withdrawals_df[withdrawals_df["date"].notna()]
 
         if not withdrawals_df.empty:
             withdrawals_df["year_month"] = withdrawals_df["date"].dt.to_period("M")
 
-            monthly_trends = withdrawals_df.groupby(["year_month", "main_category"])["amount"].sum().reset_index()
-            monthly_trends["year_month"] = monthly_trends["year_month"].astype(str) # Convert Period to string for easier JSON serialization
+            monthly_trends = (
+                withdrawals_df.groupby(["year_month", "main_category"])["amount"]
+                .sum()
+                .reset_index()
+            )
+            monthly_trends["year_month"] = monthly_trends["year_month"].astype(
+                str
+            )  # Convert Period to string for easier JSON serialization
 
             for _, row in monthly_trends.iterrows():
                 month_cat = row["year_month"]
@@ -187,7 +208,9 @@ def calculate_categorization_stats(
                 amount = row["amount"]
                 if month_cat not in monthly_spending_trends:
                     monthly_spending_trends[month_cat] = {}
-                monthly_spending_trends[month_cat][category] = monthly_spending_trends[month_cat].get(category, 0.0) + amount
+                monthly_spending_trends[month_cat][category] = (
+                    monthly_spending_trends[month_cat].get(category, 0.0) + amount
+                )
 
         for _, row in df.iterrows():
             dest = row["destination_name"]
@@ -255,7 +278,12 @@ def calculate_categorization_stats_from_db(
         return _empty_stats()
 
     df = pd.DataFrame(rows)
-    return calculate_categorization_stats(df)
+    return calculate_categorization_stats(
+        df,
+        period=period,
+        start_date=start_date,
+        end_date=end_date,
+    )
 
 
 def get_unified_dashboard_stats(
@@ -264,18 +292,18 @@ def get_unified_dashboard_stats(
     end_date: Optional[pd.Timestamp] = None,
 ) -> Dict[str, Any]:
     """Calculate statistics for ALL bank accounts using direct SQL.
-    
+
     Args:
         db_path: Path to the SQLite database.
         start_date: Optional start date for filtering.
         end_date: Optional end date for filtering.
-        
+
     Returns:
         Unified statistics dictionary.
     """
     return calculate_categorization_stats_from_db(
         db_path=db_path,
-        bank_id=None, # None means all banks
+        bank_id=None,  # None means all banks
         start_date=start_date,
-        end_date=end_date
+        end_date=end_date,
     )

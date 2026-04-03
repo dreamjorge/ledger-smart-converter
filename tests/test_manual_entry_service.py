@@ -1,7 +1,10 @@
 from pathlib import Path
+from typing import get_type_hints
 
+from services.contracts import ManualEntryResult, TransactionInsertRow
 from services.db_service import DatabaseService
 from services.manual_entry_service import (
+    _build_manual_transaction_row,
     get_category_label,
     load_accounts_from_config,
     load_categories_from_rules,
@@ -71,6 +74,43 @@ def test_get_category_label_uses_translation_key_and_fallback():
     assert (
         get_category_label("Expenses:Unknown:Other", "es") == "Expenses:Unknown:Other"
     )
+
+
+def test_manual_entry_contract_helper_builds_db_payload():
+    row = _build_manual_transaction_row(
+        source_hash="manual-hash",
+        date="2026-03-15",
+        description="Supermercado",
+        amount=123.45,
+        bank_id="santander_likeu",
+        account_id="Liabilities:CC:Santander LikeU",
+        canonical_account_id="cc:santander_likeu",
+        transaction_type="withdrawal",
+        category="Expenses:Food:Groceries",
+    )
+
+    assert row == {
+        "source_hash": "manual-hash",
+        "date": "2026-03-15",
+        "amount": 123.45,
+        "currency": "MXN",
+        "description": "Supermercado",
+        "raw_description": "Supermercado",
+        "normalized_description": "Supermercado",
+        "account_id": "Liabilities:CC:Santander LikeU",
+        "canonical_account_id": "cc:santander_likeu",
+        "bank_id": "santander_likeu",
+        "transaction_type": "withdrawal",
+        "category": "Expenses:Food:Groceries",
+        "source_file": "manual",
+        "tags": "manual:entry",
+    }
+
+
+def test_submit_manual_transaction_uses_shared_result_contract():
+    hints = get_type_hints(submit_manual_transaction)
+
+    assert hints["return"] == ManualEntryResult
 
 
 def test_submit_manual_transaction_inserts_transaction_and_user(tmp_path):

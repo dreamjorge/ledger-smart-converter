@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """Flet view for manual single-transaction entry."""
+
 import datetime
 import threading
 from pathlib import Path
@@ -15,7 +16,9 @@ from services.manual_entry_service import (
 )
 
 
-def get_manual_entry_view(page: ft.Page, t: Callable, config: Dict, lang: str = "es") -> ft.Control:
+def get_manual_entry_view(
+    page: ft.Page, t: Callable, config: Dict, lang: str = "es"
+) -> ft.Control:
     """Build and return the manual transaction entry view.
 
     Args:
@@ -94,12 +97,14 @@ def get_manual_entry_view(page: ft.Page, t: Callable, config: Dict, lang: str = 
     category_dropdown = ft.Dropdown(
         label=t("field_category"),
         width=350,
-        options=[ft.dropdown.Option(c, get_category_label(c, lang)) for c in categories],
+        options=[
+            ft.dropdown.Option(c, get_category_label(c, lang)) for c in categories
+        ],
         value=state["category"],
         on_select=lambda e: state.update({"category": e.control.value}),
     )
 
-    save_btn = ft.ElevatedButton(
+    save_btn = ft.Button(
         t("nav_manual_entry"),
         icon=ft.Icons.ADD_CIRCLE,
         bgcolor=ft.Colors.BLUE_700,
@@ -116,6 +121,7 @@ def get_manual_entry_view(page: ft.Page, t: Callable, config: Dict, lang: str = 
         def _run():
             # Resolve bank_id and account_id from accounts.yml
             import yaml
+
             try:
                 with open(accounts_path, encoding="utf-8") as f:
                     acc_cfg = yaml.safe_load(f) or {}
@@ -125,12 +131,17 @@ def get_manual_entry_view(page: ft.Page, t: Callable, config: Dict, lang: str = 
                 bank_ids = acc_entry.get("bank_ids", [])
                 account_ids_list = acc_entry.get("account_ids", [])
                 bank_id = bank_ids[0] if bank_ids else canonical_account_id
-                account_id = account_ids_list[0] if account_ids_list else canonical_account_id
+                account_id = (
+                    account_ids_list[0] if account_ids_list else canonical_account_id
+                )
 
                 try:
                     amount_val = float(state["amount"])
                 except (ValueError, TypeError):
-                    status_text.value = t("manual_entry_validation_error", errors=t("manual_entry_invalid_amount"))
+                    status_text.value = t(
+                        "manual_entry_validation_error",
+                        errors=t("manual_entry_invalid_amount"),
+                    )
                     status_text.color = ft.Colors.RED_400
                     return
 
@@ -159,7 +170,9 @@ def get_manual_entry_view(page: ft.Page, t: Callable, config: Dict, lang: str = 
                     status_text.value = t("manual_entry_duplicate")
                     status_text.color = ft.Colors.ORANGE_400
                 else:
-                    status_text.value = t("manual_entry_validation_error", errors=", ".join(errors))
+                    status_text.value = t(
+                        "manual_entry_validation_error", errors=", ".join(errors)
+                    )
                     status_text.color = ft.Colors.RED_400
 
             except Exception as ex:
@@ -179,14 +192,16 @@ def get_manual_entry_view(page: ft.Page, t: Callable, config: Dict, lang: str = 
             ft.Text(t("manual_entry_title"), size=32, weight=ft.FontWeight.BOLD),
             ft.Text(t("manual_entry_desc"), size=16, color=ft.Colors.GREY_400),
             ft.Divider(),
-
             ft.Row([date_field, amount_field], spacing=20),
             description_field,
             ft.Row([account_dropdown, type_dropdown], spacing=20, wrap=True),
             category_dropdown,
-
             ft.Container(height=10),
-            ft.Row([save_btn, progress_ring], spacing=16, vertical_alignment=ft.CrossAxisAlignment.CENTER),
+            ft.Row(
+                [save_btn, progress_ring],
+                spacing=16,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+            ),
             status_text,
         ],
         expand=True,

@@ -46,6 +46,7 @@ tests/
 ├── test_smart_matching.py
 ├── test_setup_scripts_uv.py     # Guards uv-based setup and runner script conventions
 ├── test_ui_analytics_components.py
+├── test_ui_parity_smoke.py      # Cross-UI Streamlit/Flet parity smoke coverage
 ├── test_ui_pages_imports.py
 ├── test_validation.py
 └── test_web_app_config.py
@@ -440,6 +441,7 @@ test_submit_manual_transaction_inserts_transaction_and_user()
 test_submit_manual_transaction_rejects_duplicates()
 # duplicate source_hash returns (False, ["duplicate"])
 # canonical categories come from rules[*].set.expense
+```
 
 ### Dedup and Flet Rule Hub Regression Tests
 
@@ -452,7 +454,19 @@ test_submit_manual_transaction_rejects_duplicates()
 - `DatabaseService.build_source_hash(...)` differs across canonical accounts
 - Flet Rule Hub category options stay aligned with canonical taxonomy values
 - Rule merge messaging only claims retraining when retraining actually runs
-```
+
+### Cross-UI Parity Smoke Tests
+
+**Files**:
+- `tests/test_ui_parity_smoke.py`
+- `tests/test_ui_pages_imports.py`
+
+**Coverage**:
+- Streamlit and Flet analytics expose stable top-level entrypoints
+- Streamlit manual entry and Flet manual entry both read categories from `services.manual_entry_service.load_categories_from_rules(...)`
+- Flet Rule Hub canonical category loading stays anchored to the same manual-entry category loader
+- Streamlit and Flet settings both retain profile-switching hooks through `verify_password(...)` and `set_active_user(...)`
+- Flet analytics/manual-entry/settings views build under the current control API without deprecated `ft.ElevatedButton(...)` usage
 
 ### User Service Tests
 

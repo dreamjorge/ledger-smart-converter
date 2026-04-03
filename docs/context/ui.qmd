@@ -15,6 +15,9 @@ The project is currently transitioning from a **Streamlit** web app to a **Flet*
 - `src/ui/flet_ui/import_view.py` uses the async `await picker.pick_files(...)` API instead of legacy `on_result=` callback wiring required by older Flet releases
 - Flet 0.83.x `Dropdown` uses `on_select=` rather than `on_change=`; the Flet import, analytics, manual-entry, and rule-hub views use the newer callback and read the selection from `e.control.value`
 - The Flet layout uses Material 3 color tokens available in 0.83.x such as `SURFACE_CONTAINER`; older `SURFACE_VARIANT` references are invalid in this version
+- `src/ui/flet_ui/import_view.py` and `src/ui/flet_ui/manual_entry_view.py` use `ft.Button(...)` instead of deprecated `ft.ElevatedButton(...)` under Flet 0.84.0, preserving the same click handlers and color props
+- `src/ui/flet_ui/settings_view.py` also uses `ft.Button(...)` for protected-profile confirmation and profile creation so the settings adapter stays on the same supported control API as the other Flet entrypoints
+- `src/ui/flet_ui/layout.py` uses `ft.Padding.*` and `ft.Border.only(...)` instead of deprecated lowercase helper namespaces removed after 0.83.x
 
 **Responsibilities**:
 - Session state initialization (including language and bank)
@@ -154,6 +157,7 @@ get_manual_entry_view(page, t, config, lang="es") -> ft.Control
 - Streamlit renders inline PIN confirmation when the user selects a protected profile
 - Flet renders an inline PIN row and lock badge for protected profiles
 - Both UIs delegate all PIN verification to `services.user_service.verify_password(...)`
+- Both UIs persist profile switches through `services.user_service.set_active_user(...)`, and smoke coverage now checks those profile-switching entrypoints stay present in both adapters
 
 ---
 
