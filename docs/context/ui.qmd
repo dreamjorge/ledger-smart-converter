@@ -6,7 +6,15 @@ format: html
 ## Purpose
 
 The user interface for importing statements, viewing analytics, and correcting categorizations. 
-The project is currently transitioning from a **Streamlit** web app to a **Flet** desktop application, decoupling the business logic into `ui_service.py` to support both interfaces during the migration.
+The project currently maintains two UI adapters. Per `docs/plans/2026-04-03-frontend-convergence-design.md`, **Streamlit is the primary UI** and is not treated as a temporary shim during this remediation window, while **Flet is experimental** and remains useful for desktop validation and shared-service hardening.
+
+## Frontend Convergence Contract
+
+- **Primary UI**: Streamlit (`src/web_app.py`, `src/ui/pages/`) remains the supported runtime baseline.
+- **Experimental adapter**: Flet (`src/flet_app.py`, `src/ui/flet_ui/`) is not yet the primary UI.
+- **Parity guarantee**: coexistence guarantees only critical workflow parity, not visual parity.
+- **Guaranteed workflows**: import entrypoints, analytics entrypoints, manual-entry category loading, rule-hub canonical category loading, and settings/profile switching.
+- **Removal rule**: one adapter can be removed only when the remaining adapter covers all guaranteed workflows, no unique operational dependency remains on the removed adapter, and docs/scripts/verification references are updated together.
 
 **Desktop Startup Notes**:
 - `src/flet_app.py` now starts the desktop app with `ft.run(main)` instead of deprecated `ft.app(target=main)`
@@ -457,7 +465,7 @@ codegraph_node "_render_rule_hub"
 - `src/ui/flet_ui/settings_view.py` - Flet family profiles + PIN switching
 - `src/ui/flet_ui/components.py` - Reusable metric and chart containers for Flet
 
-### Streamlit Legacy Infrastructure
+### Streamlit Primary Infrastructure
 - `src/web_app.py` - App router, CSS theme, ML caching
 - `src/ui/pages/import_page.py` - Import workflow
 - `src/ui/pages/analytics_page.py` - Analytics dashboard + Rule Hub

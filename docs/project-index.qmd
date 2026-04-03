@@ -7,9 +7,11 @@ format: html
 
 **Purpose**: Import bank statements (HSBC Mexico, Santander LikeU) into Firefly III with AI-powered categorization.
 
-**Key Features**: OCR PDF parsing, ML predictions, rule-based categorization, analytics dashboard, bilingual support.
+**Key Features**: OCR PDF parsing, ML predictions, rule-based categorization, analytics dashboard, bilingual support, SQLite persistence, Streamlit web UI, Flet desktop UI, family profiles, manual entry, and duplicate resolution.
 
 **Big Picture / Roadmap**: `docs/big_picture_roadmap.md`
+
+**Frontend Convergence**: `docs/plans/2026-04-03-frontend-convergence-design.md` defines the current frontend decision: Streamlit remains the **primary UI**, Flet remains **experimental**, coexistence guarantees only **critical workflow parity**, and one adapter can be removed only after the documented graduation/removal criteria are met.
 
 ## Architecture
 
@@ -19,105 +21,141 @@ format: html
 - `generic_importer.py`: CLI entry point with validation flags (`--strict`, `--dry-run`, `--log-json`)
 - `import_hsbc_cfdi_firefly.py`: HSBC XML/PDF importer
 - `import_likeu_firefly.py`: Santander XLSX/PDF importer
-- `pdf_utils.py`: PDF text extraction + OCR fallback (enhanced logging, robust error handling)
+- `pdf_utils.py`: PDF text extraction + OCR fallback
 
 **Domain** (`src/domain/`)
-- `transaction.py`: Canonical transaction model with validation
+- `transaction.py`: canonical transaction model with validation-facing fields
 
 **Services** (`src/services/`)
-- `import_service.py`: Orchestrates import workflow
-- `rule_service.py`: Manages rules staging, conflict detection, merge with backup
-- `analytics_service.py`: Dashboard metrics and aggregations
-- `data_service.py`: DB-first loading with CSV fallback for analytics/UI
+- `import_service.py`: import workflow coordination and output-path resolution
+- `import_pipeline_service.py`: canonical transaction enrichment pipeline
+- `rule_service.py`: staged rule workflow with backup + audit trail
+- `analytics_service.py`: dashboard metrics and aggregations
+- `data_service.py`: DB-first loading, CSV fallback, all-accounts DB reads
 - `db_service.py`: SQLite persistence, deduplication, audit events
----
-title: "Ledger Smart Converter - Project Index"
-format: html
----
-
-## Project Overview
-
-**Purpose**: Import bank statements (HSBC Mexico, Santander LikeU) into Firefly III with AI-powered categorization.
-
-**Key Features**: OCR PDF parsing, ML predictions, rule-based categorization, analytics dashboard, bilingual support.
-
-**Big Picture / Roadmap**: `docs/big_picture_roadmap.md`
-
-## Architecture
-
-### Core Components
-
-**Importers** (`src/`)
-- `generic_importer.py`: CLI entry point with validation flags (`--strict`, `--dry-run`, `--log-json`)
-- `import_hsbc_cfdi_firefly.py`: HSBC XML/PDF importer
-- `import_likeu_firefly.py`: Santander XLSX/PDF importer
-- `pdf_utils.py`: PDF text extraction + OCR fallback (enhanced logging, robust error handling)
-
-**Domain** (`src/domain/`)
-- `transaction.py`: Canonical transaction model with validation
-
-**Services** (`src/services/`)
-- `import_service.py`: Orchestrates import workflow
-- `rule_service.py`: Manages rules staging, conflict detection, merge with backup
-- `analytics_service.py`: Dashboard metrics and aggregations
-- `data_service.py`: DB-first loading with CSV fallback for analytics/UI
-- `db_service.py`: SQLite persistence, deduplication, audit events
+- `dedup_service.py`: in-batch duplicate detection and resolution routing
+- `manual_entry_service.py`: single-transaction insertion helpers
+- `user_service.py`: family profiles and PIN verification
 - `firefly_export_service.py`: Firefly CSV export from SQLite views
 
 **ML & Matching**
 - `ml_categorizer.py`: sklearn-based category predictions
-- `smart_matching.py`: Fuzzy merchant search (rapidfuzz)
+- `smart_matching.py`: fuzzy merchant search with rapidfuzz
+- `description_normalizer.py`: deterministic text normalization prior to rules/ML
 
 **UI** (`src/ui/`)
-- `flet_app.py`: Desktop application entry point and router
-- `web_app.py`: Streamlit web application router
-- `pages/`: Streamlit-specific view modules
-- `flet_ui/`: Flet-specific view components and layout
-- `flet_ui/components.py`: Reusable Flet UI elements
+- `web_app.py`: Streamlit router using native `st.navigation` + `st.Page` and the supported runtime baseline
+- `flet_app.py`: desktop application entry point and experimental adapter router
+- `pages/`: Streamlit page modules
+- `flet_ui/`: Flet-specific view modules and layout
 
 **Utilities**
-- `validation.py`: Transaction/tag validation layer
-- `settings.py`: Environment config (`.env` support)
-- `healthcheck.py`: Dependency and OCR validation
-- `logging_config.py`: Structured logging
+- `validation.py`: transaction/tag validation layer
+- `settings.py`: environment config (`.env` support)
+- `healthcheck.py`: dependency and OCR validation
+- `logging_config.py`: structured logging
+- `account_mapping.py`: canonical account resolution
+
+## Layered Module Map
+
+This repo is not Clean Architecture in the strict textbook sense, but it does follow a usable layered model.
+
+`Importers/CLI` feed parsed rows into the canonical transaction pipeline. `Domain` and `validation` define the transaction contract. `Services` orchestrate categorization, persistence, analytics, rules, user state, and duplicate resolution. `UI` modules stay thin where the architecture is healthiest and delegate business behavior into services. `SQLite` acts as the operational store for deduplication, analytics, audit events, and profile state.
+
+### Dependency Direction
+
+```text
+Streamlit UI / Flet UI / CLI
+            |
+            v
+        services/
+       /    |    \
+      v     v     v
+  domain/  ML   SQLite
+      ^      \    ^
+      |       \   |
+  validation   \  |
+                import/export files
+```
+
+### Runtime Paths
+
+**Import path**
+```text
+PDF/XML/XLSX
+  -> bank-specific importer
+  -> import_pipeline_service
+  -> CanonicalTransaction + validation
+  -> description_normalizer + account_mapping
+  -> rule matching + ML fallback
+  -> CSV output + SQLite persistence
+```
+
+**Analytics path**
+```text
+Streamlit/Flet analytics view
+  -> data_service.load_transactions(..., prefer_db=True)
+  -> analytics_service
+  -> charts / metrics / drilldown
+```
+
+**Rule correction path**
+```text
+UI Rule Hub
+  -> rule_service.stage_rule_change(...)
+  -> config/rules.pending.yml
+  -> rule_service.merge_pending_rules(...)
+  -> config/backups/ + audit_events
+  -> ml_categorizer.train_global_model()
+```
 
 ## Data Flow
 
-```
-Input (PDF/XML/XLSX) → Parse → Validate → Normalize → Categorize (Rules + ML) → Persist/Export
-                                                                   ↓
-                                               SQLite (`data/ledger.db`) → Analytics Dashboard / Firefly III
+```text
+Input (PDF/XML/XLSX) -> Parse -> Validate -> Normalize -> Categorize (Rules + ML) -> Persist/Export
+                                                                   |
+                                                                   v
+                                               SQLite (`data/ledger.db`) -> Analytics / Firefly export / Audit
 ```
 
 ## Configuration
 
-**`config/rules.yml`**: Account definitions, closing days, categorization rules
-**`config/rules.pending.yml`**: Staged rule changes (safe workflow)
-**`config/backups/`**: Timestamped rule backups on merge
+**`config/rules.yml`** contains bank metadata, defaults, merchant aliases, and the canonical `rules:` list. Each rule uses a `set` block such as `set.expense` and `set.tags`.
+
+**`config/rules.pending.yml`** stores staged rule changes before merge.
+
+**`config/accounts.yml`** maps bank/account identifiers to canonical account IDs and optional CSV output metadata.
+
+**`config/backups/`** stores timestamped rule backups created during merge.
 
 ## File Structure
 
-```
+```text
 src/
-├── domain/           # Canonical models
-├── services/         # Business logic layer
-├── ui/pages/         # Streamlit pages
-├── *_importer.py     # Bank-specific importers
-├── ml_categorizer.py # AI predictions
-└── pdf_utils.py      # OCR + text extraction
+├── domain/                # Canonical models
+├── services/              # Business logic layer
+├── ui/pages/              # Streamlit pages (primary UI)
+├── ui/flet_ui/            # Flet views and layout (experimental adapter)
+├── *_importer.py          # Bank-specific importers
+├── ml_categorizer.py      # ML predictions
+├── description_normalizer.py
+└── pdf_utils.py           # OCR + text extraction
 
 data/
-├── hsbc/             # HSBC outputs
-└── santander/        # Santander outputs
+├── hsbc/
+├── santander/
+└── ledger.db
 
 scripts/
-├── setup_env.sh           # uv-based environment setup (.venv + requirements install)
-├── run_web.sh             # Launch Streamlit from the uv-managed .venv
-├── run_flet.sh            # Launch Flet Desktop from the uv-managed .venv
-├── run_import.sh          # CLI import helper using the uv-managed .venv
-└── generate_dummy_data.py # Generate test data for dashboard
+├── setup_env.sh
+├── setup_env.ps1
+├── run_web.sh
+├── run_flet.sh
+├── run_import.sh
+└── generate_dummy_data.py
 
-tests/                     # pytest suite (566 collected; 558 fast + 8 slow)
+tests/
+└── pytest suite
 ```
 
 ## Key Workflows
@@ -125,10 +163,11 @@ tests/                     # pytest suite (566 collected; 558 fast + 8 slow)
 ### Import
 1. Upload PDF/XML/XLSX via UI or CLI
 2. Extract transactions (text or OCR)
-3. Validate canonical model
-4. Apply rules + ML predictions
-5. Write CSV atomically
-6. Log run manifest (`--log-json`)
+3. Build canonical transactions
+4. Validate and normalize text/account context
+5. Apply rules + ML predictions
+6. Write CSV atomically
+7. Persist to SQLite and log manifest/audit data
 
 ### Rule Correction
 1. Search merchant (fuzzy)
@@ -136,28 +175,30 @@ tests/                     # pytest suite (566 collected; 558 fast + 8 slow)
 3. Stage rule in `rules.pending.yml`
 4. Detect conflicts
 5. Merge with backup
-6. Retrain ML model
+6. Retrain ML model on successful merge
 
 ### Analytics
 1. Load transactions from SQLite via `load_transactions(..., prefer_db=True)`
-2. Fall back to CSV when the DB is missing or empty for a bank
-3. Aggregate by period/category/bank and display metrics, charts, drill-down
+2. Fall back to CSV when DB is missing or empty for a bank
+3. Use `load_all_transactions_from_db()` for all-accounts drilldown
+4. Aggregate by period/category/bank and display metrics, charts, and drilldown views
 
 ## Reliability Features
 
-- **Validation**: Strict transaction/tag checks with typed errors
-- **Atomic writes**: Temp files + rename for CSV outputs
-- **Idempotent**: Hash-based deduplication in SQLite
-- **Auditable**: Import and rule-change events stored in `audit_events`
-- **DB-first reads**: Analytics/UI prefer SQLite and fall back to CSV when needed
-- **Logging**: Structured JSON manifests for auditing
-- **CI**: GitHub Actions (compile + pytest on push/PR)
+- Validation with typed error paths
+- Atomic CSV writes
+- Hash-based deduplication in SQLite
+- In-batch duplicate detection before insert
+- Audit trail for imports and rules
+- DB-first reads for analytics/UI
+- Structured logging
+- GitHub Actions test coverage gate
 
 ## Technology Stack
 
 - **Runtime**: Python 3.8+
 - **UI**: Streamlit, Flet
-- **ML**: scikit-learn (category prediction)
+- **ML**: scikit-learn
 - **Fuzzy Search**: rapidfuzz
 - **OCR**: Tesseract (optional)
 - **Testing**: pytest
@@ -166,27 +207,9 @@ tests/                     # pytest suite (566 collected; 558 fast + 8 slow)
 ## Deployment
 
 **Local**: `./scripts/setup_env.sh && ./scripts/run_web.sh`
-**Server**: Streamlit with `--server.address 0.0.0.0`
-**Healthcheck**: `python src/healthcheck.py`
 
-`setup_env.sh` and `setup_env.ps1` require `uv`, create a repo-local `.venv` via `uv venv`, and install `requirements.txt` via `uv pip install -r`.
+`setup_env.sh` and `setup_env.ps1` require `uv`, create a repo-local `.venv` via `uv venv`, and install `requirements.txt` with `uv pip install`.
 
-## Recent Enhancements (2026-02-06)
+## Architecture Notes
 
-**PDF Utils Improvements**:
-- Structured logging (replacing print statements)
-- Enhanced date parsing (ISO, Spanish abbreviations, numeric formats)
-- Robust amount parsing with graceful error handling
-- Comprehensive docstrings with examples
-- Better OCR configuration and fallback logic
-
-**Testing Infrastructure**:
-- Dummy data generator for dashboard testing (`scripts/generate_dummy_data.py`)
-- 70+ realistic Mexican merchants across 9 categories
-- 6 months of synthetic transaction data
-- Proper merchant/period tags and categorization
-
-## Roadmap (see `plan_mejoras.md`)
-
-**Completed**: Validation layer, service architecture, safe rules workflow, SQLite persistence, account mapping, DB pipeline, normalized-description categorization, DB-backed analytics, Firefly export service, audit events, **Flet Desktop UI**, **Family Profiles (multi-user)**, **Manual Entry**, **Batch Deduplication Resolution**.
-**Upcoming**: Service-boundary cleanup, configuration contract consolidation, observability improvements, higher critical-path coverage
+The codebase has a healthy service layer, but still carries migration-era duplication because two UI adapters coexist and some workflows still have both CSV and SQLite paths. For the current remediation window, Streamlit is the supported baseline, while Flet is used to validate desktop flow and shared-service boundaries without implying automatic replacement.
