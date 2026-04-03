@@ -92,7 +92,7 @@ def check_and_insert_batch(
 def resolve_duplicates(
     db: DatabaseService,
     duplicate_rows: List[TransactionInsertRow],
-    decisions: dict[str, DedupDecision],
+    decisions: Dict[str, DedupDecision],
     import_id: Optional[int] = None,
 ) -> Dict[str, int]:
     """Apply per-row user decisions to duplicate transactions.

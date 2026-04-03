@@ -1,4 +1,4 @@
-from typing import List, get_type_hints
+from typing import Dict, List, get_type_hints
 
 from services.contracts import DedupDecision, TransactionInsertRow
 from services.db_service import DatabaseService
@@ -54,5 +54,5 @@ def test_dedup_service_uses_shared_contract_annotations():
 
     assert check_hints["txn_rows"] == List[TransactionInsertRow]
     assert resolve_hints["duplicate_rows"] == List[TransactionInsertRow]
-    assert resolve_hints["decisions"] == dict[str, DedupDecision]
+    assert resolve_hints["decisions"] == Dict[str, DedupDecision]
     assert result_hints["duplicate_rows"] == List[TransactionInsertRow]
