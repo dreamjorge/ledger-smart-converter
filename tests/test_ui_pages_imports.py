@@ -37,6 +37,20 @@ def test_flet_dropdowns_use_on_select_not_on_change() -> None:
         assert "on_select=" in content
 
 
+def test_flet_deprecated_button_and_spacing_apis_are_not_used() -> None:
+    import_view = Path("src/ui/flet_ui/import_view.py").read_text(encoding="utf-8")
+    manual_entry_view = Path("src/ui/flet_ui/manual_entry_view.py").read_text(
+        encoding="utf-8"
+    )
+    layout_view = Path("src/ui/flet_ui/layout.py").read_text(encoding="utf-8")
+
+    assert "ft.ElevatedButton(" not in import_view
+    assert "ft.ElevatedButton(" not in manual_entry_view
+    assert "ft.padding.all(" not in layout_view
+    assert "ft.padding.only(" not in layout_view
+    assert "ft.border.only(" not in layout_view
+
+
 class _DummyPage:
     def __init__(self) -> None:
         self.overlay = []
@@ -74,12 +88,41 @@ def test_flet_manual_entry_view_builds_with_current_flet_api() -> None:
 def test_flet_analytics_view_builds_with_current_flet_api(monkeypatch) -> None:
     from ui.flet_ui import analytics_view
 
-    monkeypatch.setattr(analytics_view.data_service, "load_transactions", lambda bank_id: pd.DataFrame())
+    monkeypatch.setattr(
+        analytics_view.data_service, "load_transactions", lambda bank_id: pd.DataFrame()
+    )
 
     view = analytics_view.get_analytics_view(
         page=_DummyPage(),
         t=lambda key, **kwargs: key,
         config={},
+    )
+
+    assert view is not None
+
+
+def test_flet_settings_view_builds_with_current_flet_api(monkeypatch) -> None:
+    from ui.flet_ui import settings_view
+
+    monkeypatch.setattr(settings_view, "_get_db", lambda: object())
+    monkeypatch.setattr(
+        settings_view,
+        "list_users",
+        lambda db: [
+            {
+                "user_id": "maria",
+                "display_name": "Maria",
+                "color": "#4fc3f7",
+                "password_hash": None,
+            }
+        ],
+    )
+
+    view = settings_view.get_settings_view(
+        page=_DummyPage(),
+        t=lambda key, **kwargs: key,
+        config={},
+        global_state={"active_user": None},
     )
 
     assert view is not None

@@ -6,7 +6,15 @@ format: html
 ## Purpose
 
 The user interface for importing statements, viewing analytics, and correcting categorizations. 
-The project is currently transitioning from a **Streamlit** web app to a **Flet** desktop application, decoupling the business logic into `ui_service.py` to support both interfaces during the migration.
+The project currently maintains two UI adapters. Per `docs/plans/2026-04-03-frontend-convergence-design.md`, **Streamlit is the primary UI** and is not treated as a temporary shim during this remediation window, while **Flet is experimental** and remains useful for desktop validation and shared-service hardening.
+
+## Frontend Convergence Contract
+
+- **Primary UI**: Streamlit (`src/web_app.py`, `src/ui/pages/`) remains the supported runtime baseline.
+- **Experimental adapter**: Flet (`src/flet_app.py`, `src/ui/flet_ui/`) is not yet the primary UI.
+- **Parity guarantee**: coexistence guarantees only critical workflow parity, not visual parity.
+- **Guaranteed workflows**: import entrypoints, analytics entrypoints, manual-entry category loading, rule-hub canonical category loading, and settings/profile switching.
+- **Removal rule**: one adapter can be removed only when the remaining adapter covers all guaranteed workflows, no unique operational dependency remains on the removed adapter, and docs/scripts/verification references are updated together.
 
 **Desktop Startup Notes**:
 - `src/flet_app.py` now starts the desktop app with `ft.run(main)` instead of deprecated `ft.app(target=main)`
@@ -15,6 +23,9 @@ The project is currently transitioning from a **Streamlit** web app to a **Flet*
 - `src/ui/flet_ui/import_view.py` uses the async `await picker.pick_files(...)` API instead of legacy `on_result=` callback wiring required by older Flet releases
 - Flet 0.83.x `Dropdown` uses `on_select=` rather than `on_change=`; the Flet import, analytics, manual-entry, and rule-hub views use the newer callback and read the selection from `e.control.value`
 - The Flet layout uses Material 3 color tokens available in 0.83.x such as `SURFACE_CONTAINER`; older `SURFACE_VARIANT` references are invalid in this version
+- `src/ui/flet_ui/import_view.py` and `src/ui/flet_ui/manual_entry_view.py` use `ft.Button(...)` instead of deprecated `ft.ElevatedButton(...)` under Flet 0.84.0, preserving the same click handlers and color props
+- `src/ui/flet_ui/settings_view.py` also uses `ft.Button(...)` for protected-profile confirmation and profile creation so the settings adapter stays on the same supported control API as the other Flet entrypoints
+- `src/ui/flet_ui/layout.py` uses `ft.Padding.*` and `ft.Border.only(...)` instead of deprecated lowercase helper namespaces removed after 0.83.x
 
 **Responsibilities**:
 - Session state initialization (including language and bank)
@@ -154,6 +165,7 @@ get_manual_entry_view(page, t, config, lang="es") -> ft.Control
 - Streamlit renders inline PIN confirmation when the user selects a protected profile
 - Flet renders an inline PIN row and lock badge for protected profiles
 - Both UIs delegate all PIN verification to `services.user_service.verify_password(...)`
+- Both UIs persist profile switches through `services.user_service.set_active_user(...)`, and smoke coverage now checks those profile-switching entrypoints stay present in both adapters
 
 ---
 
@@ -453,7 +465,7 @@ codegraph_node "_render_rule_hub"
 - `src/ui/flet_ui/settings_view.py` - Flet family profiles + PIN switching
 - `src/ui/flet_ui/components.py` - Reusable metric and chart containers for Flet
 
-### Streamlit Legacy Infrastructure
+### Streamlit Primary Infrastructure
 - `src/web_app.py` - App router, CSS theme, ML caching
 - `src/ui/pages/import_page.py` - Import workflow
 - `src/ui/pages/analytics_page.py` - Analytics dashboard + Rule Hub

@@ -3,14 +3,14 @@ from pathlib import Path
 from typing import Callable, Dict, List
 from services import rule_service, data_service
 from services.import_service import get_banks_from_config
+from services.rules_config_service import load_expense_categories
 from ml_categorizer import TransactionCategorizer
 from smart_matching import find_similar_merchants
-from services.manual_entry_service import load_categories_from_rules
 
 
 def load_canonical_rule_hub_categories(rules_path: Path) -> List[str]:
     """Return canonical category values used by rule staging UIs."""
-    return load_categories_from_rules(rules_path)
+    return load_expense_categories(rules_path)
 
 
 def merge_pending_rules_with_retrain(

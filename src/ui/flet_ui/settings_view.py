@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 """Flet view: Settings — language preference + family user profiles."""
+
 from typing import Callable, Dict
 
 import flet as ft
@@ -65,7 +66,7 @@ def get_settings_view(
     pin_dialog_row = ft.Row(
         [
             pin_dialog_field,
-            ft.ElevatedButton(
+            ft.Button(
                 t("switch_user"),
                 bgcolor=ft.Colors.BLUE_700,
                 color=ft.Colors.WHITE,
@@ -125,6 +126,7 @@ def get_settings_view(
                         build_user_list()
                         user_list_col.update()
                         status_text.update()
+
                 return _activate
 
             def make_delete(uid=uid):
@@ -136,35 +138,53 @@ def get_settings_view(
                     state["users"] = list_users(db)
                     build_user_list()
                     user_list_col.update()
+
                 return _delete
 
-            pin_badge = ft.Icon(
-                ft.Icons.LOCK_OUTLINE,
-                size=14,
-                color=ft.Colors.GREY_400,
-                tooltip=t("user_pin_protected"),
-            ) if has_pin else ft.Container(width=0)
+            pin_badge = (
+                ft.Icon(
+                    ft.Icons.LOCK_OUTLINE,
+                    size=14,
+                    color=ft.Colors.GREY_400,
+                    tooltip=t("user_pin_protected"),
+                )
+                if has_pin
+                else ft.Container(width=0)
+            )
 
-            row = ft.Row([
-                ft.Icon(ft.Icons.CIRCLE, color=u.get("color", "#4fc3f7"), size=16),
-                ft.Text(u["display_name"], weight=ft.FontWeight.BOLD if is_active else ft.FontWeight.NORMAL, expand=True),
-                pin_badge,
-                ft.Text(f"({uid})", color=ft.Colors.GREY_400, size=12),
-                ft.TextButton(
-                    t("switch_user") if not is_active else f"✓ {t('active_user')}",
-                    on_click=make_activate(),
-                    disabled=is_active,
-                ),
-                ft.IconButton(
-                    ft.Icons.DELETE_OUTLINE,
-                    on_click=make_delete(),
-                    icon_color=ft.Colors.RED_400,
-                    tooltip=t("settings_delete_user"),
-                ),
-            ], spacing=8)
+            row = ft.Row(
+                [
+                    ft.Icon(ft.Icons.CIRCLE, color=u.get("color", "#4fc3f7"), size=16),
+                    ft.Text(
+                        u["display_name"],
+                        weight=ft.FontWeight.BOLD
+                        if is_active
+                        else ft.FontWeight.NORMAL,
+                        expand=True,
+                    ),
+                    pin_badge,
+                    ft.Text(f"({uid})", color=ft.Colors.GREY_400, size=12),
+                    ft.TextButton(
+                        t("switch_user") if not is_active else f"✓ {t('active_user')}",
+                        on_click=make_activate(),
+                        disabled=is_active,
+                    ),
+                    ft.IconButton(
+                        ft.Icons.DELETE_OUTLINE,
+                        on_click=make_delete(),
+                        icon_color=ft.Colors.RED_400,
+                        tooltip=t("settings_delete_user"),
+                    ),
+                ],
+                spacing=8,
+            )
             rows.append(row)
 
-        user_list_col.controls = rows if rows else [ft.Text(t("no_active_user"), color=ft.Colors.GREY_400, italic=True)]
+        user_list_col.controls = (
+            rows
+            if rows
+            else [ft.Text(t("no_active_user"), color=ft.Colors.GREY_400, italic=True)]
+        )
 
     build_user_list()
 
@@ -213,7 +233,13 @@ def get_settings_view(
             status_text.color = ft.Colors.RED_400
             status_text.update()
             return
-        ok = create_user(db, user_id=uid, display_name=name, color=state["new_color"], password=pin if pin else None)
+        ok = create_user(
+            db,
+            user_id=uid,
+            display_name=name,
+            color=state["new_color"],
+            password=pin if pin else None,
+        )
         if ok:
             status_text.value = t("user_created", user_id=uid)
             status_text.color = ft.Colors.GREEN_400
@@ -237,7 +263,7 @@ def get_settings_view(
         new_pin_field.update()
         new_pin2_field.update()
 
-    add_btn = ft.ElevatedButton(
+    add_btn = ft.Button(
         t("add_user"),
         icon=ft.Icons.PERSON_ADD,
         on_click=handle_add,
@@ -252,18 +278,15 @@ def get_settings_view(
         [
             ft.Text(t("settings_title"), size=32, weight=ft.FontWeight.BOLD),
             ft.Divider(),
-
             ft.Text(t("settings_users_title"), size=20, weight=ft.FontWeight.BOLD),
             ft.Text(t("settings_users_desc"), color=ft.Colors.GREY_400, size=14),
             ft.Container(height=8),
             user_list_col,
-
             ft.Container(height=16),
             ft.Text(t("add_user"), size=16, weight=ft.FontWeight.BOLD),
             ft.Row([new_id_field, new_name_field], spacing=16, wrap=True),
             ft.Row([new_pin_field, new_pin2_field], spacing=16, wrap=True),
             add_btn,
-
             ft.Container(height=16),
             pin_dialog_row,
             status_text,

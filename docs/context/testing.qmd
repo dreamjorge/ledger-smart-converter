@@ -46,6 +46,7 @@ tests/
 ├── test_smart_matching.py
 ├── test_setup_scripts_uv.py     # Guards uv-based setup and runner script conventions
 ├── test_ui_analytics_components.py
+├── test_ui_parity_smoke.py      # Cross-UI Streamlit/Flet parity smoke coverage
 ├── test_ui_pages_imports.py
 ├── test_validation.py
 └── test_web_app_config.py
@@ -440,6 +441,7 @@ test_submit_manual_transaction_inserts_transaction_and_user()
 test_submit_manual_transaction_rejects_duplicates()
 # duplicate source_hash returns (False, ["duplicate"])
 # canonical categories come from rules[*].set.expense
+```
 
 ### Dedup and Flet Rule Hub Regression Tests
 
@@ -452,7 +454,45 @@ test_submit_manual_transaction_rejects_duplicates()
 - `DatabaseService.build_source_hash(...)` differs across canonical accounts
 - Flet Rule Hub category options stay aligned with canonical taxonomy values
 - Rule merge messaging only claims retraining when retraining actually runs
+
+### Cross-UI Parity Smoke Tests
+
+**Files**:
+- `tests/test_ui_parity_smoke.py`
+- `tests/test_ui_pages_imports.py`
+
+**Coverage**:
+- Streamlit and Flet analytics expose stable top-level entrypoints
+- Streamlit manual entry and Flet manual entry both read categories from `services.manual_entry_service.load_categories_from_rules(...)`
+- Flet Rule Hub canonical category loading stays anchored to the same manual-entry category loader
+- Streamlit and Flet settings both retain profile-switching hooks through `verify_password(...)` and `set_active_user(...)`
+- Flet analytics/manual-entry/settings views build under the current control API without deprecated `ft.ElevatedButton(...)` usage
+
+### Post-Merge Architecture Remediation Verification
+
+Use this verification matrix when closing the post-merge remediation track so the guarded UI, analytics, and manual-entry surfaces stay aligned after refactors.
+
+**Targeted verification command**:
+
+```bash
+.venv\Scripts\python.exe -m pytest tests/test_web_app_config.py tests/test_ui_pages_imports.py tests/test_ui_parity_smoke.py tests/test_data_service.py tests/test_analytics_service.py tests/test_analytics_service_db.py tests/test_rules_config_service.py tests/test_dedup_service.py tests/test_manual_entry_service.py tests/test_flet_rule_hub_view.py -q
 ```
+
+**What it proves**:
+- `tests/test_web_app_config.py` keeps native Streamlit navigation, sidebar controls, and config defaults locked down
+- `tests/test_ui_pages_imports.py` and `tests/test_ui_parity_smoke.py` guard Streamlit/Flet entrypoints, parity hooks, and current Flet control APIs
+- `tests/test_data_service.py`, `tests/test_analytics_service.py`, and `tests/test_analytics_service_db.py` confirm analytics loaders and pandas/date filtering behave consistently across CSV and DB inputs
+- `tests/test_rules_config_service.py`, `tests/test_manual_entry_service.py`, `tests/test_dedup_service.py`, and `tests/test_flet_rule_hub_view.py` verify the shared canonical rules contract powering manual entry, dedup flows, and Rule Hub category options
+
+**Broader regression command**:
+
+```bash
+.venv\Scripts\python.exe -m pytest -q -k "web_app or ui or analytics or manual_entry or rule_hub or dedup or db_service"
+```
+
+**What it proves**:
+- keyword-selected regressions still pass across the wider web UI, Flet UI, analytics, manual-entry, deduplication, and DB-service surface area
+- remediation work did not break neighboring tests outside the narrow verification matrix
 
 ### User Service Tests
 

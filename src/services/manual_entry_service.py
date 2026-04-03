@@ -7,9 +7,14 @@ Provides helpers to:
 """
 
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 import yaml
+from services.contracts import ManualEntryResult, TransactionInsertRow
+from services.rules_config_service import (
+    load_bank_display_names,
+    load_expense_categories,
+)
 
 # Maps Firefly III expense account paths → translation key suffix
 # Used by UIs to show friendly names instead of raw paths.
@@ -53,20 +58,7 @@ def load_categories_from_rules(rules_path: Path) -> List[str]:
     Reads the ``defaults.fallback_expense`` value plus every ``rules[*].set.expense``
     entry and returns them deduplicated and sorted.
     """
-    if not rules_path.exists():
-        return []
-    with open(rules_path, encoding="utf-8") as f:
-        cfg = yaml.safe_load(f) or {}
-
-    expenses: set = set()
-    fallback = cfg.get("defaults", {}).get("fallback_expense")
-    if fallback:
-        expenses.add(fallback)
-    for rule in cfg.get("rules", []):
-        exp = (rule.get("set") or {}).get("expense")
-        if exp:
-            expenses.add(exp)
-    return sorted(expenses)
+    return load_expense_categories(rules_path)
 
 
 def load_accounts_from_config(
@@ -85,11 +77,8 @@ def load_accounts_from_config(
         cfg = yaml.safe_load(f) or {}
 
     bank_names: Dict[str, str] = {}
-    if rules_path and rules_path.exists():
-        with open(rules_path, encoding="utf-8") as f:
-            rules_cfg = yaml.safe_load(f) or {}
-        for bank_id, bank_cfg in rules_cfg.get("banks", {}).items():
-            bank_names[bank_id] = bank_cfg.get("display_name", bank_id)
+    if rules_path:
+        bank_names = load_bank_display_names(rules_path)
 
     result: Dict[str, str] = {}
     for canonical_id, acc_cfg in cfg.get("canonical_accounts", {}).items():
@@ -101,6 +90,36 @@ def load_accounts_from_config(
             label = f"{label} ({bank_names[bank_ids[0]]})"
         result[canonical_id] = label
     return result
+
+
+def _build_manual_transaction_row(
+    *,
+    source_hash: str,
+    date: str,
+    description: str,
+    amount: float,
+    bank_id: str,
+    account_id: str,
+    canonical_account_id: str,
+    transaction_type: str,
+    category: str,
+) -> TransactionInsertRow:
+    return {
+        "source_hash": source_hash,
+        "date": date,
+        "amount": amount,
+        "currency": "MXN",
+        "description": description,
+        "raw_description": description,
+        "normalized_description": description,
+        "account_id": account_id,
+        "canonical_account_id": canonical_account_id,
+        "bank_id": bank_id,
+        "transaction_type": transaction_type,
+        "category": category,
+        "source_file": "manual",
+        "tags": "manual:entry",
+    }
 
 
 def submit_manual_transaction(
@@ -115,7 +134,7 @@ def submit_manual_transaction(
     category: str,
     db_path: Optional[Path] = None,
     user_id: Optional[str] = None,
-) -> Tuple[bool, List[str]]:
+) -> ManualEntryResult:
     """Validate and persist a single manually-entered transaction.
 
     Args:
@@ -164,22 +183,17 @@ def submit_manual_transaction(
     if db.transaction_exists(source_hash):
         return False, ["duplicate"]
 
-    txn_dict: Dict[str, Any] = {
-        "source_hash": source_hash,
-        "date": date,
-        "amount": amount,
-        "currency": "MXN",
-        "description": description,
-        "raw_description": description,
-        "normalized_description": description,
-        "account_id": account_id,
-        "canonical_account_id": canonical_account_id,
-        "bank_id": bank_id,
-        "transaction_type": transaction_type,
-        "category": category,
-        "source_file": "manual",
-        "tags": f"manual:entry",
-    }
+    txn_dict = _build_manual_transaction_row(
+        source_hash=source_hash,
+        date=date,
+        description=description,
+        amount=amount,
+        bank_id=bank_id,
+        account_id=account_id,
+        canonical_account_id=canonical_account_id,
+        transaction_type=transaction_type,
+        category=category,
+    )
 
     db.insert_transaction(txn_dict, user_id=user_id)
     return True, []
