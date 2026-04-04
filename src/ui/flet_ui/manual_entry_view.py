@@ -1,19 +1,16 @@
-# -*- coding: utf-8 -*-
-"""Flet view for manual single-transaction entry."""
-
 import datetime
-import threading
 from pathlib import Path
 from typing import Callable, Dict
 
 import flet as ft
 
-from services.manual_entry_service import (
-    get_category_label,
-    load_accounts_from_config,
-    load_categories_from_rules,
-    submit_manual_transaction,
-)
+from application.use_cases.get_manual_entry_context import GetManualEntryContext
+from application.use_cases.submit_manual_transaction import SubmitManualTransaction
+from infrastructure.adapters.yaml_rules_repository import YamlRulesRepository
+from infrastructure.adapters.sqlite_transaction_repository import SqliteTransactionRepository
+from domain.transaction import CanonicalTransaction
+
+from services.manual_entry_service import get_category_label, DatabaseService
 
 
 def get_manual_entry_view(
@@ -33,8 +30,19 @@ def get_manual_entry_view(
     rules_path = config_dir / "rules.yml"
     accounts_path = config_dir / "accounts.yml"
 
-    categories = load_categories_from_rules(rules_path)
-    accounts = load_accounts_from_config(accounts_path, rules_path)
+    # 1. Initialize Clean Architecture layers (Pure DI)
+    rules_repo = YamlRulesRepository(rules_path, accounts_path)
+    db_service = DatabaseService(db_path=db_path)
+    db_service.initialize()
+    txn_repo = SqliteTransactionRepository(db_service)
+    
+    context_use_case = GetManualEntryContext(rules_repo)
+    submit_use_case = SubmitManualTransaction(txn_repo)
+
+    # 2. Extract context
+    ctx = context_use_case.execute()
+    categories = ctx["categories"]
+    accounts = ctx["accounts"]
 
     # State
     state: Dict = {
@@ -118,72 +126,59 @@ def get_manual_entry_view(
         save_btn.disabled = True
         page.update()
 
-        def _run():
-            # Resolve bank_id and account_id from accounts.yml
-            import yaml
+        try:
+            # Resolve bank_id and account_id via Port
+            details = rules_repo.get_account_details(state["canonical_account_id"])
+            bank_id = details["bank_id"]
+            account_id = details["account_id"]
 
             try:
-                with open(accounts_path, encoding="utf-8") as f:
-                    acc_cfg = yaml.safe_load(f) or {}
-                canonical_accounts = acc_cfg.get("canonical_accounts", {})
-                canonical_account_id = state["canonical_account_id"]
-                acc_entry = canonical_accounts.get(canonical_account_id, {})
-                bank_ids = acc_entry.get("bank_ids", [])
-                account_ids_list = acc_entry.get("account_ids", [])
-                bank_id = bank_ids[0] if bank_ids else canonical_account_id
-                account_id = (
-                    account_ids_list[0] if account_ids_list else canonical_account_id
+                amount_val = float(state["amount"])
+            except (ValueError, TypeError):
+                status_text.value = t(
+                    "manual_entry_validation_error",
+                    errors=t("manual_entry_invalid_amount"),
                 )
-
-                try:
-                    amount_val = float(state["amount"])
-                except (ValueError, TypeError):
-                    status_text.value = t(
-                        "manual_entry_validation_error",
-                        errors=t("manual_entry_invalid_amount"),
-                    )
-                    status_text.color = ft.Colors.RED_400
-                    return
-
-                ok, errors = submit_manual_transaction(
-                    date=state["date"],
-                    description=state["description"],
-                    amount=amount_val,
-                    bank_id=bank_id,
-                    account_id=account_id,
-                    canonical_account_id=canonical_account_id,
-                    transaction_type=state["transaction_type"],
-                    category=state["category"],
-                    db_path=Path(db_path) if db_path else None,
-                    user_id=config.get("active_user"),
-                )
-
-                if ok:
-                    status_text.value = t("manual_entry_success")
-                    status_text.color = ft.Colors.GREEN_400
-                    # Reset amount and description fields
-                    amount_field.value = ""
-                    description_field.value = ""
-                    state["amount"] = ""
-                    state["description"] = ""
-                elif errors == ["duplicate"]:
-                    status_text.value = t("manual_entry_duplicate")
-                    status_text.color = ft.Colors.ORANGE_400
-                else:
-                    status_text.value = t(
-                        "manual_entry_validation_error", errors=", ".join(errors)
-                    )
-                    status_text.color = ft.Colors.RED_400
-
-            except Exception as ex:
-                status_text.value = f"Error: {ex}"
                 status_text.color = ft.Colors.RED_400
-            finally:
-                progress_ring.visible = False
-                save_btn.disabled = False
-                page.update()
+                return
 
-        threading.Thread(target=_run, daemon=True).start()
+            # 3. Use Domain Model
+            txn = CanonicalTransaction(
+                date=state["date"],
+                description=state["description"],
+                amount=amount_val,
+                bank_id=bank_id,
+                account_id=account_id,
+                canonical_account_id=state["canonical_account_id"],
+                raw_description=state["description"],
+                normalized_description=state["description"],
+                source="manual",
+            )
+
+            # 4. Invoke Use Case
+            success = submit_use_case.execute(txn)
+
+            if success:
+                status_text.value = t("manual_entry_success")
+                status_text.color = ft.Colors.GREEN_400
+                # Reset UI
+                amount_field.value = ""
+                description_field.value = ""
+                state["amount"] = ""
+                state["description"] = ""
+            else:
+                # We simplified success/fail here for now.
+                # In a real app we'd have result objects.
+                status_text.value = t("manual_entry_duplicate")
+                status_text.color = ft.Colors.ORANGE_400
+
+        except Exception as ex:
+            status_text.value = f"Error: {ex}"
+            status_text.color = ft.Colors.RED_400
+        finally:
+            progress_ring.visible = False
+            save_btn.disabled = False
+            page.update()
 
     save_btn.on_click = handle_save
 
