@@ -9,7 +9,7 @@ import plotly.express as px
 
 from services import import_service as imp
 from services import rule_service as rulesvc
-from services import data_service, ui_service, analytics_service
+from services import ui_service, analytics_service
 from ui.components.analytics_components import (
     render_metrics,
     render_charts,
@@ -17,6 +17,15 @@ from ui.components.analytics_components import (
     render_monthly_spending_trends,
 )
 from ui.components.rule_components import render_rule_staging_hub
+
+from application.use_cases.calculate_analytics import CalculateAnalytics, AnalyticsResult
+from application.use_cases.get_filtered_transactions import GetFilteredTransactions
+from infrastructure.adapters.sqlite_transaction_repository import SqliteTransactionRepository
+from services.db_service import DatabaseService
+from dataclasses import asdict
+
+if False:
+    from application.use_cases.generate_monthly_report import GenerateMonthlyReport
 
 
 def render_comparison(
@@ -125,6 +134,7 @@ def render_analytics_dashboard(
     data_dir: Path,
     copy_feedback_key: str,
     ml_engine,
+    report_use_case: Optional[GenerateMonthlyReport] = None,
 ):
     feedback = st.session_state.pop(copy_feedback_key, None)
     if feedback:
@@ -133,13 +143,18 @@ def render_analytics_dashboard(
     st.header(t("analytics_title"))
     db_path = data_dir / "ledger.db"
 
+    # 1. Initialize Clean Architecture layers (Pure DI)
+    db_service = DatabaseService(db_path=db_path)
+    db_service.initialize()
+    txn_repo = SqliteTransactionRepository(db_service)
+    
+    calculate_analytics_uc = CalculateAnalytics(txn_repo)
+    get_filtered_txns_uc = GetFilteredTransactions(txn_repo)
+
     # Check if DB has data
     total_db_rows = 0
     if db_path.exists():
-        from services.db_service import DatabaseService
-
-        db = DatabaseService(db_path=db_path)
-        row = db.fetch_one("SELECT COUNT(*) AS c FROM transactions")
+        row = db_service.fetch_one("SELECT COUNT(*) AS c FROM transactions")
         total_db_rows = row["c"] if row else 0
 
     if total_db_rows == 0:
@@ -163,6 +178,9 @@ def render_analytics_dashboard(
             ml_engine=ml_engine,
             show_rule_hub=False,
             db_path=db_path,
+            calculate_analytics_uc=calculate_analytics_uc,
+            get_filtered_txns_uc=get_filtered_txns_uc,
+            report_use_case=report_use_case,
         )
 
     # Santander Tab
@@ -177,6 +195,9 @@ def render_analytics_dashboard(
             data_dir=data_dir,
             ml_engine=ml_engine,
             db_path=db_path,
+            calculate_analytics_uc=calculate_analytics_uc,
+            get_filtered_txns_uc=get_filtered_txns_uc,
+            report_use_case=report_use_case,
         )
 
     # HSBC Tab
@@ -191,18 +212,19 @@ def render_analytics_dashboard(
             data_dir=data_dir,
             ml_engine=ml_engine,
             db_path=db_path,
+            calculate_analytics_uc=calculate_analytics_uc,
+            get_filtered_txns_uc=get_filtered_txns_uc,
+            report_use_case=report_use_case,
         )
 
     # Comparison Tab
     with selected_tabs[3]:
         st.subheader(t("bank_comparison"))
-        stats_sant = analytics_service.calculate_categorization_stats_from_db(
-            db_path, bank_id="santander_likeu"
-        )
-        stats_hsbc = analytics_service.calculate_categorization_stats_from_db(
-            db_path, bank_id="hsbc"
-        )
-        render_comparison(stats_sant, stats_hsbc, t=t, tc=tc)
+        # Unified Use Case calls
+        res_sant = calculate_analytics_uc.execute(bank_id="santander_likeu")
+        res_hsbc = calculate_analytics_uc.execute(bank_id="hsbc")
+        
+        render_comparison(asdict(res_sant), asdict(res_hsbc), t=t, tc=tc)
 
 
 def _render_drilldown(t, tc, stats, df_filtered_for_display, bank_id):
@@ -239,6 +261,9 @@ def render_bank_analytics(
     data_dir: Path,
     ml_engine,
     db_path: Path,
+    calculate_analytics_uc: CalculateAnalytics,
+    get_filtered_txns_uc: GetFilteredTransactions,
+    report_use_case: Optional[GenerateMonthlyReport] = None,
     show_rule_hub=True,
 ):
     # Global Date Range Selector
@@ -261,13 +286,12 @@ def render_bank_analytics(
     # If it's a specific bank, we can still filter by period from the tags
     selected_period_value = None
     if bank_id != "all_accounts":
-        # We need a small DF just to extract periods for the dropdown
-        # This is a bit inefficient but keep it for now for the period UI
-        df_minimal = data_service.load_transactions_from_db(bank_id, db_path=db_path)
+        # Using the Use Case to get transactions and extract periods
+        all_txns = get_filtered_txns_uc.execute(bank_id=bank_id)
         periods = set()
-        if not df_minimal.empty and "tags" in df_minimal.columns:
-            for tag_str in df_minimal["tags"].dropna():
-                for tag in str(tag_str).split(","):
+        for txn in all_txns:
+            if txn.tags:
+                for tag in str(txn.tags).split(","):
                     if tag.startswith("period:"):
                         periods.add(tag.split(":")[1])
 
@@ -282,21 +306,40 @@ def render_bank_analytics(
             if selected_period != t("all") and not date_range_active:
                 selected_period_value = selected_period
 
-    # Calculate stats directly from DB
-    start_ts: Optional[pd.Timestamp] = None
-    if start_date_filter is not None:
-        start_ts = cast(pd.Timestamp, pd.Timestamp(start_date_filter))
-    end_ts: Optional[pd.Timestamp] = None
-    if end_date_filter is not None:
-        end_ts = cast(pd.Timestamp, pd.Timestamp(end_date_filter))
+    # Report Generation Button
+    if report_use_case:
+        col_btn, _ = st.columns([1, 3])
+        with col_btn:
+            # We use the current filters for the report
+            if st.button(t("btn_generate_report"), key=f"{bank_id}_gen_report"):
+                with st.spinner(t("processing")):
+                    try:
+                        period_label = selected_period_value or f"{start_date_filter} to {end_date_filter}" if date_range_active else t("all")
+                        report_bytes = report_use_case.execute(
+                            bank_id=None if bank_id == "all_accounts" else bank_id,
+                            period=selected_period_value,
+                            start_date=start_date_filter,
+                            end_date=end_date_filter,
+                        )
+                        st.download_button(
+                            label=t("download_report"),
+                            data=report_bytes,
+                            file_name=f"report_{bank_id}_{period_label}.pdf",
+                            mime="application/pdf",
+                            key=f"{bank_id}_dl_report"
+                        )
+                        st.success(t("report_generated", period=period_label))
+                    except Exception as e:
+                        st.error(f"Failed to generate report: {str(e)}")
 
-    stats = analytics_service.calculate_categorization_stats_from_db(
-        db_path=db_path,
+    # Invoke Analytics Use Case
+    stats_res = calculate_analytics_uc.execute(
         bank_id=None if bank_id == "all_accounts" else bank_id,
         period=selected_period_value,
-        start_date=start_ts,
-        end_date=end_ts,
+        start_date=start_date_filter,
+        end_date=end_date_filter,
     )
+    stats = asdict(stats_res)
 
     if stats["total"] == 0:
         st.error(t("no_data_selection"))
@@ -307,29 +350,28 @@ def render_bank_analytics(
     render_category_deep_dive(t, tc, stats, key_suffix=bank_id)
     render_monthly_spending_trends(t, tc, stats, key_suffix=bank_id)
 
-    # For drilldown and rule hub, we still need a DataFrame
-    # In Approach 2 we would ideally have a "DataService.get_filtered_transactions"
-    if bank_id == "all_accounts":
-        df_filtered = data_service.load_all_transactions_from_db(db_path=db_path)
-    else:
-        df_filtered = data_service.load_transactions_from_db(
-            bank_id=bank_id,
-            db_path=db_path,
-        )
-    if not df_filtered.empty:
-        # Apply the same filtering as the stats query for the UI display
-        if date_range_active:
-            start_dt = cast(pd.Timestamp, start_ts)
-            end_dt = cast(pd.Timestamp, end_ts)
-            df_filtered = df_filtered[
-                (df_filtered["date"] >= start_dt) & (df_filtered["date"] <= end_dt)
-            ]
-        elif selected_period_value:
-            df_filtered = df_filtered[
-                df_filtered["tags"].str.contains(
-                    f"period:{selected_period_value}", na=False
-                )
-            ]
+    # For drilldown and rule hub, we fetch filtered transactions
+    txns_filtered = get_filtered_txns_uc.execute(
+        bank_id=None if bank_id == "all_accounts" else bank_id,
+        period=selected_period_value,
+        start_date=start_date_filter,
+        end_date=end_date_filter,
+    )
+    
+    if txns_filtered:
+        # Convert to DataFrame for legacy UI components compatibility
+        df_filtered = pd.DataFrame([
+            {
+                "date": t.date,
+                "description": t.description,
+                "amount": t.amount,
+                "destination_name": t.destination_name,
+                "tags": t.tags,
+                "bank_id": t.bank_id,
+                "transaction_type": t.transaction_type,
+                "category": t.category
+            } for t in txns_filtered
+        ])
 
         _render_drilldown(t, tc, stats, df_filtered, bank_id)
 

@@ -9,11 +9,13 @@ The ingestion layer handles the parsing of bank-specific statement formats (XLSX
 
 ## Importer Architecture
 
-The system uses a tiered approach to importing:
+The system uses a Clean Architecture approach to importing:
 
-1. **Bank-Specific Parsers**: Handlers for unique file formats (e.g., HSBC CFDI XML, Santander LikeU XLSX).
-2. **Generic Importer CLI**: A unified entry point (`src/generic_importer.py`) that orchestrates the parsing, normalization, and validation.
-3. **PDF Utilities**: Shared logic for OCR and text extraction from statement PDFs.
+1. **Infrastructure Parsers**: Strategies encapsulating unique file formats via `StatementParser` interface (`src/infrastructure/parsers/`).
+2. **Parser Factory**: Instantiates the correct parser based on bank config (`ParserFactory`).
+3. **Generic Importer CLI**: A unified entry point orchestrator (`src/generic_importer.py`).
+4. **Import Pipeline Service**: Handles transaction normalization, canonical mapping, and evaluation rules.
+5. **PDF Utilities**: Shared logic for OCR and text extraction from statement PDFs.
 
 ## Supported Banks
 
@@ -103,14 +105,18 @@ python src/generic_importer.py \
 
 **Workflow**:
 1. Load bank configuration
-2. Call bank-specific importer
-3. Build `raw_description` from parsed source text
-4. Build `normalized_description` (deterministic cleanup)
-5. Validate transactions
-6. Resolve canonical account id from `accounts.yml`
-7. Apply rules + ML categorization (normalized text by default; fallback via `LSC_USE_NORMALIZED_TEXT=false`)
-8. Write CSV (atomic)
-9. Log manifest
+2. `ParserFactory` instantiates the correct parser (`XmlParser`, `ExcelParser`, or `PdfParser`).
+3. Parser extracts `TxnRaw` models from the file.
+4. Call `ImportPipelineService.process_transactions()`
+   a. Build `normalized_description` (deterministic cleanup)
+   b. Validate transaction format rules
+   c. Resolve canonical account id from `accounts.yml`
+   d. Apply rules + ML categorization
+5. Write CSV (atomic)
+6. Log manifest
+
+**Data Models DTO**:
+- `TxnRaw` model lives in `src/infrastructure/parsers/models.py`.
 
 **Account Configuration (`config/accounts.yml`)**:
 ```yaml
@@ -213,67 +219,29 @@ categorization_rules:
 
 ## Adding New Bank Importer
 
-### 1. Create Importer File
-
-**Template**:
-```python
-# src/import_<bank>_firefly.py
-from pathlib import Path
-from typing import List, Dict
-from domain.transaction import CanonicalTransaction
-
-def process_<bank>_statement(file_path: Path) -> List[Dict]:
-    """Extract transactions from <bank> files."""
-    transactions = []
-
-    # Parse bank-specific format
-    # ...
-
-    for row in parsed_data:
-        txn = {
-            "date": parse_date(row["date"]),
-            "description": row["description"],
-            "amount": parse_amount(row["amount"]),
-            "bank_id": "<bank>",
-            "account_id": "main"
-        }
-        transactions.append(txn)
-
-    return transactions
-```
-
-### 2. Add Configuration
+### 1. Create Importer Configuration
 
 **`config/rules.yml`**:
 ```yaml
 banks:
   <bank>:
     closing_day: 15
+    type: "xlsx" # or xml, generic
     source_account: "<Bank Name>"
 ```
 
-### 3. Register in Generic Importer
+### 2. (If needed) Extend Parser Factory
 
-**`src/generic_importer.py`**:
+If the new bank introduces a completely new format (e.g. JSON from an API), extend the `ParserFactory` in `src/infrastructure/parsers/parser_factory.py`:
+
 ```python
-from import_<bank>_firefly import process_<bank>_statement
-
-BANK_PROCESSORS = {
-    "santander_likeu": process_likeu_statements,
-    "hsbc": process_hsbc_cfdi,
-    "<bank>": process_<bank>_statement,  # Add here
-}
+        if bank_type == "json":
+            return JsonParser()
 ```
 
-### 4. Add Tests
+### 3. Add Tests
 
-**`tests/test_<bank>.py`**:
-```python
-def test_process_<bank>_statement():
-    result = process_<bank>_statement(sample_file)
-    assert len(result) > 0
-    assert result[0]["date"] == "2024-01-15"
-```
+**`tests/infrastructure/parsers/test_<format>_parser.py`**: Add tests covering the specific rows extraction.
 
 ## Common Parsing Patterns
 

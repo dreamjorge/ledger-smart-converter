@@ -77,17 +77,27 @@ def main() -> int:
         logger.error(f" No existe rules.yml: {rules_path}")
         return 2
 
-    rules_yml = yaml.safe_load(rules_path.read_text(encoding="utf-8"))
-    defaults = rules_yml.get("defaults", {}) or {}
-    accounts = defaults.get("accounts", {}) or {}
-    fallback_expense = defaults.get("fallback_expense", "Expenses:Other:Uncategorized")
-    currency = defaults.get("currency", "MXN")
+    from infrastructure.adapters.yaml_rules_repository import YamlRulesRepository
+    
+    try:
+        repo = YamlRulesRepository(rules_path)
+        app_config = repo.get_app_config()
+    except Exception as e:
+        logger.error(f"Error loading configuration: {e}")
+        return 2
 
-    cc_name, closing_day = cu.get_account_config(accounts, "credit_card", "Liabilities:CC:Santander LikeU")
-    payment_asset, _ = cu.get_account_config(accounts, "payment_asset", "Assets:Santander Débito")
+    # Provide safe fallback instances for accounts if they don't exist
+    from domain.config_models import AccountDefault
+    cc_account = app_config.defaults.accounts.get("credit_card", AccountDefault("Liabilities:CC:Santander LikeU", 31))
+    cc_name = cc_account.name
+    closing_day = cc_account.closing_day
+    
+    payment_asset = app_config.defaults.payment_assets.get("payment_asset", "Assets:Santander Débito")
+    fallback_expense = app_config.defaults.fallback_expense
+    currency = app_config.defaults.currency
 
-    merchant_aliases = rules_yml.get("merchant_aliases", []) or []
-    compiled = cu.compile_rules(rules_yml)
+    merchant_aliases = app_config.merchant_aliases
+    compiled = app_config.rules
 
     # Metadata extraction
     pdf_meta = {}

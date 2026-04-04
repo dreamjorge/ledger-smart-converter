@@ -441,20 +441,26 @@ def main() -> int:
         datos = xml_reference_datos
         raw_txns = xml_reference_txns
 
-    rules_yml = yaml.safe_load(rules_path.read_text(encoding="utf-8"))
-    defaults = rules_yml.get("defaults", {}) or {}
-    accounts = defaults.get("accounts", {}) or {}
-    fallback_expense = defaults.get("fallback_expense", "Expenses:Other:Uncategorized")
-    currency = defaults.get("currency", "MXN")
+    from infrastructure.adapters.yaml_rules_repository import YamlRulesRepository
+    
+    try:
+        repo = YamlRulesRepository(rules_path)
+        app_config = repo.get_app_config()
+    except Exception as e:
+        logger.error(f"Error loading configuration: {e}")
+        return 2
 
-    # Igual que Santander:
-    # Prefer HSBC-specific keys from rules.yml, fallback to built-in defaults
-    # We avoid using the generic 'credit_card' key as it usually points to Santander
-    cc_name, closing_day = cu.get_account_config(accounts, "hsbc_credit_card", "Liabilities:CC:HSBC")
-    payment_asset, _ = cu.get_account_config(accounts, "hsbc_payment_asset", "Assets:HSBC Débito")
+    from domain.config_models import AccountDefault
+    cc_account = app_config.defaults.accounts.get("hsbc_credit_card", AccountDefault("Liabilities:CC:HSBC", 31))
+    cc_name = cc_account.name
+    closing_day = cc_account.closing_day
+    
+    payment_asset = app_config.defaults.payment_assets.get("hsbc_payment_asset", "Assets:HSBC Débito")
+    fallback_expense = app_config.defaults.fallback_expense
+    currency = app_config.defaults.currency
 
-    merchant_aliases = rules_yml.get("merchant_aliases", []) or []
-    compiled = cu.compile_rules(rules_yml)
+    merchant_aliases = app_config.merchant_aliases
+    compiled = app_config.rules
 
     # Salida estándar + asistido
     out_rows: List[Dict[str, str]] = []

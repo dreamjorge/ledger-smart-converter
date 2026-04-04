@@ -122,6 +122,10 @@ def _build_manual_transaction_row(
     }
 
 
+from application.ports.transaction_repository import TransactionRepository
+from application.use_cases.submit_manual_transaction import SubmitManualTransaction
+from infrastructure.adapters.sqlite_transaction_repository import SqliteTransactionRepository
+
 def submit_manual_transaction(
     *,
     date: str,
@@ -137,22 +141,10 @@ def submit_manual_transaction(
 ) -> ManualEntryResult:
     """Validate and persist a single manually-entered transaction.
 
-    Args:
-        date: ISO date string (YYYY-MM-DD).
-        description: Free-text description of the transaction.
-        amount: Transaction amount (positive = expense/withdrawal).
-        bank_id: Bank identifier (e.g. "santander_likeu").
-        account_id: Display account ID (e.g. "Liabilities:CC:Santander LikeU").
-        canonical_account_id: Canonical account key (e.g. "cc:santander_likeu").
-        transaction_type: One of "withdrawal", "transfer", "deposit".
-        category: Expense account string (e.g. "Expenses:Food:Groceries").
-        db_path: Optional path to the SQLite database. Uses settings default if None.
-
-    Returns:
-        (True, []) on successful insert.
-        (False, ["duplicate"]) if the transaction already exists.
-        (False, [error_code, ...]) on validation failure.
+    This service function now acts as an adapter/bridge to the Clean Architecture 
+    implementation, preserving the original signature for backward compatibility.
     """
+    # 1. Create the domain object (CanonicalTransaction)
     txn = CanonicalTransaction(
         date=date,
         description=description,
@@ -162,38 +154,38 @@ def submit_manual_transaction(
         canonical_account_id=canonical_account_id,
         raw_description=description,
         normalized_description=description,
+        transaction_type=transaction_type,
+        category=category,
         source="manual",
     )
 
+    # 2. Basic validation (still using the existing validator for now)
     errors = validate_transaction(txn)
     if errors:
         return False, errors
 
-    db = DatabaseService(db_path=db_path)
-    db.initialize()
-    source_hash = db.build_source_hash(
-        bank_id,
-        "manual",
-        date,
-        amount,
-        description,
-        canonical_account_id=canonical_account_id,
-    )
+    # 3. Initialize Infrastructure and Application layers
+    db_service = DatabaseService(db_path=db_path)
+    # We ensure DB is initialized here for safety, though the repository could do it.
+    db_service.initialize() 
+    
+    repository = SqliteTransactionRepository(db_service)
+    use_case = SubmitManualTransaction(repository)
 
-    if db.transaction_exists(source_hash):
-        return False, ["duplicate"]
+    # 4. Execute the Use Case
+    # Note: The use case currently returns a boolean. 
+    # For now, we perform the insertion manually if use case says OK, 
+    # OR we update the repository/use case to handle the full task.
+    
+    # Check for existence to return correct error code (backwards compatible)
+    if repository.exists(txn.id):
+         return False, ["duplicate"]
 
-    txn_dict = _build_manual_transaction_row(
-        source_hash=source_hash,
-        date=date,
-        description=description,
-        amount=amount,
-        bank_id=bank_id,
-        account_id=account_id,
-        canonical_account_id=canonical_account_id,
-        transaction_type=transaction_type,
-        category=category,
-    )
-
-    db.insert_transaction(txn_dict, user_id=user_id)
-    return True, []
+    # Actually let the repository handle the mapping from Domain -> DB Row.
+    # We pass the domain object directly.
+    success = repository.save_manual(txn, user_id=user_id)
+    
+    if success:
+        return True, []
+    else:
+        return False, ["persistence_error"]
