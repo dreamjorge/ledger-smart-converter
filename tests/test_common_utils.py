@@ -185,13 +185,15 @@ class TestCompileRules:
 # Normalize Merchant Tests
 # ===========================
 
+from domain.config_models import MerchantAlias, CategorizationRule, RuleAction
+
 class TestNormalizeMerchant:
     """Test normalize_merchant function."""
 
     def test_returns_canonical_name_when_alias_matches(self):
         """Test that canonical name is returned when alias regex matches."""
         merchant_aliases = [
-            {"canon": "amazon", "any_regex": ["amazon.*", "amzn"]}
+            MerchantAlias(canon="amazon", any_regex=["amazon.*", "amzn"])
         ]
         assert cu.normalize_merchant("AMAZON.COM", merchant_aliases) == "amazon"
         assert cu.normalize_merchant("AMZN MARKETPLACE", merchant_aliases) == "amazon"
@@ -234,17 +236,12 @@ class TestClassify:
 
     def test_matches_rule_and_returns_expense_and_tags(self):
         """Test that classification matches rules and returns proper data."""
-        rules_yml = {
-            "rules": [
-                {
-                    "name": "Amazon",
-                    "any_regex": ["amazon"],
-                    "set": {"expense": "Expenses:Shopping:Online", "tags": ["shopping", "online"]}
-                }
-            ]
-        }
-        compiled_rules = cu.compile_rules(rules_yml)
-        merchant_aliases = [{"canon": "amazon", "any_regex": ["amazon"]}]
+        compiled_rules = [
+            CategorizationRule("Amazon", ["amazon"], RuleAction("Expenses:Shopping:Online", ["shopping", "online"]))
+        ]
+        merchant_aliases = [
+            MerchantAlias("amazon", ["amazon"])
+        ]
 
         expense, tags, merchant = cu.classify(
             "AMAZON.COM PURCHASE",
@@ -276,16 +273,9 @@ class TestClassify:
 
     def test_deduplicates_tags(self):
         """Test that duplicate tags are removed."""
-        rules_yml = {
-            "rules": [
-                {
-                    "name": "Test",
-                    "any_regex": ["test"],
-                    "set": {"expense": "Expenses:Test", "tags": ["tag1", "tag1", "tag2"]}
-                }
-            ]
-        }
-        compiled_rules = cu.compile_rules(rules_yml)
+        compiled_rules = [
+            CategorizationRule("Test", ["test"], RuleAction("Expenses:Test", ["tag1", "tag1", "tag2"]))
+        ]
         merchant_aliases = []
 
         expense, tags, merchant = cu.classify("test", compiled_rules, merchant_aliases, "Expenses:Other")
@@ -296,16 +286,9 @@ class TestClassify:
 
     def test_sorts_tags_alphabetically(self):
         """Test that tags are sorted alphabetically."""
-        rules_yml = {
-            "rules": [
-                {
-                    "name": "Test",
-                    "any_regex": ["test"],
-                    "set": {"expense": "Expenses:Test", "tags": ["zebra", "apple", "banana"]}
-                }
-            ]
-        }
-        compiled_rules = cu.compile_rules(rules_yml)
+        compiled_rules = [
+            CategorizationRule("Test", ["test"], RuleAction("Expenses:Test", ["zebra", "apple", "banana"]))
+        ]
         merchant_aliases = []
 
         expense, tags, merchant = cu.classify("test", compiled_rules, merchant_aliases, "Expenses:Other")

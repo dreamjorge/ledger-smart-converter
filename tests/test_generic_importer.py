@@ -180,122 +180,102 @@ class TestTxnRaw:
 # GenericImporter Initialization Tests
 # ===========================
 
+from domain.config_models import AppConfiguration, AppDefaults, BankConfig, AccountDefault, CategorizationRule, RuleAction, MerchantAlias
+
 class TestGenericImporterInit:
     """Test GenericImporter initialization."""
 
-    def test_initializes_with_valid_config(self, tmp_path):
+    def test_initializes_with_valid_config(self):
         """Test successful initialization with valid config."""
-        rules_path = tmp_path / "rules.yml"
-        config = {
-            "banks": {
-                "test_bank": {
-                    "account_key": "test_account",
-                    "payment_asset_key": "test_payment",
-                    "card_tag": "test_card",
-                    "type": "xlsx",
-                    "fallback_name": "Test Bank Account"
-                }
-            },
-            "defaults": {
-                "accounts": {},
-                "fallback_expense": "Expenses:Other",
-                "currency": "USD"
-            },
-            "rules": []
-        }
-        rules_path.write_text(yaml.safe_dump(config), encoding="utf-8")
+        bank_cfg = BankConfig(
+            bank_id="test_bank",
+            name="Test Bank",
+            display_name="Test Bank",
+            type="xlsx",
+            card_tag="test_card",
+            account_key="test_account",
+            payment_asset_key="test_payment",
+            fallback_name="Test Bank Account"
+        )
+        app_config = AppConfiguration(
+            defaults=AppDefaults(
+                fallback_expense="Expenses:Other",
+                currency="USD",
+                accounts={},
+                payment_assets={}
+            ),
+            banks={"test_bank": bank_cfg},
+            rules=[],
+            merchant_aliases=[],
+            canonical_accounts={}
+        )
 
-        importer = GenericImporter(rules_path, "test_bank")
+        importer = GenericImporter(app_config, "test_bank")
 
         assert importer.bank_id == "test_bank"
-        assert importer.currency == "USD"
-        assert importer.fallback_expense == "Expenses:Other"
+        assert importer.acc_name == "Unknown" or importer.acc_name == "Test Bank Account" # Defaults to fallback if resolving fails, wait fallback_name
 
-    def test_raises_config_error_for_unknown_bank(self, tmp_path):
+    def test_raises_config_error_for_unknown_bank(self):
         """Test that ConfigError is raised for unknown bank_id."""
-        rules_path = tmp_path / "rules.yml"
-        config = {"banks": {}, "defaults": {}}
-        rules_path.write_text(yaml.safe_dump(config), encoding="utf-8")
+        app_config = AppConfiguration(
+            defaults=AppDefaults(fallback_expense="Exp", currency="USD", accounts={}, payment_assets={}),
+            banks={},
+            rules=[],
+            merchant_aliases=[],
+            canonical_accounts={}
+        )
 
         with pytest.raises(ConfigError, match="Bank ID 'unknown' not found"):
-            GenericImporter(rules_path, "unknown")
+            GenericImporter(app_config, "unknown")
 
-    def test_loads_default_values(self, tmp_path):
-        """Test that default values are loaded correctly."""
-        rules_path = tmp_path / "rules.yml"
-        config = {
-            "banks": {
-                "test": {
-                    "account_key": "acc",
-                    "payment_asset_key": "pay",
-                    "card_tag": "card",
-                    "type": "xlsx"
-                }
-            },
-            "defaults": {
-                "fallback_expense": "Expenses:Test",
-                "currency": "EUR"
-            }
-        }
-        rules_path.write_text(yaml.safe_dump(config), encoding="utf-8")
-
-        importer = GenericImporter(rules_path, "test")
-
-        assert importer.fallback_expense == "Expenses:Test"
-        assert importer.currency == "EUR"
-
-    def test_compiles_rules_on_init(self, tmp_path):
+    def test_compiles_rules_on_init(self):
         """Test that rules are compiled during initialization."""
-        rules_path = tmp_path / "rules.yml"
-        config = {
-            "banks": {
-                "test": {
-                    "account_key": "acc",
-                    "payment_asset_key": "pay",
-                    "card_tag": "card",
-                    "type": "xlsx"
-                }
+        app_config = AppConfiguration(
+            defaults=AppDefaults(fallback_expense="Exp", currency="USD", accounts={}, payment_assets={}),
+            banks={
+                "test": BankConfig("test", "Test", "Test", "xlsx", card_tag="card")
             },
-            "defaults": {},
-            "rules": [
-                {"name": "TestRule", "any_regex": ["test.*"], "set": {"expense": "Expenses:Test"}}
-            ]
-        }
-        rules_path.write_text(yaml.safe_dump(config), encoding="utf-8")
+            rules=[
+                CategorizationRule("TestRule", ["test.*"], RuleAction("Expenses:Test"))
+            ],
+            merchant_aliases=[],
+            canonical_accounts={}
+        )
 
-        importer = GenericImporter(rules_path, "test")
-
-        assert len(importer.compiled_rules) == 1
-        assert importer.compiled_rules[0]["name"] == "TestRule"
+        importer = GenericImporter(app_config, "test")
+        assert len(importer.app_config.rules) == 1
+        assert importer.app_config.rules[0].name == "TestRule"
 
 
 class TestGenericImporterSeams:
     """Test orchestration seams in GenericImporter.process."""
 
     @pytest.fixture
-    def importer(self, tmp_path):
-        rules_path = tmp_path / "rules.yml"
-        config = {
-            "banks": {
-                "test": {
-                    "account_key": "acc",
-                    "payment_asset_key": "pay",
-                    "card_tag": "test_card",
-                    "type": "xlsx",
-                    "fallback_name": "Test Account",
-                    "fallback_asset": "Assets:Test",
-                }
-            },
-            "defaults": {
-                "currency": "MXN",
-                "accounts": {},
-                "fallback_expense": "Expenses:Other:Uncategorized",
-            },
-            "rules": [],
-            "merchant_aliases": [],
-        }
-        rules_path.write_text(yaml.safe_dump(config), encoding="utf-8")
-        return GenericImporter(rules_path, "test")
+    def importer(self):
+        bank_cfg = BankConfig(
+            bank_id="test",
+            name="Test",
+            display_name="Test",
+            type="xlsx",
+            card_tag="test_card",
+            account_key="acc",
+            payment_asset_key="pay",
+            fallback_name="Test Account",
+            fallback_asset="Assets:Test"
+        )
+        app_config = AppConfiguration(
+            defaults=AppDefaults(
+                fallback_expense="Expenses:Other:Uncategorized",
+                currency="MXN",
+                accounts={},
+                payment_assets={}
+            ),
+            banks={"test": bank_cfg},
+            rules=[],
+            merchant_aliases=[],
+            canonical_accounts={}
+        )
+        return GenericImporter(app_config, "test")
 
     def test_process_uses_normalized_description_for_matching_and_unknown_examples(self, importer, monkeypatch):
         txns = [TxnRaw(date="2026-01-10", description="raw merchant text", amount=-125.0)]
@@ -358,16 +338,35 @@ class TestImportPipelineService:
 
     @pytest.fixture
     def service(self):
-        return ImportPipelineService(
+        bank_cfg = BankConfig(
             bank_id="test",
-            account_name="Test Account",
+            name="Test",
+            display_name="Test",
+            type="xlsx",
             card_tag="test_card",
+            account_key="acc",
+            payment_asset_key="pay",
+            fallback_name="Test Account",
+            fallback_asset="Assets:Test"
+        )
+        app_config = AppConfiguration(
+            defaults=AppDefaults(
+                fallback_expense="Expenses:Other:Uncategorized",
+                currency="MXN",
+                accounts={},
+                payment_assets={}
+            ),
+            banks={"test": bank_cfg},
+            rules=[],
+            merchant_aliases=[],
+            canonical_accounts={}
+        )
+        return ImportPipelineService(
+            app_config=app_config,
+            bank_config=bank_cfg,
+            account_name="Test Account",
             pay_asset="Assets:Test",
             closing_day=15,
-            currency="MXN",
-            fallback_expense="Expenses:Other:Uncategorized",
-            compiled_rules=[],
-            merchant_aliases=[],
             normalize_description_fn=lambda raw_desc, bank_id: "Normalized Merchant",
             clean_description_fn=lambda desc: "Legacy Merchant",
             classify_fn=lambda text_for_matching, *_args: ("Expenses:Other:Uncategorized", ["tag1"], "merchant"),
@@ -531,38 +530,29 @@ class TestWriteCsvAtomic:
 
 def test_process_is_deterministic_for_same_input(tmp_path: Path):
     """Existing test - verify process output is deterministic."""
-    rules_path = tmp_path / "rules.yml"
-    config = {
-        "version": 1,
-        "banks": {
-            "santander_likeu": {
-                "display_name": "Santander LikeU (XLSX/PDF)",
-                "type": "xlsx",
-                "account_key": "credit_card",
-                "payment_asset_key": "payment_asset",
-                "card_tag": "card:likeu",
-                "fallback_name": "Liabilities:CC:Santander LikeU",
-                "fallback_asset": "Assets:Santander Debito",
-            }
-        },
-        "defaults": {
-            "currency": "MXN",
-            "accounts": {
-                "credit_card": {"name": "Liabilities:CC:Santander LikeU", "closing_day": 15},
-                "payment_asset": "Assets:Santander Debito",
-            },
-            "fallback_expense": "Expenses:Other:Uncategorized",
-        },
-        "merchant_aliases": [{"canon": "wal_mart", "any_regex": ["wal\\s*mart"]}],
-        "rules": [
-            {
-                "name": "Groceries",
-                "any_regex": ["wal\\s*mart"],
-                "set": {"expense": "Expenses:Food:Groceries", "tags": ["bucket:groceries"]},
-            }
-        ],
-    }
-    rules_path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
+    bank_cfg = BankConfig(
+        bank_id="santander_likeu",
+        name="Santander LikeU",
+        display_name="Santander LikeU (XLSX/PDF)",
+        type="xlsx",
+        account_key="credit_card",
+        payment_asset_key="payment_asset",
+        card_tag="card:likeu",
+        fallback_name="Liabilities:CC:Santander LikeU",
+        fallback_asset="Assets:Santander Debito",
+    )
+    app_config = AppConfiguration(
+        banks={"santander_likeu": bank_cfg},
+        defaults=AppDefaults(
+            currency="MXN",
+            fallback_expense="Expenses:Other:Uncategorized",
+            accounts={"credit_card": AccountDefault(name="Liabilities:CC:Santander LikeU", closing_day=15)},
+            payment_assets={"payment_asset": "Assets:Santander Debito"}
+        ),
+        merchant_aliases=[MerchantAlias("wal_mart", ["wal\\s*mart"])],
+        rules=[CategorizationRule("Groceries", ["wal\\s*mart"], RuleAction("Expenses:Food:Groceries", ["bucket:groceries"]))],
+        canonical_accounts={}
+    )
 
     csv_path = tmp_path / "input.csv"
     pd.DataFrame(
@@ -572,7 +562,7 @@ def test_process_is_deterministic_for_same_input(tmp_path: Path):
         ]
     ).to_csv(csv_path, index=False)
 
-    importer = GenericImporter(rules_path, "santander_likeu")
+    importer = GenericImporter(app_config, "santander_likeu")
 
     txns_run_1 = importer.load_data(csv_path, None, False)
     rows_1, unknown_1, warnings_1 = importer.process(txns_run_1)

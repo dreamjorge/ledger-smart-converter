@@ -135,12 +135,14 @@ class TestImportStatement(unittest.TestCase):
     def test_execute_success(self):
         # Arrange
         bank_id = "test_bank"
-        self.config_reader.get_account_details.return_value = {"display_name": "Test Account"}
-        self.config_reader.get_rules_context.return_value = {
-            "compiled_rules": [],
-            "merchant_aliases": [],
-            "fallback_expense": "Expenses:Unknown"
-        }
+        from domain.config_models import AppConfiguration, AppDefaults, BankConfig
+        self.config_reader.get_app_config.return_value = AppConfiguration(
+            defaults=AppDefaults(fallback_expense="Expenses:Unknown", currency="USD", accounts={}, payment_assets={}),
+            banks={"test_bank": BankConfig("test_bank", "Test Bank", "Test Bank", "xlsx", "card", "test", "test", "test", "test")},
+            rules=[],
+            merchant_aliases=[],
+            canonical_accounts={}
+        )
         
         raw_txns = [
             RawTransaction(date="2024-01-01", description="Coffee", amount=-5.0, source="test.xml")
@@ -164,8 +166,7 @@ class TestImportStatement(unittest.TestCase):
 
     def test_execute_failure(self):
         # Arrange
-        self.config_reader.get_account_details.return_value = {"display_name": "Test"}
-        self.config_reader.get_rules_context.side_effect = Exception("Processing error")
+        self.config_reader.get_app_config.side_effect = Exception("Processing error")
         self.data_extractor.extract.return_value = []
         self.import_repository.record_import.return_value = 456
 

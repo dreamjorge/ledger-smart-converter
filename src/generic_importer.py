@@ -35,40 +35,54 @@ USE_NORMALIZED_TEXT = os.getenv("LSC_USE_NORMALIZED_TEXT", "true").strip().lower
 
 from infrastructure.parsers.models import TxnRaw
 
+from typing import Union
+from pathlib import Path
+from domain.config_models import AppConfiguration, BankConfig
+
 class GenericImporter:
-    def __init__(self, rules_path: Path, bank_id: str):
-        self.rules_path = rules_path
-        self.bank_id = bank_id
-        self.config = yaml.safe_load(rules_path.read_text(encoding="utf-8"))
-        self.bank_cfg = self.config.get("banks", {}).get(bank_id)
-        if not self.bank_cfg:
-            raise ConfigError(f"Bank ID '{bank_id}' not found in rules.yml")
+    def __init__(self, config_source: Union[AppConfiguration, Path, str], bank_id: str):
+        if hasattr(config_source, "banks"):
+            self.app_config = config_source
+        else:
+            from infrastructure.adapters.yaml_rules_repository import YamlRulesRepository
+            repo = YamlRulesRepository(Path(config_source))
+            self.app_config = repo.get_app_config()
             
-        self.defaults = self.config.get("defaults", {})
-        self.accounts = self.defaults.get("accounts", {})
-        self.fallback_expense = self.defaults.get("fallback_expense", "Expenses:Other:Uncategorized")
-        self.currency = self.defaults.get("currency", "MXN")
+        self.bank_id = bank_id
         
-        acc_key = self.bank_cfg.get("account_key")
-        pay_key = self.bank_cfg.get("payment_asset_key")
+        self.bank_cfg = self.app_config.banks.get(bank_id)
+        if not self.bank_cfg:
+            from errors import ConfigError
+            raise ConfigError(f"Bank ID '{bank_id}' not found in configuration")
+            
+        # Resolve credit account configuration
+        acc_key = self.bank_cfg.account_key
+        fallback_name = self.bank_cfg.fallback_name or "Unknown"
         
-        self.acc_name, self.closing_day = cu.get_account_config(self.accounts, acc_key, self.bank_cfg.get("fallback_name"))
-        self.pay_asset, _ = cu.get_account_config(self.accounts, pay_key, self.bank_cfg.get("fallback_asset"))
+        if acc_key and acc_key in self.app_config.defaults.accounts:
+            acc_def = self.app_config.defaults.accounts[acc_key]
+            self.acc_name = acc_def.name
+            self.closing_day = acc_def.closing_day
+        else:
+            self.acc_name = fallback_name
+            self.closing_day = 1
+            
+        # Resolve payment asset configuration
+        pay_key = self.bank_cfg.payment_asset_key
+        fallback_asset = self.bank_cfg.fallback_asset or "Unknown"
         
-        self.compiled_rules = cu.compile_rules(self.config)
-        self.merchant_aliases = self.config.get("merchant_aliases", [])
+        if pay_key and pay_key in self.app_config.defaults.payment_assets:
+            self.pay_asset = self.app_config.defaults.payment_assets[pay_key]
+        else:
+            self.pay_asset = fallback_asset
 
     def _build_pipeline_service(self) -> ImportPipelineService:
         return ImportPipelineService(
-            bank_id=self.bank_id,
+            app_config=self.app_config,
+            bank_config=self.bank_cfg,
             account_name=self.acc_name,
-            card_tag=self.bank_cfg["card_tag"],
             pay_asset=self.pay_asset,
             closing_day=self.closing_day,
-            currency=self.currency,
-            fallback_expense=self.fallback_expense,
-            compiled_rules=self.compiled_rules,
-            merchant_aliases=self.merchant_aliases,
             use_normalized_text=USE_NORMALIZED_TEXT,
             normalize_description_fn=normalize_description,
             clean_description_fn=cu.clean_description,
@@ -82,13 +96,13 @@ class GenericImporter:
     def load_data(self, data_path: Optional[Path], pdf_path: Optional[Path], use_pdf_source: bool) -> List[TxnRaw]:
         # Always prioritize PDF source if requested
         if use_pdf_source and pdf_path:
-            parser = ParserFactory.get_parser(self.bank_cfg["type"], use_pdf_source=True)
+            parser = ParserFactory.get_parser(self.bank_cfg.type, use_pdf_source=True)
             return parser.parse(pdf_path)
 
         if not data_path: 
             return []
             
-        parser = ParserFactory.get_parser(self.bank_cfg["type"], use_pdf_source=False)
+        parser = ParserFactory.get_parser(self.bank_cfg.type, use_pdf_source=False)
         txns = parser.parse(data_path)
             
         return sorted(txns, key=lambda t: (t.date, t.description.lower(), round(float(t.amount), 2), t.rfc))
@@ -112,7 +126,11 @@ def main():
     ap.add_argument("--log-json", help="Write execution manifest JSON")
     args = ap.parse_args()
 
-    importer = GenericImporter(Path(args.rules), args.bank)
+    from infrastructure.adapters.yaml_rules_repository import YamlRulesRepository
+    rules_repo = YamlRulesRepository(Path(args.rules), Path("config/accounts.yml"))
+    app_config = rules_repo.get_app_config()
+
+    importer = GenericImporter(app_config, args.bank)
     txns = importer.load_data(Path(args.data) if args.data else None, Path(args.pdf) if args.pdf else None, args.pdf_source)
     
     # Optional PDF Metadata validation

@@ -22,19 +22,18 @@ ResolveCanonicalAccountIdFn = Callable[[str, str], str]
 GetStatementPeriodFn = Callable[[str, int], Optional[str]]
 
 
+from domain.config_models import AppConfiguration, BankConfig
+
 @dataclass
 class ImportPipelineService:
     """Enrich raw importer rows into canonical Firefly-ready records."""
 
-    bank_id: str
+    app_config: AppConfiguration
+    bank_config: BankConfig
     account_name: str
-    card_tag: str
     pay_asset: str
     closing_day: int
-    currency: str
-    fallback_expense: str
-    compiled_rules: List[Dict[str, Any]]
-    merchant_aliases: List[Any]
+    
     use_normalized_text: bool = True
     normalize_description_fn: NormalizeDescriptionFn = normalize_description
     clean_description_fn: CleanDescriptionFn = cu.clean_description
@@ -55,7 +54,7 @@ class ImportPipelineService:
 
         for txn in txns:
             raw_desc = (txn.description or "").strip()
-            normalized_desc = self.normalize_description_fn(raw_desc, bank_id=self.bank_id)
+            normalized_desc = self.normalize_description_fn(raw_desc, bank_id=self.bank_config.bank_id)
             legacy_desc = self.clean_description_fn(raw_desc)
             text_for_matching = normalized_desc if (self.use_normalized_text and normalized_desc) else legacy_desc
             
@@ -64,9 +63,9 @@ class ImportPipelineService:
                 date=txn.date,
                 description=legacy_desc,
                 amount=float(txn.amount),
-                bank_id=self.bank_id,
+                bank_id=self.bank_config.bank_id,
                 account_id=self.account_name,
-                canonical_account_id=self.resolve_canonical_account_id_fn(self.bank_id, self.account_name),
+                canonical_account_id=self.resolve_canonical_account_id_fn(self.bank_config.bank_id, self.account_name),
                 raw_description=raw_desc,
                 normalized_description=normalized_desc,
                 source=txn.source,
@@ -83,9 +82,9 @@ class ImportPipelineService:
 
             expense, tags, merchant = self.classify_fn(
                 text_for_matching,
-                self.compiled_rules,
-                self.merchant_aliases,
-                self.fallback_expense,
+                self.app_config.rules,
+                self.app_config.merchant_aliases,
+                self.app_config.defaults.fallback_expense,
             )
             tags = set(tags)
             tags.add(self._card_tag())
@@ -106,7 +105,7 @@ class ImportPipelineService:
             category = expense.split(":")[1] if ":" in expense else ""
             tag_str = ",".join(sorted(tags))
 
-            if self.bank_id == "hsbc":
+            if self.bank_config.bank_id == "hsbc":
                 from import_hsbc_cfdi_firefly import infer_kind
                 kind = infer_kind(text_for_matching, txn.amount, txn.rfc)
                 
@@ -125,7 +124,7 @@ class ImportPipelineService:
 
             if final_txn:
                 out_txns.append(final_txn)
-                if final_txn.transaction_type == "withdrawal" and expense == self.fallback_expense:
+                if final_txn.transaction_type == "withdrawal" and expense == self.app_config.defaults.fallback_expense:
                     bucket = unknown_agg[merchant]
                     bucket["count"] += 1
                     bucket["total"] += abs(txn.amount)
@@ -135,7 +134,7 @@ class ImportPipelineService:
         return out_txns, self._format_unknown(unknown_agg), warning_count
 
     def _card_tag(self) -> str:
-        return self.card_tag
+        return self.bank_config.card_tag
 
     def _make_withdrawal(
         self,

@@ -51,11 +51,6 @@ class ImportStatement:
         """
         Runs the import process for a given bank and statement files.
         """
-        # 1. Resolve configuration for the bank
-        bank_config = self.config_reader.get_account_details(bank_id)
-        if not bank_config:
-            raise ValueError(f"No configuration found for bank_id: {bank_id}")
-
         # 2. Extract raw transactions (before record_import to know the count)
         try:
             raw_txns = self.data_extractor.extract(bank_id, data_path, pdf_path, use_ocr)
@@ -73,18 +68,36 @@ class ImportStatement:
         )
 
         try:
-            # 4. Initialize Pipeline Service with resolved rules
-            rules_context = self.config_reader.get_rules_context()
+            # 4. Resolve configuration for the bank (INSIDE try block for status reporting)
+            app_config = self.config_reader.get_app_config()
+            bank_config_obj = app_config.banks.get(bank_id)
+            if not bank_config_obj:
+                raise ValueError(f"No configuration found for bank_id: {bank_id}")
+
+            # 5. Initialize Pipeline Service with resolved rules
+            acc_key = bank_config_obj.account_key
+            fallback_name = bank_config_obj.fallback_name or bank_id
+            if acc_key and acc_key in app_config.defaults.accounts:
+                acc_def = app_config.defaults.accounts[acc_key]
+                acc_name = acc_def.name
+                closing_day = acc_def.closing_day
+            else:
+                acc_name = fallback_name
+                closing_day = 1
+                
+            pay_key = bank_config_obj.payment_asset_key
+            fallback_asset = bank_config_obj.fallback_asset or "Assets:Cash"
+            if pay_key and pay_key in app_config.defaults.payment_assets:
+                pay_asset = app_config.defaults.payment_assets[pay_key]
+            else:
+                pay_asset = fallback_asset
+
             pipeline = ImportPipelineService(
-                bank_id=bank_id,
-                account_name=bank_config.get("display_name", bank_id),
-                card_tag=bank_config.get("bank_id", bank_id),
-                pay_asset=bank_config.get("pay_asset", "Assets:Cash"),
-                closing_day=bank_config.get("closing_day", 1),
-                currency=bank_config.get("currency", "MXN"),
-                fallback_expense=rules_context.get("fallback_expense", "Expenses:Unknown"),
-                compiled_rules=rules_context.get("compiled_rules", []),
-                merchant_aliases=rules_context.get("merchant_aliases", [])
+                app_config=app_config,
+                bank_config=bank_config_obj,
+                account_name=acc_name,
+                pay_asset=pay_asset,
+                closing_day=closing_day
             )
 
             # 5. Process transactions through categorization pipeline

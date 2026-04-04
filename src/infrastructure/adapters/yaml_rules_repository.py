@@ -2,11 +2,12 @@ import yaml # type: ignore
 from typing import Dict, Any, List, Optional
 from pathlib import Path
 from application.ports.rules_config_reader import RulesConfigReader
+from domain.config_models import AppConfiguration
 
 class YamlRulesRepository(RulesConfigReader):
-    def __init__(self, rules_path: Path, accounts_path: Path):
+    def __init__(self, rules_path: Path, accounts_path: Optional[Path] = None):
         self.rules_path = rules_path
-        self.accounts_path = accounts_path
+        self.accounts_path = accounts_path or Path("config/accounts.yml")
 
     def _load_yaml(self, path: Path) -> Dict[str, Any]:
         if not path.exists():
@@ -14,10 +15,83 @@ class YamlRulesRepository(RulesConfigReader):
         with open(path, 'r', encoding='utf-8') as f:
             return yaml.safe_load(f) or {}
 
-    def get_accounts(self) -> List[Dict[str, Any]]:
-        """Extracts the raw list of configured accounts from rules.yml."""
-        config = self._load_yaml(self.rules_path)
-        return config.get('accounts', [])
+    def get_app_config(self) -> AppConfiguration:
+        from domain.config_models import (
+            AppConfiguration, BankConfig, AppDefaults, AccountDefault,
+            CategorizationRule, RuleAction, MerchantAlias, CanonicalAccount
+        )
+        
+        rules_cfg = self._load_yaml(self.rules_path)
+        acc_cfg = self._load_yaml(self.accounts_path)
+        
+        # 1. Parse Banks
+        banks = {}
+        for bid, b_data in rules_cfg.get("banks", {}).items():
+            banks[bid] = BankConfig(
+                bank_id=bid,
+                name=b_data.get("name", bid),
+                display_name=b_data.get("display_name", bid),
+                type=b_data.get("type", "generic"),
+                card_tag=b_data.get("card_tag", ""),
+                account_key=b_data.get("account_key"),
+                payment_asset_key=b_data.get("payment_asset_key"),
+                fallback_name=b_data.get("fallback_name"),
+                fallback_asset=b_data.get("fallback_asset")
+            )
+            
+        # 2. Parse Defaults
+        raw_defs = rules_cfg.get("defaults", {})
+        accounts_defs = {}
+        for acc_k, acc_v in raw_defs.get("accounts", {}).items():
+            if isinstance(acc_v, dict):
+                accounts_defs[acc_k] = AccountDefault(
+                    name=acc_v.get("name", acc_k),
+                    closing_day=int(acc_v.get("closing_day", 1))
+                )
+        
+        defaults = AppDefaults(
+            currency=raw_defs.get("currency", "MXN"),
+            fallback_expense=raw_defs.get("fallback_expense", "Expenses:Other:Uncategorized"),
+            accounts=accounts_defs,
+            payment_assets={k: v for k, v in raw_defs.get("accounts", {}).items() if not isinstance(v, dict)}
+        )
+        
+        # 3. Parse Merchant Aliases
+        merchant_aliases = [
+            MerchantAlias(canon=ma.get("canon", ""), any_regex=ma.get("any_regex", []))
+            for ma in rules_cfg.get("merchant_aliases", [])
+        ]
+        
+        # 4. Parse Rules
+        rules = [
+            CategorizationRule(
+                name=r.get("name", ""),
+                any_regex=r.get("any_regex", []),
+                set=RuleAction(
+                    expense=r.get("set", {}).get("expense", defaults.fallback_expense),
+                    tags=r.get("set", {}).get("tags", [])
+                )
+            )
+            for r in rules_cfg.get("rules", [])
+        ]
+        
+        # 5. Parse Canonical Accounts
+        canonical_accounts = {}
+        for cid, c_data in acc_cfg.get("canonical_accounts", {}).items():
+            canonical_accounts[cid] = CanonicalAccount(
+                canonical_id=cid,
+                display_name=c_data.get("display_name", cid),
+                bank_ids=c_data.get("bank_ids", []),
+                account_ids=c_data.get("account_ids", [])
+            )
+            
+        return AppConfiguration(
+            banks=banks,
+            defaults=defaults,
+            merchant_aliases=merchant_aliases,
+            rules=rules,
+            canonical_accounts=canonical_accounts
+        )
 
     def get_categories(self) -> List[str]:
         """Extracts sorted categories from rules.yml, including fallback."""
@@ -34,11 +108,6 @@ class YamlRulesRepository(RulesConfigReader):
                 expenses.add(expense)
 
         return sorted(expenses)
-
-    def get_rules(self) -> List[Dict[str, Any]]:
-        """Extracts categorization rules from rules.yml."""
-        config = self._load_yaml(self.rules_path)
-        return config.get('rules', [])
 
     def get_active_accounts(self) -> Dict[str, str]:
         """
@@ -83,17 +152,4 @@ class YamlRulesRepository(RulesConfigReader):
             "bank_id": bank_ids[0] if bank_ids else canonical_id,
             "account_id": account_ids[0] if account_ids else canonical_id,
             "display_name": entry.get("account_ids", [canonical_id])[0]
-        }
-
-    def get_rules_context(self) -> Dict[str, Any]:
-        """
-        Returns compiled rules and aliases for transaction categorization.
-        """
-        from common_utils import compile_rules
-        config = self._load_yaml(self.rules_path)
-        
-        return {
-            "compiled_rules": compile_rules(config),
-            "merchant_aliases": config.get("merchant_aliases", []),
-            "fallback_expense": config.get("defaults", {}).get("fallback_expense", "Expenses:Other:Uncategorized")
         }

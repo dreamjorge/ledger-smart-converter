@@ -155,7 +155,7 @@ def compile_rules(rules_yml: Dict[str, Any]) -> List[Dict[str, Any]]:
         })
     return compiled
 
-def normalize_merchant(desc: str, merchant_aliases: List[Dict[str, Any]]) -> str:
+def normalize_merchant(desc: str, merchant_aliases: List[Any]) -> str:
     """
     Devuelve un merchant canónico para tags: merchant:<canon>.
     1) Si matchea alias -> canon
@@ -165,16 +165,17 @@ def normalize_merchant(desc: str, merchant_aliases: List[Dict[str, Any]]) -> str
     d = re.sub(r"\s+", " ", d).strip()
 
     for a in merchant_aliases:
-        canon = (a.get("canon", "") or "").strip()
-        for rx in a.get("any_regex", []) or []:
-            if re.search(rx, d, re.IGNORECASE):
+        # a is MerchantAlias object from domain.config_models
+        canon = (a.canon or "").strip()
+        for rx in a.compiled_regexes or []:
+            if rx.search(d):
                 return canon or "unknown"
 
     d2 = re.sub(r"\d+", "", d).strip()
     parts = [p for p in d2.split(" ") if p]
     return "_".join(parts[:2]) if parts else "unknown"
 
-def classify(desc: str, compiled_rules: List[Dict[str, Any]], merchant_aliases: List[Dict[str, Any]], fallback_expense: str
+def classify(desc: str, compiled_rules: List[Any], merchant_aliases: List[Any], fallback_expense: str
              ) -> Tuple[str, List[str], str]:
     """
     Retorna:
@@ -186,9 +187,10 @@ def classify(desc: str, compiled_rules: List[Dict[str, Any]], merchant_aliases: 
     tags: List[str] = []
 
     for r in compiled_rules:
-        if any(rx.search(desc or "") for rx in r["regexes"]):
-            expense = r["set"].get("expense")
-            tags.extend((r["set"].get("tags", []) or []))
+        # r is CategorizationRule object from domain.config_models
+        if any(rx.search(desc or "") for rx in r.compiled_regexes):
+            expense = r.set.expense
+            tags.extend(r.set.tags or [])
             break
 
     if not expense:
