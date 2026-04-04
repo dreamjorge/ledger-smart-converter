@@ -48,8 +48,8 @@ class ImportPipelineService:
         self,
         txns: List[Any],
         strict: bool = False,
-    ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], int]:
-        out_rows = []
+    ) -> Tuple[List[CanonicalTransaction], List[Dict[str, Any]], int]:
+        out_txns = []
         unknown_agg = defaultdict(lambda: {"count": 0, "total": 0.0, "examples": set()})
         warning_count = 0
 
@@ -58,6 +58,8 @@ class ImportPipelineService:
             normalized_desc = self.normalize_description_fn(raw_desc, bank_id=self.bank_id)
             legacy_desc = self.clean_description_fn(raw_desc)
             text_for_matching = normalized_desc if (self.use_normalized_text and normalized_desc) else legacy_desc
+            
+            # Initial canonical object with core fields
             canonical = CanonicalTransaction(
                 date=txn.date,
                 description=legacy_desc,
@@ -102,80 +104,75 @@ class ImportPipelineService:
                     raise ValidationError(f"Invalid tags {canonical.id}: {tag_errors}")
 
             category = expense.split(":")[1] if ":" in expense else ""
+            tag_str = ",".join(sorted(tags))
 
             if self.bank_id == "hsbc":
                 from import_hsbc_cfdi_firefly import infer_kind
-
                 kind = infer_kind(text_for_matching, txn.amount, txn.rfc)
+                
                 if kind == "charge":
-                    row = self._make_withdrawal(txn, legacy_desc, expense, category, tags)
+                    final_txn = self._make_withdrawal(canonical, expense, category, tag_str)
                 elif kind == "payment":
-                    row = self._make_transfer(txn, legacy_desc, self.pay_asset, self.account_name, tags, "pago")
+                    final_txn = self._make_transfer(canonical, self.pay_asset, self.account_name, tag_str, "pago")
                 else:
-                    source = "Income:Cashback" if kind == "cashback" else "Income:Other"
-                    row = self._make_transfer(txn, legacy_desc, source, self.account_name, tags, kind)
+                    source_name = "Income:Cashback" if kind == "cashback" else "Income:Other"
+                    final_txn = self._make_transfer(canonical, source_name, self.account_name, tag_str, kind)
             else:
                 if txn.amount < 0:
-                    row = self._make_withdrawal(txn, legacy_desc, expense, category, tags)
+                    final_txn = self._make_withdrawal(canonical, expense, category, tag_str)
                 else:
-                    row = self._make_transfer(txn, legacy_desc, self.pay_asset, self.account_name, tags, "pago")
+                    final_txn = self._make_transfer(canonical, self.pay_asset, self.account_name, tag_str, "pago")
 
-            if row:
-                out_rows.append(row)
-                if row["type"] == "withdrawal" and expense == self.fallback_expense:
+            if final_txn:
+                out_txns.append(final_txn)
+                if final_txn.transaction_type == "withdrawal" and expense == self.fallback_expense:
                     bucket = unknown_agg[merchant]
                     bucket["count"] += 1
                     bucket["total"] += abs(txn.amount)
                     if len(bucket["examples"]) < 5:
                         bucket["examples"].add(normalized_desc or legacy_desc)
 
-        return out_rows, self._format_unknown(unknown_agg), warning_count
+        return out_txns, self._format_unknown(unknown_agg), warning_count
 
     def _card_tag(self) -> str:
         return self.card_tag
 
     def _make_withdrawal(
         self,
-        txn: Any,
-        desc: str,
-        expense: str,
+        base: CanonicalTransaction,
+        destination: str,
         category: str,
-        tags,
-    ) -> Dict[str, Any]:
-        return {
-            "type": "withdrawal",
-            "date": txn.date,
-            "amount": f"{abs(txn.amount):.2f}",
-            "currency_code": self.currency,
-            "description": desc,
-            "source_name": self.account_name,
-            "destination_name": expense,
-            "category_name": category,
-            "tags": ",".join(sorted(tags)),
-        }
+        tags: str,
+    ) -> CanonicalTransaction:
+        from dataclasses import replace
+        return replace(
+            base,
+            transaction_type="withdrawal",
+            amount=abs(base.amount),
+            destination_name=destination,
+            category=category,
+            tags=tags
+        )
 
     def _make_transfer(
         self,
-        txn: Any,
-        desc: str,
+        base: CanonicalTransaction,
         source: str,
         dest: str,
-        tags,
+        tags: str,
         extra_tag: str,
-    ) -> Dict[str, Any]:
-        transfer_tags = set(tags)
-        transfer_tags.add(extra_tag)
-        return {
-            "type": "transfer",
-            "date": txn.date,
-            "amount": f"{abs(txn.amount):.2f}",
-            "currency_code": self.currency,
-            "description": desc,
-            "source_name": source,
-            "destination_name": dest,
-            "category_name": "",
-            "tags": ",".join(sorted(transfer_tags)),
-        }
+    ) -> CanonicalTransaction:
+        from dataclasses import replace
+        transfer_tags = sorted(list(set(tags.split(",") + [extra_tag])))
+        return replace(
+            base,
+            transaction_type="transfer",
+            amount=abs(base.amount),
+            account_id=source, # Source for transfers
+            destination_name=dest,
+            category="",
+            tags=",".join(transfer_tags)
+        )
 
     def _format_unknown(self, agg: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
         out = []

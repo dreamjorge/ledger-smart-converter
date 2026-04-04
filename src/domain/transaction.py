@@ -11,6 +11,11 @@ class CanonicalTransaction:
     bank_id: str
     account_id: str
     canonical_account_id: str
+    transaction_type: str = "withdrawal"
+    category: Optional[str] = None
+    destination_name: Optional[str] = None
+    tags: Optional[str] = None
+    notes: Optional[str] = None
     raw_description: str = ""
     normalized_description: str = ""
     source: str = "data"

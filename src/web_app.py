@@ -133,6 +133,34 @@ def _get_bank_context() -> Tuple[str, str, Dict]:
     return bank_label, bank_id, bank_cfg
 
 
+@st.cache_resource
+def get_import_use_case():
+    from infrastructure.adapters.sqlite_transaction_repository import SqliteTransactionRepository
+    from infrastructure.adapters.sqlite_import_repository import SqliteImportRepository
+    from infrastructure.adapters.yaml_rules_repository import YamlRulesRepository
+    from infrastructure.adapters.legacy_data_extractor_adapter import LegacyDataExtractorAdapter
+    from application.use_cases.import_statement import ImportStatement
+    from services.db_service import DatabaseService
+    
+    db_service = DatabaseService(SETTINGS.data_dir / "ledger.db")
+    
+    # Ports & Adapters
+    txn_repo = SqliteTransactionRepository(db_service)
+    import_repo = SqliteImportRepository(db_service)
+    config_reader = YamlRulesRepository(
+        rules_path=CONFIG_DIR / "rules.yml",
+        accounts_path=CONFIG_DIR / "accounts.yml"
+    )
+    data_extractor = LegacyDataExtractorAdapter(rules_path=CONFIG_DIR / "rules.yml")
+    
+    return ImportStatement(
+        config_reader=config_reader,
+        data_extractor=data_extractor,
+        transaction_repository=txn_repo,
+        import_repository=import_repo
+    )
+
+
 def page_import():
     from ui.pages.import_page import render_import_page
 
@@ -151,6 +179,7 @@ def page_import():
         copy_feedback_key=COPY_FEEDBACK_KEY,
         nav_key="native_navigation",
         bank_key=BANK_KEY,
+        import_use_case=get_import_use_case()
     )
 
 
