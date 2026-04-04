@@ -6,6 +6,10 @@ import streamlit as st
 from services import import_service as imp
 from ui.components.import_components import render_file_uploaders, render_import_results
 
+if False:
+    from application.use_cases.import_statement import ImportStatement
+    from application.use_cases.sync_transactions_to_firefly import SyncTransactionsToFirefly
+
 
 def _results_key(bank_id: str) -> str:
     return f"import_results_{bank_id}"
@@ -27,6 +31,7 @@ def render_import_page(
     nav_key: str,
     bank_key: str,
     import_use_case: ImportStatement,
+    sync_use_case: Optional[SyncTransactionsToFirefly] = None,
 ):
     with st.expander(t("quick_start"), expanded=bank_id == "santander_likeu"):
         st.write(t("welcome_bank", bank=bank_label))
@@ -146,6 +151,27 @@ def render_import_page(
             copy_feedback_key=copy_feedback_key,
             nav_key=nav_key,
         )
+
+        # Firefly Sync Section
+        if sync_use_case:
+            st.divider()
+            st.subheader(t("sync_header"))
+            if st.button(t("btn_sync_firefly"), type="primary", key=f"sync_btn_{bank_id}"):
+                with st.spinner(t("processing")):
+                    try:
+                        res = sync_use_case.execute()
+                        if res["synced_count"] > 0:
+                            st.success(t("sync_success", count=res["synced_count"]))
+                        else:
+                            st.info(t("sync_no_new"))
+                        
+                        if res["errors"]:
+                            for err in res["errors"]:
+                                st.error(t("sync_error", error=err))
+                    except Exception as e:
+                        st.error(t("sync_error", error=str(e)))
+        else:
+            st.info(t("sync_not_configured"))
 
     st.markdown("---")
     st.caption(f"{t('working_dir')}: {root_dir}")

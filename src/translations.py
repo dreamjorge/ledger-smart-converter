@@ -89,6 +89,13 @@ TRANSLATIONS = {
         "rule_stage_error": "Could not stage rule ({status}): {details}",
         "rule_merge_success": "Merged {count} rule(s). Backup: {backup}",
         "rule_conflict_error": "Pending rules have conflicts: {details}",
+        
+        "sync_header": "Firefly III Sync",
+        "btn_sync_firefly": "Sync to Firefly III",
+        "sync_success": "Successfully synced {count} transactions to Firefly III!",
+        "sync_error": "Error syncing to Firefly III: {error}",
+        "sync_no_new": "No new transactions to sync.",
+        "sync_not_configured": "Firefly III API not configured in .env",
 
         # Analytics Page
         "analytics_title": "📊 Analytics Dashboard",
@@ -128,6 +135,9 @@ TRANSLATIONS = {
         "no_monthly_spending_data": "No monthly spending data available for this selection.",
         "start_date_filter": "Start Date",
         "end_date_filter": "End Date",
+        "btn_generate_report": "Generate PDF Report",
+        "report_generated": "PDF Report generated for {period}",
+        "download_report": "Download PDF Report",
         
         # Rule Hub
         "rule_hub_title": "🤖 Rule Correction Hub (Teach the AI)",
@@ -308,6 +318,13 @@ TRANSLATIONS = {
         "rule_merge_success": "Se fusionaron {count} regla(s). Respaldo: {backup}",
         "rule_conflict_error": "Las reglas pendientes tienen conflictos: {details}",
 
+        "sync_header": "Sincronización con Firefly III",
+        "btn_sync_firefly": "Sincronizar con Firefly III",
+        "sync_success": "¡Se sincronizaron {count} transacciones con Firefly III con éxito!",
+        "sync_error": "Error al sincronizar con Firefly III: {error}",
+        "sync_no_new": "No hay transacciones nuevas para sincronizar.",
+        "sync_not_configured": "La API de Firefly III no está configurada en .env",
+
         # Analytics Page
         "analytics_title": "📊 Panel de Análisis",
         "no_csv_found": "No se encontraron archivos CSV. Por favor, procesa archivos primero en la pestaña de Importar.",
@@ -346,6 +363,9 @@ TRANSLATIONS = {
         "no_monthly_spending_data": "No hay datos de gasto mensual disponibles para esta selección.",
         "start_date_filter": "Fecha de Inicio",
         "end_date_filter": "Fecha de Fin",
+        "btn_generate_report": "Generar Reporte PDF",
+        "report_generated": "Reporte PDF generado para {period}",
+        "download_report": "Descargar Reporte PDF",
 
         # Rule Hub
         "rule_hub_title": "🤖 Centro de Corrección (Enseñar a la IA)",

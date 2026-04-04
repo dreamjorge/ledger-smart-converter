@@ -113,6 +113,26 @@ class SqliteTransactionRepository(TransactionRepository):
         results = self.save_all([transaction], user_id=user_id)
         return results.get("inserted", 0) > 0
 
+    def get_unsynced(self) -> List[CanonicalTransaction]:
+        """Retrieves transactions from the DB that haven't been synced yet."""
+        query = "SELECT * FROM transactions WHERE synced_to_firefly = 0 ORDER BY date"
+        rows = self.db_service.fetch_all(query)
+        return [self._map_row_to_domain(row) for row in rows]
+
+    def mark_as_synced(self, transaction_hashes: List[str]) -> bool:
+        """Updates the synced_to_firefly flag for the given transactions."""
+        if not transaction_hashes:
+            return True
+        
+        # Using a list of placeholders for multiple hashes
+        placeholders = ",".join(["?"] * len(transaction_hashes))
+        query = f"UPDATE transactions SET synced_to_firefly = 1 WHERE source_hash IN ({placeholders})"
+        
+        with self.db_service._connect() as conn:
+            conn.execute(query, tuple(transaction_hashes))
+            conn.commit()
+        return True
+
     def _map_domain_to_dict(self, transaction: CanonicalTransaction, user_id: Optional[str] = None) -> Dict[str, Any]:
         """Helper to map a CanonicalTransaction domain object to a database dictionary."""
         row = {
@@ -135,6 +155,7 @@ class SqliteTransactionRepository(TransactionRepository):
         }
         if user_id:
             row["user_id"] = user_id
+        row["is_synced"] = transaction.is_synced
         return row
 
     def _map_row_to_domain(self, row: Dict[str, Any]) -> CanonicalTransaction:
@@ -153,5 +174,6 @@ class SqliteTransactionRepository(TransactionRepository):
             destination_name=row.get("destination_name"),
             source=row.get("source"),
             raw_description=row.get("raw_description"),
-            normalized_description=row.get("normalized_description")
+            normalized_description=row.get("normalized_description"),
+            is_synced=bool(row.get("synced_to_firefly", 0))
         )

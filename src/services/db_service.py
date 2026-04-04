@@ -62,6 +62,7 @@ class DatabaseService:
             ("import_id", "INTEGER"),
             ("updated_at", "TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP"),
             ("user_id", "TEXT"),
+            ("synced_to_firefly", "INTEGER NOT NULL DEFAULT 0"),
         ]
         for col, typ in alterations:
             if col not in existing:
@@ -188,8 +189,8 @@ class DatabaseService:
                 INSERT OR IGNORE INTO transactions (
                     source_hash, date, amount, currency, merchant, description, raw_description, normalized_description,
                     account_id, canonical_account_id, bank_id, statement_period,
-                    category, tags, transaction_type, source_name, destination_name, source_file, import_id, user_id
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    category, tags, transaction_type, source_name, destination_name, source_file, import_id, user_id, synced_to_firefly
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     source_hash,
@@ -212,6 +213,7 @@ class DatabaseService:
                     txn["source_file"],
                     import_id,
                     effective_user_id,
+                    int(txn.get("is_synced", False)),
                 ),
             )
             conn.commit()
@@ -265,6 +267,7 @@ class DatabaseService:
                     txn["source_file"],
                     import_id,
                     effective_user_id,
+                    int(txn.get("is_synced", False)),
                 )
             )
 
@@ -280,8 +283,8 @@ class DatabaseService:
                         raw_description, normalized_description, account_id, 
                         canonical_account_id, bank_id, statement_period,
                         category, tags, transaction_type, source_name, 
-                        destination_name, source_file, import_id, user_id
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        destination_name, source_file, import_id, user_id, synced_to_firefly
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     p,
                 )

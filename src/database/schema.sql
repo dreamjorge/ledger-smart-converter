@@ -69,6 +69,7 @@ CREATE TABLE IF NOT EXISTS transactions (
     source_file TEXT NOT NULL,
     import_id INTEGER,
     user_id TEXT,
+    synced_to_firefly INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (canonical_account_id) REFERENCES accounts (account_id),
@@ -108,7 +109,8 @@ SELECT
     COALESCE(destination_name, '') AS destination_name,
     COALESCE(category, '') AS category_name,
     COALESCE(tags, '') AS tags,
-    bank_id
+    bank_id,
+    synced_to_firefly
 FROM transactions;
 
 CREATE VIEW IF NOT EXISTS dashboard_metrics AS

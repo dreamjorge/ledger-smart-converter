@@ -20,6 +20,7 @@ class CanonicalTransaction:
     normalized_description: str = ""
     source: str = "data"
     rfc: str = ""
+    is_synced: bool = False
 
     @property
     def id(self) -> str:

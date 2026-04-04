@@ -24,6 +24,9 @@ from infrastructure.adapters.sqlite_transaction_repository import SqliteTransact
 from services.db_service import DatabaseService
 from dataclasses import asdict
 
+if False:
+    from application.use_cases.generate_monthly_report import GenerateMonthlyReport
+
 
 def render_comparison(
     stats_sant: dict,
@@ -131,6 +134,7 @@ def render_analytics_dashboard(
     data_dir: Path,
     copy_feedback_key: str,
     ml_engine,
+    report_use_case: Optional[GenerateMonthlyReport] = None,
 ):
     feedback = st.session_state.pop(copy_feedback_key, None)
     if feedback:
@@ -176,6 +180,7 @@ def render_analytics_dashboard(
             db_path=db_path,
             calculate_analytics_uc=calculate_analytics_uc,
             get_filtered_txns_uc=get_filtered_txns_uc,
+            report_use_case=report_use_case,
         )
 
     # Santander Tab
@@ -192,6 +197,7 @@ def render_analytics_dashboard(
             db_path=db_path,
             calculate_analytics_uc=calculate_analytics_uc,
             get_filtered_txns_uc=get_filtered_txns_uc,
+            report_use_case=report_use_case,
         )
 
     # HSBC Tab
@@ -208,6 +214,7 @@ def render_analytics_dashboard(
             db_path=db_path,
             calculate_analytics_uc=calculate_analytics_uc,
             get_filtered_txns_uc=get_filtered_txns_uc,
+            report_use_case=report_use_case,
         )
 
     # Comparison Tab
@@ -256,6 +263,7 @@ def render_bank_analytics(
     db_path: Path,
     calculate_analytics_uc: CalculateAnalytics,
     get_filtered_txns_uc: GetFilteredTransactions,
+    report_use_case: Optional[GenerateMonthlyReport] = None,
     show_rule_hub=True,
 ):
     # Global Date Range Selector
@@ -297,6 +305,32 @@ def render_bank_analytics(
             )
             if selected_period != t("all") and not date_range_active:
                 selected_period_value = selected_period
+
+    # Report Generation Button
+    if report_use_case:
+        col_btn, _ = st.columns([1, 3])
+        with col_btn:
+            # We use the current filters for the report
+            if st.button(t("btn_generate_report"), key=f"{bank_id}_gen_report"):
+                with st.spinner(t("processing")):
+                    try:
+                        period_label = selected_period_value or f"{start_date_filter} to {end_date_filter}" if date_range_active else t("all")
+                        report_bytes = report_use_case.execute(
+                            bank_id=None if bank_id == "all_accounts" else bank_id,
+                            period=selected_period_value,
+                            start_date=start_date_filter,
+                            end_date=end_date_filter,
+                        )
+                        st.download_button(
+                            label=t("download_report"),
+                            data=report_bytes,
+                            file_name=f"report_{bank_id}_{period_label}.pdf",
+                            mime="application/pdf",
+                            key=f"{bank_id}_dl_report"
+                        )
+                        st.success(t("report_generated", period=period_label))
+                    except Exception as e:
+                        st.error(f"Failed to generate report: {str(e)}")
 
     # Invoke Analytics Use Case
     stats_res = calculate_analytics_uc.execute(

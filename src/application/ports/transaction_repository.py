@@ -50,3 +50,13 @@ class TransactionRepository(ABC):
             Dict containing counts of 'inserted', 'skipped_duplicates', 'errors'.
         """
         pass
+
+    @abstractmethod
+    def get_unsynced(self) -> List[CanonicalTransaction]:
+        """Retrieves transactions that have not yet been synced to an external system."""
+        pass
+
+    @abstractmethod
+    def mark_as_synced(self, transaction_hashes: List[str]) -> bool:
+        """Marks a list of transactions as successfully synced."""
+        pass
