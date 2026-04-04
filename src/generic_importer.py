@@ -10,7 +10,6 @@ Generic Importer for Firefly III
 
 import argparse
 import os
-import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -29,29 +28,12 @@ import pdf_utils as pu
 from date_utils import parse_spanish_date as parse_es_date
 from validation import validate_tags, validate_transaction
 from services.import_pipeline_service import ImportPipelineService
+from infrastructure.parsers.parser_factory import ParserFactory
 
 LOGGER = get_logger("generic_importer")
 USE_NORMALIZED_TEXT = os.getenv("LSC_USE_NORMALIZED_TEXT", "true").strip().lower() not in {"0", "false", "no"}
 
-@dataclass(frozen=True)
-class TxnRaw:
-    date: str
-    description: str
-    amount: float
-    rfc: str = ""
-    account_hint: str = ""
-    source: str = "data"
-    page: int = 0
-    source_line: str = ""
-
-def parse_iso_date(s: str) -> str:
-    s = (s or "").strip()
-    if not s: return ""
-    try:
-        dt = datetime.fromisoformat(s)
-        return dt.date().isoformat()
-    except ValueError:
-        return s[:10]
+from infrastructure.parsers.models import TxnRaw
 
 class GenericImporter:
     def __init__(self, rules_path: Path, bank_id: str):
@@ -98,93 +80,19 @@ class GenericImporter:
         )
 
     def load_data(self, data_path: Optional[Path], pdf_path: Optional[Path], use_pdf_source: bool) -> List[TxnRaw]:
-        txns = []
-        
+        # Always prioritize PDF source if requested
         if use_pdf_source and pdf_path:
-            raw_pdf = pu.extract_transactions_from_pdf(pdf_path, use_ocr=True)
-            year = datetime.now().year
-            # Prefer year from filename or metadata if possible
-            for pt in raw_pdf:
-                iso_date = pu.parse_mx_date(pt["raw_date"], year=year)
-                if iso_date:
-                    txns.append(TxnRaw(date=iso_date, description=pt["description"], amount=pt["amount"], source="pdf"))
-            return txns
+            parser = ParserFactory.get_parser(self.bank_cfg["type"], use_pdf_source=True)
+            return parser.parse(pdf_path)
 
-        if not data_path: return []
-        
-        ext = data_path.suffix.lower()
-        if ext == ".xml" and self.bank_cfg["type"] == "xml":
-            txns = self._load_xml(data_path)
-        elif ext in [".xlsx", ".xls"] and self.bank_cfg["type"] == "xlsx":
-            txns = self._load_xlsx(data_path)
-        else:
-            # Fallback to generic CSV/Excel if type mismatch but file exists
-            txns = self._load_generic(data_path)
+        if not data_path: 
+            return []
+            
+        parser = ParserFactory.get_parser(self.bank_cfg["type"], use_pdf_source=False)
+        txns = parser.parse(data_path)
             
         return sorted(txns, key=lambda t: (t.date, t.description.lower(), round(float(t.amount), 2), t.rfc))
 
-    def _load_xml(self, path: Path) -> List[TxnRaw]:
-        # Special case for HSBC-like XML
-        root = ET.fromstring(path.read_text(encoding="utf-8", errors="ignore"))
-        addenda = root.find(".//{*}Addenda")
-        if addenda is None: return []
-        
-        out = []
-        for e in addenda.iter():
-            tag = e.tag.split("}")[-1]
-            if tag in ["MovimientosDelCliente", "MovimientoDelClienteFiscal"]:
-                date = parse_iso_date(e.attrib.get("fecha"))
-                desc = cu.strip_ws(e.attrib.get("descripcion"))
-                amt = cu.parse_money(e.attrib.get("importe"))
-                rfc = e.attrib.get("RFCenajenante", "")
-                if date and desc and amt is not None:
-                    out.append(TxnRaw(date=date, description=desc, amount=amt, rfc=rfc))
-        return out
-
-    def _load_xlsx(self, path: Path) -> List[TxnRaw]:
-        df = pd.read_excel(path, header=None)
-        # Find header row (generic: look for "FECHA")
-        header_idx = 0
-        for i in range(min(20, len(df))):
-            if any("FECHA" in str(v).upper() for v in df.iloc[i]):
-                header_idx = i
-                break
-        
-        df.columns = [str(c).strip().lower() for c in df.iloc[header_idx]]
-        df = df.iloc[header_idx+1:].dropna(subset=["fecha", "concepto", "importe"], how="any")
-        
-        out = []
-        for _, r in df.iterrows():
-            date = parse_es_date(str(r["fecha"]))
-            amt = cu.parse_money(r["importe"])
-            if date and amt is not None:
-                out.append(TxnRaw(
-                    date=date, 
-                    description=str(r["concepto"]).strip(), 
-                    amount=amt
-                ))
-        return out
-
-    def _load_generic(self, path: Path) -> List[TxnRaw]:
-        df = pd.read_excel(path) if path.suffix.lower() in [".xlsx", ".xls"] else pd.read_csv(path)
-        df.columns = [c.strip().lower() for c in df.columns]
-        
-        # Heuristic mapping
-        col_map = {}
-        for c in df.columns:
-            if any(k in c for k in ["fecha", "date"]): col_map["date"] = c
-            if any(k in c for k in ["desc", "concepto", "descripcion"]): col_map["desc"] = c
-            if any(k in c for k in ["importe", "amount", "monto"]): col_map["amt"] = c
-            
-        if "date" not in col_map or "desc" not in col_map: return []
-        
-        out = []
-        for _, r in df.iterrows():
-            date = parse_iso_date(str(r[col_map["date"]])) or parse_es_date(str(r[col_map["date"]]))
-            amt = cu.parse_money(r[col_map["amt"]]) if "amt" in col_map else 0.0
-            if date and amt is not None:
-                out.append(TxnRaw(date=date, description=str(r[col_map["desc"]]), amount=amt))
-        return out
 
     def process(self, txns: List[TxnRaw], strict: bool = False) -> Tuple[List[Dict], List[Dict], int]:
         pipeline = self._build_pipeline_service()

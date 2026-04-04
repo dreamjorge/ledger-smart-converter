@@ -10,10 +10,9 @@ from collections import defaultdict
 import generic_importer as gi
 from services.import_pipeline_service import ImportPipelineService
 from domain.transaction import CanonicalTransaction
-from generic_importer import (
-    parse_iso_date, parse_es_date, GenericImporter, TxnRaw,
-    write_csv_atomic
-)
+from generic_importer import GenericImporter, write_csv_atomic
+from infrastructure.parsers.models import TxnRaw, parse_iso_date
+from date_utils import parse_spanish_date as parse_es_date
 from errors import ConfigError, ValidationError
 
 
