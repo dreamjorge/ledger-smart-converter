@@ -154,6 +154,8 @@ def submit_manual_transaction(
         canonical_account_id=canonical_account_id,
         raw_description=description,
         normalized_description=description,
+        transaction_type=transaction_type,
+        category=category,
         source="manual",
     )
 
@@ -175,30 +177,13 @@ def submit_manual_transaction(
     # For now, we perform the insertion manually if use case says OK, 
     # OR we update the repository/use case to handle the full task.
     
-    # Let's improve the repository and use case to handle the insert_transaction call 
-    # so the service is truly a thin wrapper.
-    
-    # Check for existence via use case logic
+    # Check for existence to return correct error code (backwards compatible)
     if repository.exists(txn.id):
          return False, ["duplicate"]
 
-    # Build the row (Infrastructure detail)
-    source_hash = txn.id # Using the domain ID as source_hash
-    txn_dict = _build_manual_transaction_row(
-        source_hash=source_hash,
-        date=date,
-        description=description,
-        amount=amount,
-        bank_id=bank_id,
-        account_id=account_id,
-        canonical_account_id=canonical_account_id,
-        transaction_type=transaction_type,
-        category=category,
-    )
-
-    # Actually we should let the repository handle the mapping from Domain -> DB Row.
-    # For this first iteration, we just delegate the final save.
-    success = repository.save_manual(txn_dict, user_id=user_id)
+    # Actually let the repository handle the mapping from Domain -> DB Row.
+    # We pass the domain object directly.
+    success = repository.save_manual(txn, user_id=user_id)
     
     if success:
         return True, []

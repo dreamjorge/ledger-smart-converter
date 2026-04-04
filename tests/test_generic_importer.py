@@ -9,6 +9,7 @@ from collections import defaultdict
 
 import generic_importer as gi
 from services.import_pipeline_service import ImportPipelineService
+from domain.transaction import CanonicalTransaction
 from generic_importer import (
     parse_iso_date, parse_es_date, GenericImporter, TxnRaw,
     write_csv_atomic
@@ -316,7 +317,7 @@ class TestGenericImporterSeams:
         rows, unknown, warnings = importer.process(txns, strict=False)
 
         assert warnings == 0
-        assert rows[0]["description"] == "Legacy Merchant"
+        assert rows[0].description == "Legacy Merchant"
         assert unknown[0]["merchant"] == "merchant"
         assert unknown[0]["count"] == 1
         assert "Normalized Merchant" in unknown[0]["examples"]
@@ -386,42 +387,57 @@ class TestImportPipelineService:
 
         assert warnings == 0
         assert len(rows) == 1
-        assert rows[0]["description"] == "Legacy Merchant"
-        assert rows[0]["type"] == "withdrawal"
+        assert rows[0].description == "Legacy Merchant"
+        assert rows[0].transaction_type == "withdrawal"
         assert unknown[0]["merchant"] == "merchant"
         assert unknown[0]["count"] == 1
         assert "Normalized Merchant" in unknown[0]["examples"]
 
     def test_make_withdrawal(self, service):
-        txn = TxnRaw(date="2026-01-15", description="Test purchase", amount=-100.50)
-        tags = {"tag1", "tag2"}
+        txn = CanonicalTransaction(
+            date="2026-01-15", 
+            description="Test purchase", 
+            amount=-100.50,
+            bank_id="test",
+            account_id="acc",
+            raw_description="raw",
+            canonical_account_id="acc"
+        )
+        tags = "tag1,tag2"
 
-        row = service._make_withdrawal(txn, "Test purchase", "Expenses:Food", "Food", tags)
+        row = service._make_withdrawal(txn, "Expenses:Food", "Food", tags)
 
-        assert row["type"] == "withdrawal"
-        assert row["date"] == "2026-01-15"
-        assert row["amount"] == "100.50"
-        assert row["currency_code"] == "MXN"
-        assert row["description"] == "Test purchase"
-        assert row["destination_name"] == "Expenses:Food"
-        assert row["category_name"] == "Food"
-        assert "tag1" in row["tags"]
-        assert "tag2" in row["tags"]
+        assert row.transaction_type == "withdrawal"
+        assert row.date == "2026-01-15"
+        assert row.amount == 100.50
+        assert row.description == "Test purchase"
+        assert row.destination_name == "Expenses:Food"
+        assert row.category == "Food"
+        assert "tag1" in row.tags
+        assert "tag2" in row.tags
 
     def test_make_transfer(self, service):
-        txn = TxnRaw(date="2026-01-15", description="Payment", amount=500.00)
-        tags = {"tag1"}
+        txn = CanonicalTransaction(
+            date="2026-01-15", 
+            description="Payment", 
+            amount=500.00,
+            bank_id="test",
+            account_id="acc",
+            raw_description="raw",
+            canonical_account_id="acc"
+        )
+        tags = "tag1"
 
-        row = service._make_transfer(txn, "Payment", "Source Account", "Dest Account", tags, "payment")
+        row = service._make_transfer(txn, "Source Account", "Dest Account", tags, "pago")
 
-        assert row["type"] == "transfer"
-        assert row["date"] == "2026-01-15"
-        assert row["amount"] == "500.00"
-        assert row["source_name"] == "Source Account"
-        assert row["destination_name"] == "Dest Account"
-        assert row["category_name"] == ""
-        assert "payment" in row["tags"]
-        assert "tag1" in row["tags"]
+        assert row.transaction_type == "transfer"
+        assert row.date == "2026-01-15"
+        assert row.amount == 500.00
+        assert row.account_id == "Source Account"
+        assert row.destination_name == "Dest Account"
+        assert row.category == ""
+        assert "pago" in row.tags
+        assert "tag1" in row.tags
 
     def test_format_unknown(self, service):
         agg = defaultdict(lambda: {"count": 0, "total": 0.0, "examples": set()})
@@ -569,4 +585,4 @@ def test_process_is_deterministic_for_same_input(tmp_path: Path):
     assert unknown_1 == unknown_2
     assert warnings_1 == 0
     assert warnings_2 == 0
-    assert any("txn:" in row["tags"] for row in rows_1)
+    assert any("txn:" in row.tags for row in rows_1)

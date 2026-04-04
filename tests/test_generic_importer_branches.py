@@ -172,8 +172,8 @@ def test_process_hsbc_infer_kind_branches(tmp_path, monkeypatch):
     monkeypatch.setattr("import_hsbc_cfdi_firefly.infer_kind", lambda *_a: next(kinds))
 
     rows, _, _ = importer.process(txns, strict=False)
-    assert [r["type"] for r in rows] == ["withdrawal", "transfer", "transfer"]
-    assert rows[2]["source_name"] == "Income:Cashback"
+    assert [r.transaction_type for r in rows] == ["withdrawal", "transfer", "transfer"]
+    assert rows[2].account_id == "Income:Cashback"
 
 
 def test_process_populates_canonical_account_id(tmp_path, monkeypatch):

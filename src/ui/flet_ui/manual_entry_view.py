@@ -10,7 +10,7 @@ from infrastructure.adapters.yaml_rules_repository import YamlRulesRepository
 from infrastructure.adapters.sqlite_transaction_repository import SqliteTransactionRepository
 from domain.transaction import CanonicalTransaction
 
-from services.manual_entry_service import get_category_label, DatabaseService
+from services.manual_entry_service import get_category_label, DatabaseService, load_categories_from_rules
 
 
 def get_manual_entry_view(

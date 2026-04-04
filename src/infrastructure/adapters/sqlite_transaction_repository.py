@@ -73,9 +73,9 @@ class SqliteTransactionRepository(TransactionRepository):
         rows = self.db_service.fetch_all(query, tuple(params))
         return [self._map_row_to_domain(row) for row in rows]
 
-    def save_all(self, transactions: List[CanonicalTransaction]) -> Dict[str, Any]:
+    def save_all(self, transactions: List[CanonicalTransaction], user_id: Optional[str] = None) -> Dict[str, Any]:
         """Persists multiple transactions in batch mode."""
-        txn_rows = [self._map_domain_to_dict(t) for t in transactions]
+        txn_rows = [self._map_domain_to_dict(t, user_id=user_id) for t in transactions]
         results = self.db_service.insert_transactions_batch(txn_rows)
         return {
             "inserted": results.get("inserted", 0),
@@ -83,9 +83,39 @@ class SqliteTransactionRepository(TransactionRepository):
             "errors": 0  # DatabaseService handles errors internally or skips them
         }
 
-    def _map_domain_to_dict(self, transaction: CanonicalTransaction) -> Dict[str, Any]:
+    def save_manual(self, transaction: Any, **kwargs) -> bool:
+        """
+        Save a single manual transaction.
+        Maintained for backward compatibility with existing legacy tests.
+        """
+        from domain.transaction import CanonicalTransaction
+        
+        if isinstance(transaction, dict):
+            # Convert dict to CanonicalTransaction for legacy callers
+            transaction = CanonicalTransaction(
+                date=transaction.get("date"),
+                description=transaction.get("description"),
+                amount=float(transaction.get("amount", 0)),
+                bank_id=transaction.get("bank_id"),
+                account_id=transaction.get("account_id"),
+                canonical_account_id=transaction.get("canonical_account_id"),
+                transaction_type=transaction.get("transaction_type", "withdrawal"),
+                category=transaction.get("category"),
+                notes=transaction.get("notes"),
+                tags=transaction.get("tags", ""),
+                destination_name=transaction.get("destination_name"),
+                source=transaction.get("source", "manual"),
+                raw_description=transaction.get("raw_description", transaction.get("description", "")),
+                normalized_description=transaction.get("normalized_description", transaction.get("description", ""))
+            )
+            
+        user_id = kwargs.get("user_id")
+        results = self.save_all([transaction], user_id=user_id)
+        return results.get("inserted", 0) > 0
+
+    def _map_domain_to_dict(self, transaction: CanonicalTransaction, user_id: Optional[str] = None) -> Dict[str, Any]:
         """Helper to map a CanonicalTransaction domain object to a database dictionary."""
-        return {
+        row = {
             "date": transaction.date,
             "description": transaction.description,
             "amount": transaction.amount,
@@ -103,6 +133,9 @@ class SqliteTransactionRepository(TransactionRepository):
             "normalized_description": transaction.normalized_description,
             "source_hash": transaction.id,
         }
+        if user_id:
+            row["user_id"] = user_id
+        return row
 
     def _map_row_to_domain(self, row: Dict[str, Any]) -> CanonicalTransaction:
         """Helper to map a DB row to a CanonicalTransaction domain object."""
