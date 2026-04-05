@@ -20,7 +20,8 @@
 
 html,
 body,
-[class*="css"] {
+.stApp,
+[data-testid="stAppViewContainer"] {
     font-family: 'Outfit', sans-serif !important;
 }
 
@@ -53,6 +54,27 @@ h3 {
 [data-testid="stSidebar"] {
     background-color: #1e293b !important;
     border-right: 1px solid var(--border) !important;
+}
+
+[data-testid="stSidebarUserContent"] {
+    padding-left: 0.75rem !important;
+    padding-right: 0.75rem !important;
+}
+
+[data-testid="stSidebarNav"] a {
+    border-radius: 10px !important;
+    margin-bottom: 0.2rem !important;
+    padding: 0.35rem 0.5rem !important;
+}
+
+/* ===== GLOBAL CONTROLS BAR ===== */
+.st-key-global_controls {
+    margin: 1rem 0 1.25rem 0;
+    background: rgba(30, 41, 59, 0.52) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 14px !important;
+    padding: 0.85rem 0.9rem !important;
+    backdrop-filter: blur(12px) !important;
 }
 
 /* ===== BUTTONS (Touch-Friendly) ===== */
@@ -256,6 +278,10 @@ h3 {
         max-width: 100vw !important;
     }
 
+    .st-key-global_controls {
+        padding: 0.75rem !important;
+    }
+
     [data-testid="stSidebar"] [data-testid="stMarkdown"] {
         font-size: 0.875rem !important;
     }
@@ -264,16 +290,6 @@ h3 {
     [data-testid="stFileUploader"] {
         padding: 1rem !important;
         min-height: 100px !important;
-    }
-
-    /* Columns - Stack on mobile */
-    .row-widget.stHorizontal {
-        flex-direction: column !important;
-    }
-
-    [data-testid="column"] {
-        width: 100% !important;
-        min-width: 100% !important;
     }
 
     /* Charts */
@@ -336,7 +352,8 @@ h3 {
     }
 
     [data-testid="stSidebar"] {
-        min-width: 320px !important;
+        min-width: 200px !important;
+        max-width: 216px !important;
     }
 }
 
@@ -366,12 +383,6 @@ h3 {
 /* ===== STRETCH REFINEMENT FOR COLLAPSED SIDEBAR TOGGLE ===== */
 header[data-testid="stHeader"] {
     background: transparent !important;
-    height: 3rem !important;
-}
-
-/* Hide decorative elements but keep buttons */
-header[data-testid="stHeader"]>div:first-child {
-    visibility: hidden !important;
 }
 
 [data-testid="stSidebarCollapse"] {
@@ -380,6 +391,7 @@ header[data-testid="stHeader"]>div:first-child {
     background-color: rgba(255, 255, 255, 0.05) !important;
     border-radius: 8px !important;
     margin-left: 0.5rem !important;
+    z-index: 1000 !important;
 }
 
 #MainMenu {
