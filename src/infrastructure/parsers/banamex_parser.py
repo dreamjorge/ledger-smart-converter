@@ -27,9 +27,18 @@ from infrastructure.parsers.base_parser import StatementParser
 from infrastructure.parsers.models import TxnRaw
 
 _MONTH_MAP = {
-    "ene": "01", "feb": "02", "mar": "03", "abr": "04",
-    "may": "05", "jun": "06", "jul": "07", "ago": "08",
-    "sep": "09", "oct": "10", "nov": "11", "dic": "12",
+    "ene": "01",
+    "feb": "02",
+    "mar": "03",
+    "abr": "04",
+    "may": "05",
+    "jun": "06",
+    "jul": "07",
+    "ago": "08",
+    "sep": "09",
+    "oct": "10",
+    "nov": "11",
+    "dic": "12",
 }
 
 # Matches: "21-feb-2026" or "21-feb-26"
@@ -87,7 +96,7 @@ def _parse_amount(raw: str) -> Optional[float]:
     m = _AMOUNT_RE.search(raw)
     if not m:
         return None
-    sign = 1.0 if m.group(1) == "+" else -1.0
+    sign = -1.0 if m.group(1) == "+" else 1.0
     value = float(m.group(2).replace(",", ""))
     return sign * value
 
@@ -146,12 +155,14 @@ def _parse_transactions(lines: List[str]) -> List[TxnRaw]:
         nonlocal pending_date, pending_desc_parts, pending_amount
         if pending_date and pending_amount is not None and pending_desc_parts:
             desc = " ".join(pending_desc_parts).strip()
-            txns.append(TxnRaw(
-                date=pending_date,
-                description=desc,
-                amount=pending_amount,
-                source="pdf",
-            ))
+            txns.append(
+                TxnRaw(
+                    date=pending_date,
+                    description=desc,
+                    amount=pending_amount,
+                    source="pdf",
+                )
+            )
         pending_date = None
         pending_desc_parts = []
         pending_amount = None
@@ -182,6 +193,8 @@ def _parse_transactions(lines: List[str]) -> List[TxnRaw]:
 
             # Extract the operation date (first date)
             first_match = _DATE_RE.search(stripped)
+            if first_match is None:
+                continue
             pending_date = _parse_date(first_match.group(0))
 
             # Remove both dates from the line to get the description fragment
@@ -205,12 +218,15 @@ def _parse_transactions(lines: List[str]) -> List[TxnRaw]:
             else:
                 # Pure description continuation — but skip reference/metadata lines
                 # from multi-line payments like PAGO INTERBANCARIO
-                if stripped and not stripped.startswith("CLAVE DE RASTREO") \
-                        and not stripped.startswith("CUENTA ORDENANTE") \
-                        and not stripped.startswith("POR ORDEN DE") \
-                        and not stripped.startswith("FECHA Y HORA DE LIQUIDACIÓN") \
-                        and not stripped.startswith("REFERENCIA") \
-                        and not stripped.startswith("CONCEPTO"):
+                if (
+                    stripped
+                    and not stripped.startswith("CLAVE DE RASTREO")
+                    and not stripped.startswith("CUENTA ORDENANTE")
+                    and not stripped.startswith("POR ORDEN DE")
+                    and not stripped.startswith("FECHA Y HORA DE LIQUIDACIÓN")
+                    and not stripped.startswith("REFERENCIA")
+                    and not stripped.startswith("CONCEPTO")
+                ):
                     pending_desc_parts.append(stripped)
 
     flush()

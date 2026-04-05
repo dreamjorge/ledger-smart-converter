@@ -96,7 +96,7 @@ def _parse_transactions(lines: List[str]) -> List[TxnRaw]:
 
 **Data Extraction**:
 - Date: First operation date in `dd-mmm-yyyy` Spanish format
-- Amount: `+ $NNN.NN` as charge, `- $NNN.NN` as payment/credit
+- Amount: Banamex statement polarity is normalized to importer semantics: `+ $NNN.NN` (card charge) becomes negative and `- $NNN.NN` (payment/credit) becomes positive so the shared import pipeline classifies purchases as withdrawals and payments as transfers
 - Description: Multi-line movement descriptions merged until the next dated row
 - Source: Tagged as `pdf`
 

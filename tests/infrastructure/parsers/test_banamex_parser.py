@@ -21,6 +21,7 @@ from infrastructure.parsers.banamex_parser import (
 # Unit: date parsing
 # ---------------------------------------------------------------------------
 
+
 class TestParseDate:
     def test_full_date(self):
         assert _parse_date("21-feb-2026") == "2026-02-21"
@@ -30,9 +31,18 @@ class TestParseDate:
 
     def test_all_months(self):
         months = [
-            ("ene", "01"), ("feb", "02"), ("mar", "03"), ("abr", "04"),
-            ("may", "05"), ("jun", "06"), ("jul", "07"), ("ago", "08"),
-            ("sep", "09"), ("oct", "10"), ("nov", "11"), ("dic", "12"),
+            ("ene", "01"),
+            ("feb", "02"),
+            ("mar", "03"),
+            ("abr", "04"),
+            ("may", "05"),
+            ("jun", "06"),
+            ("jul", "07"),
+            ("ago", "08"),
+            ("sep", "09"),
+            ("oct", "10"),
+            ("nov", "11"),
+            ("dic", "12"),
         ]
         for abbr, num in months:
             assert _parse_date(f"01-{abbr}-2026") == f"2026-{num}-01"
@@ -48,18 +58,19 @@ class TestParseDate:
 # Unit: amount parsing
 # ---------------------------------------------------------------------------
 
+
 class TestParseAmount:
     def test_cargo(self):
-        assert _parse_amount("+ $300.00") == 300.0
+        assert _parse_amount("+ $300.00") == -300.0
 
     def test_abono(self):
-        assert _parse_amount("- $576.84") == -576.84
+        assert _parse_amount("- $576.84") == 576.84
 
     def test_with_thousands_separator(self):
-        assert _parse_amount("+ $1,234.56") == 1234.56
+        assert _parse_amount("+ $1,234.56") == -1234.56
 
     def test_no_space_between_sign_and_dollar(self):
-        assert _parse_amount("+$95.00") == 95.0
+        assert _parse_amount("+$95.00") == -95.0
 
     def test_invalid_returns_none(self):
         assert _parse_amount("no amount here") is None
@@ -114,13 +125,13 @@ class TestParseTransactions:
     def test_paypal_cargo(self):
         paypal = next(t for t in self.txns if "PAYPAL" in t.description)
         assert paypal.date == "2026-02-21"
-        assert paypal.amount == 300.0
+        assert paypal.amount == -300.0
         assert paypal.source == "pdf"
 
     def test_pago_interbancario_abono(self):
         pago = next(t for t in self.txns if "PAGO INTERBANCARIO" in t.description)
         assert pago.date == "2026-02-23"
-        assert pago.amount == -576.84
+        assert pago.amount == 576.84
 
     def test_pago_interbancario_desc_excludes_metadata(self):
         pago = next(t for t in self.txns if "PAGO INTERBANCARIO" in t.description)
@@ -131,7 +142,7 @@ class TestParseTransactions:
     def test_google_digital_card(self):
         google = next(t for t in self.txns if "GOOGLE" in t.description)
         assert google.date == "2026-02-15"
-        assert google.amount == 95.0
+        assert google.amount == -95.0
 
     def test_stops_at_cargos_no_reconocidos(self):
         # The disputed charge after the stop marker should NOT be included
@@ -156,6 +167,7 @@ class TestBanamexPdfParserIntegration:
 
     def test_all_dates_are_iso(self):
         import re
+
         iso_re = re.compile(r"^\d{4}-\d{2}-\d{2}$")
         for t in self.txns:
             assert iso_re.match(t.date), f"Bad date: {t.date!r}"
@@ -170,9 +182,9 @@ class TestBanamexPdfParserIntegration:
     def test_known_google_transaction(self):
         assert any("GOOGLE" in t.description for t in self.txns)
 
-    def test_pago_is_negative(self):
+    def test_pago_is_positive(self):
         pagos = [t for t in self.txns if "PAGO" in t.description]
-        assert any(t.amount < 0 for t in pagos)
+        assert any(t.amount > 0 for t in pagos)
 
     def test_source_is_pdf(self):
         for t in self.txns:
