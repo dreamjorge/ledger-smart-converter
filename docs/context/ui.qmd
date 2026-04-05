@@ -31,7 +31,9 @@ The project currently maintains two UI adapters. Per `docs/plans/2026-04-03-fron
 - Session state initialization (including language and bank)
 - Native Streamlit navigation via `st.navigation` + `st.Page`
 - Language switching (English/Spanish) with state reset
-- Bank selection from the sidebar so controls remain visible across all pages
+- Global controls bar in the main shell for bank selection, language switching, and active-user context
+- Navigation-only sidebar so page routing stays accessible without coupling it to global controls
+- Keep the desktop Streamlit sidebar compact; `src/ui/style.css` constrains desktop width to ~216px so the main canvas keeps priority
 - ML model loading and caching
 - Page rendering delegation through top-level wrapper functions in `src/web_app.py`
 
@@ -46,9 +48,8 @@ def get_ml_engine():
     engine.load_model()
     return engine
 
-# Sidebar controls stay outside page wrappers
-selected_lang = st.sidebar.selectbox(...)
-selected_bank = st.sidebar.selectbox(...)
+# Global controls live in the main shell, not the sidebar
+render_global_controls_bar()
 
 navigation = st.navigation([
     st.Page(page_import, title=t("nav_import"), icon="💳"),
@@ -61,7 +62,15 @@ navigation.run()
 
 **Lazy Loading Note**: The app avoids `st.tabs` because it eagerly loads both branches. By using `st.navigation` with page wrapper functions, the app keeps native routing while still lazy-loading heavy modules (`pandas`, `plotly`, `ml_categorizer`).
 
-**Bank/language controls** live in the sidebar so they persist consistently across Import, Analytics, Manual Entry, and Settings.
+**Bank/language controls** live in the header controls bar in `src/web_app.py`, so they remain visible even when the sidebar collapses on mobile.
+
+**Sidebar contract**: the Streamlit sidebar is navigation-only. Do not place bank, language, or active-user controls inside `st.sidebar`; keep those in the shell-level controls bar so navigation and global context never fail together.
+
+**Guardrails**:
+- `tests/test_web_app_config.py` verifies global controls are not rendered through `st.sidebar.selectbox`.
+- `tests/test_web_app_controls_layout.py` verifies the shell exposes `render_global_controls_bar()` and uses main-area columns for the controls layout.
+- `tests/test_web_app_page_contracts.py` verifies `page_import()`, `page_analytics()`, `page_manual()`, and `page_settings()` still call their page renderers with compatible keyword arguments.
+- `tests/test_streamlit_style_contracts.py` provides string-level CSS guardrails so the controls-bar hook stays scoped to `st-key-global_controls`, avoids brittle shell selectors, and does not hide Streamlit's header/toggle affordances.
 
 ---
 

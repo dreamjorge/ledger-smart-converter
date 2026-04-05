@@ -1,5 +1,7 @@
 """Tests for web_app.py configuration and mobile UX."""
+
 import ast
+import re
 import sys
 from pathlib import Path
 
@@ -40,12 +42,18 @@ def test_sidebar_auto_state():
     )
 
 
-def test_sidebar_contains_controls():
-    """Language and bank selectors are now in the sidebar for consistency."""
+def test_sidebar_does_not_contain_global_controls():
+    """Global controls should live in the header bar, not in the sidebar."""
     source = WEB_APP.read_text(encoding="utf-8")
-    assert "st.sidebar.selectbox" in source, (
-        "st.sidebar.selectbox should be used for language or bank selection "
-        "to maintain consistent controls across all pages."
+    assert not re.search(
+        r'st\.sidebar\.selectbox\(\s*cast\(str, t\("language_select"\)\)', source
+    ), (
+        "The language selector must not live in the sidebar; it belongs in the header controls bar."
+    )
+    assert not re.search(
+        r'st\.sidebar\.selectbox\(\s*cast\(str, t\("select_bank"\)\)', source
+    ), (
+        "The bank selector must not live in the sidebar; it belongs in the header controls bar."
     )
 
 

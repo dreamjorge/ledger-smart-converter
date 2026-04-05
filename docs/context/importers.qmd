@@ -12,7 +12,7 @@ The ingestion layer handles the parsing of bank-specific statement formats (XLSX
 The system uses a Clean Architecture approach to importing:
 
 1. **Infrastructure Parsers**: Strategies encapsulating unique file formats via `StatementParser` interface (`src/infrastructure/parsers/`).
-2. **Parser Factory**: Instantiates the correct parser based on bank config (`ParserFactory`).
+2. **Parser Factory**: Instantiates the correct parser based on bank config (`ParserFactory`), including bank-specific parser overrides when a generic file type is not enough.
 3. **Generic Importer CLI**: A unified entry point orchestrator (`src/generic_importer.py`).
 4. **Import Pipeline Service**: Handles transaction normalization, canonical mapping, and evaluation rules.
 5. **PDF Utilities**: Shared logic for OCR and text extraction from statement PDFs.
@@ -76,6 +76,36 @@ def find_header_row(df: pd.DataFrame) -> int:
 
 **Configuration**: Uses `config/rules.yml` Santander section
 
+### Banamex JOY PDF Importer
+
+**File**: `src/infrastructure/parsers/banamex_parser.py`
+
+**Input Formats**:
+- Text-selectable PDF statements parsed with `pdfplumber`
+
+**Key Functions**:
+
+```python
+class BanamexPdfParser(StatementParser):
+    def parse(self, file_path: Path) -> List[TxnRaw]:
+        ...
+
+def _parse_transactions(lines: List[str]) -> List[TxnRaw]:
+    ...
+```
+
+**Data Extraction**:
+- Date: First operation date in `dd-mmm-yyyy` Spanish format
+- Amount: `+ $NNN.NN` as charge, `- $NNN.NN` as payment/credit
+- Description: Multi-line movement descriptions merged until the next dated row
+- Source: Tagged as `pdf`
+
+**Routing**:
+- `ParserFactory.get_parser(..., bank_id="banamex")` returns `BanamexPdfParser`
+- `GenericImporter.load_data()` now passes `bank_id` into the parser factory so bank-specific parser overrides work for both direct and PDF-driven imports
+
+**Configuration**: Uses `config/rules.yml` Banamex section and `config/accounts.yml` canonical account mapping
+
 ## Generic Importer (CLI)
 
 **File**: `src/generic_importer.py`
@@ -105,7 +135,7 @@ python src/generic_importer.py \
 
 **Workflow**:
 1. Load bank configuration
-2. `ParserFactory` instantiates the correct parser (`XmlParser`, `ExcelParser`, or `PdfParser`).
+2. `ParserFactory` instantiates the correct parser (`XmlParser`, `ExcelParser`, `PdfParser`, or a bank-specific parser such as `BanamexPdfParser`).
 3. Parser extracts `TxnRaw` models from the file.
 4. Call `ImportPipelineService.process_transactions()`
    a. Build `normalized_description` (deterministic cleanup)
