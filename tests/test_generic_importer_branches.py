@@ -48,7 +48,7 @@ def test_load_data_pdf_source_branch(tmp_path, monkeypatch):
     
     assert len(txns) == 1
     assert txns[0].source == "pdf"
-    mock_factory.assert_called_once_with("xlsx", use_pdf_source=True)
+    mock_factory.assert_called_once_with("xlsx", bank_id="test_pdf", use_pdf_source=True)
     mock_parser.parse.assert_called_once_with(Path("dummy.pdf"))
 
 
@@ -59,7 +59,7 @@ def test_load_data_dispatches_factory(tmp_path, monkeypatch):
     # Mock the parser factory
     mock_parser = Mock()
     
-    def get_parser_side_effect(bank_type, use_pdf_source=False):
+    def get_parser_side_effect(bank_type, bank_id="", use_pdf_source=False):
         if bank_type == "xml":
             mock_parser.parse.return_value = [
                 gi.TxnRaw("2026-01-02", "B", -20.0, ""),
