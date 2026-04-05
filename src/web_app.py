@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 from typing import Any, Dict, List, Tuple, cast
 
@@ -7,6 +8,9 @@ import yaml
 from settings import load_settings
 from translations import TRANSLATIONS
 from services.user_service import get_pref, set_pref, get_active_user, set_active_user
+
+
+logger = logging.getLogger(__name__)
 
 # --- 1. CONFIGURACIÓN DE PÁGINA (SIEMPRE PRIMERO) ---
 st.set_page_config(
@@ -107,7 +111,8 @@ def _build_analytics_csv_targets() -> Dict:
             if directory and filename:
                 targets[display] = (directory, filename)
         return targets if targets else default_targets
-    except:
+    except (yaml.YAMLError, OSError, TypeError, AttributeError) as exc:
+        logger.warning("Failed to load analytics CSV targets: %s", exc)
         return default_targets
 
 
@@ -116,7 +121,9 @@ BANK_KEY = "bank_select"
 COPY_FEEDBACK_KEY = "copy_feedback"
 
 
-def _get_bank_context() -> Tuple[str, str, Dict]:
+def _get_bank_selector_options() -> Tuple[
+    Dict[str, Dict[str, Any]], Dict[str, str], List[str]
+]:
     banks_cfg = get_banks_config()
     bank_map = {cfg.get("display_name", bid): bid for bid, cfg in banks_cfg.items()}
     if not bank_map:
@@ -127,6 +134,11 @@ def _get_bank_context() -> Tuple[str, str, Dict]:
         or st.session_state[BANK_KEY] not in bank_options
     ):
         st.session_state[BANK_KEY] = bank_options[0]
+    return banks_cfg, bank_map, bank_options
+
+
+def _get_bank_context() -> Tuple[str, str, Dict]:
+    banks_cfg, bank_map, _bank_options = _get_bank_selector_options()
     bank_label = st.session_state[BANK_KEY]
     bank_id = bank_map[bank_label]
     bank_cfg = banks_cfg.get(bank_id, {})
@@ -135,59 +147,68 @@ def _get_bank_context() -> Tuple[str, str, Dict]:
 
 @st.cache_resource
 def get_import_use_case():
-    from infrastructure.adapters.sqlite_transaction_repository import SqliteTransactionRepository
+    from infrastructure.adapters.sqlite_transaction_repository import (
+        SqliteTransactionRepository,
+    )
     from infrastructure.adapters.sqlite_import_repository import SqliteImportRepository
     from infrastructure.adapters.yaml_rules_repository import YamlRulesRepository
-    from infrastructure.adapters.legacy_data_extractor_adapter import LegacyDataExtractorAdapter
+    from infrastructure.adapters.legacy_data_extractor_adapter import (
+        LegacyDataExtractorAdapter,
+    )
     from application.use_cases.import_statement import ImportStatement
     from services.db_service import DatabaseService
-    
+
     db_service = DatabaseService(SETTINGS.data_dir / "ledger.db")
-    
+
     # Ports & Adapters
     txn_repo = SqliteTransactionRepository(db_service)
     import_repo = SqliteImportRepository(db_service)
     config_reader = YamlRulesRepository(
-        rules_path=CONFIG_DIR / "rules.yml",
-        accounts_path=CONFIG_DIR / "accounts.yml"
+        rules_path=CONFIG_DIR / "rules.yml", accounts_path=CONFIG_DIR / "accounts.yml"
     )
     data_extractor = LegacyDataExtractorAdapter(rules_path=CONFIG_DIR / "rules.yml")
-    
+
     return ImportStatement(
         config_reader=config_reader,
         data_extractor=data_extractor,
         transaction_repository=txn_repo,
-        import_repository=import_repo
+        import_repository=import_repo,
     )
 
 
 @st.cache_resource
 def get_sync_use_case():
-    from infrastructure.adapters.sqlite_transaction_repository import SqliteTransactionRepository
+    from infrastructure.adapters.sqlite_transaction_repository import (
+        SqliteTransactionRepository,
+    )
     from infrastructure.adapters.firefly_api_adapter import FireflyApiAdapter
-    from application.use_cases.sync_transactions_to_firefly import SyncTransactionsToFirefly
+    from application.use_cases.sync_transactions_to_firefly import (
+        SyncTransactionsToFirefly,
+    )
     from services.db_service import DatabaseService
-    
+
     db_service = DatabaseService(SETTINGS.data_dir / "ledger.db")
     txn_repo = SqliteTransactionRepository(db_service)
-    
+
     # Firefly API settings
     firefly_url = SETTINGS.firefly_url
     firefly_token = SETTINGS.firefly_token
-    
+
     if not firefly_url or not firefly_token:
         return None
-        
+
     firefly_adapter = FireflyApiAdapter(firefly_url, firefly_token)
     return SyncTransactionsToFirefly(txn_repo, firefly_adapter)
 
 
 @st.cache_resource
 def get_report_use_case():
-    from infrastructure.adapters.sqlite_transaction_repository import SqliteTransactionRepository
+    from infrastructure.adapters.sqlite_transaction_repository import (
+        SqliteTransactionRepository,
+    )
     from application.use_cases.generate_monthly_report import GenerateMonthlyReport
     from services.db_service import DatabaseService
-    
+
     db_service = DatabaseService(SETTINGS.data_dir / "ledger.db")
     txn_repo = SqliteTransactionRepository(db_service)
     return GenerateMonthlyReport(txn_repo)
@@ -212,7 +233,7 @@ def page_import():
         nav_key="native_navigation",
         bank_key=BANK_KEY,
         import_use_case=get_import_use_case(),
-        sync_use_case=get_sync_use_case()
+        sync_use_case=get_sync_use_case(),
     )
 
 
@@ -226,7 +247,7 @@ def page_analytics():
         data_dir=DATA_DIR,
         copy_feedback_key=COPY_FEEDBACK_KEY,
         ml_engine=get_ml_engine(),
-        report_use_case=get_report_use_case()
+        report_use_case=get_report_use_case(),
     )
 
 
@@ -247,45 +268,40 @@ def page_settings():
     render_settings_page(t=t, active_user=st.session_state.get("active_user"))
 
 
-# --- 4. MAIN APP LOGIC ---
-def main():
-    load_css(SRC_DIR / "ui" / "style.css")
+def render_global_controls_bar() -> None:
+    lang_labels = {"es": "🇲🇽 ES", "en": "🇺🇸 EN"}
+    current_lang = st.session_state.lang
 
-    st.sidebar.title(t("sidebar_welcome"))
-    lang_options = {"🇲🇽 ES": "es", "🇺🇸 EN": "en"}
-    lang_keys = list(lang_options.keys())
-    curr_idx = 0 if st.session_state.lang == "es" else 1
-    selected_lang = st.sidebar.selectbox(
-        cast(str, t("language_select")),
-        options=lang_keys,
-        index=curr_idx,
-    )
-    if lang_options[selected_lang] != st.session_state.lang:
-        st.session_state.lang = lang_options[selected_lang]
+    _banks_cfg, _bank_map, bank_options = _get_bank_selector_options()
+
+    controls_container = st.container(key="global_controls")
+    col_bank, col_lang, col_user = controls_container.columns([2.2, 1.0, 1.2])
+
+    with col_bank:
+        st.selectbox(cast(str, t("select_bank")), options=bank_options, key=BANK_KEY)
+
+    with col_lang:
+        selected_lang = st.selectbox(
+            cast(str, t("language_select")),
+            options=list(lang_labels.keys()),
+            index=0 if current_lang == "es" else 1,
+            format_func=lambda value: lang_labels[value],
+        )
+
+    with col_user:
+        active_user = st.session_state.get("active_user")
+        st.caption(t("active_user") if active_user else t("no_active_user"))
+        st.write(active_user or "-")
+
+    if selected_lang != current_lang:
+        st.session_state.lang = selected_lang
         set_pref("lang", st.session_state.lang)
         st.rerun()
 
-    banks_cfg = get_banks_config()
-    bank_map = {cfg.get("display_name", bid): bid for bid, cfg in banks_cfg.items()}
-    if not bank_map:
-        bank_map = {t("bank_santander"): "santander_likeu", t("bank_hsbc"): "hsbc"}
-    bank_options = list(bank_map.keys())
-    if (
-        BANK_KEY not in st.session_state
-        or st.session_state[BANK_KEY] not in bank_options
-    ):
-        st.session_state[BANK_KEY] = bank_options[0]
-    st.sidebar.selectbox(
-        cast(str, t("select_bank")), options=bank_options, key=BANK_KEY
-    )
 
-    active_user = st.session_state.get("active_user")
-    if active_user:
-        st.sidebar.success(f"👤 {t('active_user')}: **{active_user}**")
-    else:
-        st.sidebar.info(f"👤 {t('no_active_user')}")
-    st.sidebar.markdown(t("sidebar_desc"))
-    st.sidebar.info(t("sidebar_info"))
+# --- 4. MAIN APP LOGIC ---
+def main():
+    load_css(SRC_DIR / "ui" / "style.css")
 
     st.markdown(
         '<h1 class="premium-header">Ledger Smart Converter</h1>', unsafe_allow_html=True
@@ -294,6 +310,7 @@ def main():
         f'<p style="color: var(--text-muted); font-size: 1.1rem; margin-top: -1rem;">{t("app_title")}</p>',
         unsafe_allow_html=True,
     )
+    render_global_controls_bar()
 
     navigation = st.navigation(
         [

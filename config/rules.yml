@@ -18,6 +18,15 @@ banks:
     card_tag: "card:hsbc"
     fallback_name: "Liabilities:CC:HSBC"
     fallback_asset: "Assets:HSBC Débito"
+  banamex:
+    name: "Liabilities:CC:Banamex JOY"
+    display_name: "Banamex JOY (PDF)"
+    type: "pdf"
+    account_key: "banamex_credit_card"
+    payment_asset_key: "banamex_payment_asset"
+    card_tag: "card:banamex_joy"
+    fallback_name: "Liabilities:CC:Banamex JOY"
+    fallback_asset: "Assets:Banamex Débito"
 
 defaults:
   currency: MXN
@@ -31,6 +40,10 @@ defaults:
       name: Liabilities:CC:HSBC
       closing_day: 20
     hsbc_payment_asset: Assets:HSBC Débito
+    banamex_credit_card:
+      name: Liabilities:CC:Banamex JOY
+      closing_day: 4
+    banamex_payment_asset: Assets:Banamex Débito
   fallback_expense: Expenses:Other:Uncategorized
 merchant_aliases:
 - canon: amazon

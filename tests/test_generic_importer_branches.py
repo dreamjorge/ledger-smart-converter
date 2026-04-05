@@ -35,31 +35,41 @@ def _write_rules(tmp_path: Path, bank_id: str, bank_type: str = "xlsx") -> Path:
 
 
 def test_load_data_pdf_source_branch(tmp_path, monkeypatch):
-    importer = gi.GenericImporter(_write_rules(tmp_path, "test_pdf", "xlsx"), "test_pdf")
-    
+    importer = gi.GenericImporter(
+        _write_rules(tmp_path, "test_pdf", "xlsx"), "test_pdf"
+    )
+
     mock_parser = Mock()
     mock_parser.parse.return_value = [gi.TxnRaw("2026-01-12", "A", -10.0, source="pdf")]
-    
-    # Mock the parser factory to return our mock parser
+
     mock_factory = Mock(return_value=mock_parser)
     monkeypatch.setattr("generic_importer.ParserFactory.get_parser", mock_factory)
-    
+
     txns = importer.load_data(None, Path("dummy.pdf"), True)
-    
+
     assert len(txns) == 1
     assert txns[0].source == "pdf"
-    mock_factory.assert_called_once_with("xlsx", use_pdf_source=True)
+    mock_factory.assert_called_once_with(
+        "xlsx", bank_id="test_pdf", use_pdf_source=True
+    )
     mock_parser.parse.assert_called_once_with(Path("dummy.pdf"))
 
 
 def test_load_data_dispatches_factory(tmp_path, monkeypatch):
-    xml_importer = gi.GenericImporter(_write_rules(tmp_path, "test_xml", "xml"), "test_xml")
-    xlsx_importer = gi.GenericImporter(_write_rules(tmp_path, "test_xlsx", "xlsx"), "test_xlsx")
+    xml_importer = gi.GenericImporter(
+        _write_rules(tmp_path, "test_xml", "xml"), "test_xml"
+    )
+    xlsx_importer = gi.GenericImporter(
+        _write_rules(tmp_path, "test_xlsx", "xlsx"), "test_xlsx"
+    )
 
     # Mock the parser factory
     mock_parser = Mock()
-    
-    def get_parser_side_effect(bank_type, use_pdf_source=False):
+
+    calls = []
+
+    def get_parser_side_effect(bank_type, bank_id="", use_pdf_source=False):
+        calls.append((bank_type, bank_id, use_pdf_source))
         if bank_type == "xml":
             mock_parser.parse.return_value = [
                 gi.TxnRaw("2026-01-02", "B", -20.0, ""),
@@ -70,8 +80,11 @@ def test_load_data_dispatches_factory(tmp_path, monkeypatch):
             mock_parser.parse.return_value = [gi.TxnRaw("2026-01-03", "C", -30.0, "")]
             return mock_parser
         return mock_parser
-        
-    monkeypatch.setattr("generic_importer.ParserFactory.get_parser", Mock(side_effect=get_parser_side_effect))
+
+    monkeypatch.setattr(
+        "generic_importer.ParserFactory.get_parser",
+        Mock(side_effect=get_parser_side_effect),
+    )
 
     tx_xml = xml_importer.load_data(Path("in.xml"), None, False)
     assert [t.description for t in tx_xml] == ["A", "B"]
@@ -81,10 +94,16 @@ def test_load_data_dispatches_factory(tmp_path, monkeypatch):
     assert tx_xlsx[0].description == "C"
 
     assert xlsx_importer.load_data(None, None, False) == []
+    assert calls == [
+        ("xml", "test_xml", False),
+        ("xlsx", "test_xlsx", False),
+    ]
 
 
 def test_process_strict_validation_and_tag_errors(tmp_path, monkeypatch):
-    importer = gi.GenericImporter(_write_rules(tmp_path, "strict_bank", "xlsx"), "strict_bank")
+    importer = gi.GenericImporter(
+        _write_rules(tmp_path, "strict_bank", "xlsx"), "strict_bank"
+    )
     txns = [gi.TxnRaw("2026-01-10", "Store X", -25.0, "")]
 
     monkeypatch.setattr(gi, "validate_transaction", lambda _c: ["bad txn"])
@@ -97,7 +116,9 @@ def test_process_strict_validation_and_tag_errors(tmp_path, monkeypatch):
         importer.process(txns, strict=True)
 
     monkeypatch.setattr(gi, "validate_transaction", lambda _c: [])
-    monkeypatch.setattr(gi.cu, "classify", lambda *_a: ("Expenses:Food:Groceries", ["tag1"], "store_x"))
+    monkeypatch.setattr(
+        gi.cu, "classify", lambda *_a: ("Expenses:Food:Groceries", ["tag1"], "store_x")
+    )
     monkeypatch.setattr(gi.cu, "get_statement_period", lambda *_a: "2026-01")
     monkeypatch.setattr(gi, "validate_tags", lambda _tags: ["bad tag"])
 
@@ -112,7 +133,9 @@ def test_process_hsbc_infer_kind_branches(tmp_path, monkeypatch):
     importer = gi.GenericImporter(_write_rules(tmp_path, "hsbc", "xml"), "hsbc")
     monkeypatch.setattr(gi, "validate_transaction", lambda _c: [])
     monkeypatch.setattr(gi, "validate_tags", lambda _t: [])
-    monkeypatch.setattr(gi.cu, "classify", lambda *_a: ("Expenses:Other:Uncategorized", [], "m"))
+    monkeypatch.setattr(
+        gi.cu, "classify", lambda *_a: ("Expenses:Other:Uncategorized", [], "m")
+    )
     monkeypatch.setattr(gi.cu, "get_statement_period", lambda *_a: "2026-01")
 
     txns = [
@@ -129,7 +152,9 @@ def test_process_hsbc_infer_kind_branches(tmp_path, monkeypatch):
 
 
 def test_process_populates_canonical_account_id(tmp_path, monkeypatch):
-    importer = gi.GenericImporter(_write_rules(tmp_path, "canon_bank", "xlsx"), "canon_bank")
+    importer = gi.GenericImporter(
+        _write_rules(tmp_path, "canon_bank", "xlsx"), "canon_bank"
+    )
     txns = [gi.TxnRaw("2026-01-10", "DESC", -100.0, "")]
 
     captured = {}
@@ -140,8 +165,12 @@ def test_process_populates_canonical_account_id(tmp_path, monkeypatch):
 
     monkeypatch.setattr(gi, "validate_transaction", _capture_validate)
     monkeypatch.setattr(gi, "validate_tags", lambda _t: [])
-    monkeypatch.setattr(gi, "resolve_canonical_account_id", lambda *_a, **_k: "cc:canon_bank")
-    monkeypatch.setattr(gi.cu, "classify", lambda *_a: ("Expenses:Other:Uncategorized", [], "m"))
+    monkeypatch.setattr(
+        gi, "resolve_canonical_account_id", lambda *_a, **_k: "cc:canon_bank"
+    )
+    monkeypatch.setattr(
+        gi.cu, "classify", lambda *_a: ("Expenses:Other:Uncategorized", [], "m")
+    )
     monkeypatch.setattr(gi.cu, "get_statement_period", lambda *_a: "2026-01")
 
     rows, _, _ = importer.process(txns, strict=False)
@@ -169,8 +198,16 @@ def test_main_dry_run_and_write_modes(tmp_path, monkeypatch):
     monkeypatch.setattr(gi.pu, "extract_pdf_metadata", lambda _p: {"ok": True})
 
     write_calls = {"count": 0}
-    monkeypatch.setattr(gi, "write_csv_atomic", lambda _df, _path: write_calls.__setitem__("count", write_calls["count"] + 1))
-    monkeypatch.setattr(gi, "write_json_atomic", lambda path, manifest: path.write_text(str(manifest), encoding="utf-8"))
+    monkeypatch.setattr(
+        gi,
+        "write_csv_atomic",
+        lambda _df, _path: write_calls.__setitem__("count", write_calls["count"] + 1),
+    )
+    monkeypatch.setattr(
+        gi,
+        "write_json_atomic",
+        lambda path, manifest: path.write_text(str(manifest), encoding="utf-8"),
+    )
 
     monkeypatch.setattr(
         "sys.argv",
