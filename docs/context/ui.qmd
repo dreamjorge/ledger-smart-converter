@@ -33,6 +33,7 @@ The project currently maintains two UI adapters. Per `docs/plans/2026-04-03-fron
 - Language switching (English/Spanish) with state reset
 - Global controls bar in the main shell for bank selection, language switching, and active-user context
 - Navigation-only sidebar so page routing stays accessible without coupling it to global controls
+- Keep the desktop Streamlit sidebar compact; `src/ui/style.css` constrains desktop width to ~216px so the main canvas keeps priority
 - ML model loading and caching
 - Page rendering delegation through top-level wrapper functions in `src/web_app.py`
 

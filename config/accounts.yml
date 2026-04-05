@@ -18,3 +18,12 @@ canonical_accounts:
     csv_output:
       directory: hsbc
       filename: firefly_hsbc.csv
+
+  cc:banamex:
+    bank_ids:
+      - banamex
+    account_ids:
+      - "Liabilities:CC:Banamex JOY"
+    csv_output:
+      directory: banamex
+      filename: firefly_banamex.csv

@@ -96,13 +96,13 @@ class GenericImporter:
     def load_data(self, data_path: Optional[Path], pdf_path: Optional[Path], use_pdf_source: bool) -> List[TxnRaw]:
         # Always prioritize PDF source if requested
         if use_pdf_source and pdf_path:
-            parser = ParserFactory.get_parser(self.bank_cfg.type, use_pdf_source=True)
+            parser = ParserFactory.get_parser(self.bank_cfg.type, bank_id=self.bank_id, use_pdf_source=True)
             return parser.parse(pdf_path)
 
-        if not data_path: 
+        if not data_path:
             return []
-            
-        parser = ParserFactory.get_parser(self.bank_cfg.type, use_pdf_source=False)
+
+        parser = ParserFactory.get_parser(self.bank_cfg.type, bank_id=self.bank_id, use_pdf_source=False)
         txns = parser.parse(data_path)
             
         return sorted(txns, key=lambda t: (t.date, t.description.lower(), round(float(t.amount), 2), t.rfc))

@@ -76,7 +76,6 @@ h3 {
     padding: 0.85rem 0.9rem !important;
     backdrop-filter: blur(12px) !important;
 }
-
 /* ===== BUTTONS (Touch-Friendly) ===== */
 .stButton>button {
     background-color: var(--primary) !important;
@@ -169,6 +168,12 @@ h3 {
 [data-testid="stSidebarNav"] {
     background-color: transparent !important;
     padding-top: 0 !important;
+}
+
+[data-testid="stSidebarNav"] a {
+    border-radius: 10px !important;
+    margin-bottom: 0.2rem !important;
+    padding: 0.35rem 0.5rem !important;
 }
 
 [data-testid="stSidebarNav"] [data-testid="stSidebarNavSeparator"] {
