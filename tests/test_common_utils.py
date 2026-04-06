@@ -463,3 +463,11 @@ class TestRulesCoverageFromConfig:
 
     def test_queretaro_constitu_categorized_as_restaurant(self):
         assert self._classify("138 Queretaro Constitu") == "Expenses:Food:Restaurants"
+
+    def test_conekta_bait_categorized_as_phone_bill_not_shopping(self):
+        """Phone Bill must appear before Shopping — conekta.*bait must not be swallowed by broad conekta pattern."""
+        assert self._classify("Conekta Mibait recarga") == "Expenses:Bills:Phone"
+
+    def test_conekta_generic_categorized_as_shopping(self):
+        """Generic Conekta (without bait) stays in Shopping."""
+        assert self._classify("Conekta Marketplace") == "Expenses:Shopping:General"

@@ -318,6 +318,18 @@ rules:
     expense: Expenses:Transport:Maintenance
     tags: [bucket:maintenance]
 
+- name: Phone Bill
+  any_regex:
+  - telcel
+  - at&t
+  - movistar
+  - bait
+  - ordenarisb
+  - conekta.*bait
+  set:
+    expense: Expenses:Bills:Phone
+    tags: [bucket:bills]
+
 - name: Shopping
   any_regex:
   - amazon
@@ -390,18 +402,6 @@ rules:
   set:
     expense: Expenses:Transport:RideShare
     tags: [bucket:transport]
-
-- name: Phone Bill
-  any_regex:
-  - telcel
-  - at&t
-  - movistar
-  - bait
-  - ordenarisb
-  - conekta.*bait
-  set:
-    expense: Expenses:Bills:Phone
-    tags: [bucket:bills]
 
 - name: Bank Fees
   any_regex:
