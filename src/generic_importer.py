@@ -40,7 +40,7 @@ from pathlib import Path
 from domain.config_models import AppConfiguration, BankConfig
 
 class GenericImporter:
-    def __init__(self, config_source: Union[AppConfiguration, Path, str], bank_id: str):
+    def __init__(self, config_source: Union[AppConfiguration, Path, str], bank_id: str, ml_categorizer: Optional[Any] = None):
         if hasattr(config_source, "banks"):
             self.app_config = config_source
         else:
@@ -76,6 +76,8 @@ class GenericImporter:
         else:
             self.pay_asset = fallback_asset
 
+        self.ml_categorizer = ml_categorizer
+
     def _build_pipeline_service(self) -> ImportPipelineService:
         return ImportPipelineService(
             app_config=self.app_config,
@@ -91,6 +93,7 @@ class GenericImporter:
             validate_tags_fn=validate_tags,
             resolve_canonical_account_id_fn=resolve_canonical_account_id,
             get_statement_period_fn=cu.get_statement_period,
+            ml_categorizer=self.ml_categorizer,
         )
 
     def load_data(self, data_path: Optional[Path], pdf_path: Optional[Path], use_pdf_source: bool) -> List[TxnRaw]:

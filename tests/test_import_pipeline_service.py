@@ -5,9 +5,6 @@ from infrastructure.parsers.models import TxnRaw
 from domain.config_models import AppConfiguration, AppDefaults, BankConfig, RuleAction, CategorizationRule
 from ml_categorizer import TransactionCategorizer
 
-# ImportPipelineService.ml_categorizer was never committed to main — it exists only
-# as a local working-tree change. Remove this skip once that feature is properly committed and merged.
-pytestmark = pytest.mark.skip(reason="depends on ImportPipelineService.ml_categorizer — not yet in main")
 
 @pytest.fixture
 def app_config():
