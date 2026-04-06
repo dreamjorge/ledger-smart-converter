@@ -263,6 +263,30 @@ Example: "Analyze project status and create improvement plan"
 
 This is **MANDATORY** to maintain project sanity and prevent regressions:
 
+#### Branch/CI Compatibility Rule (prevents CI failures)
+
+Before committing tests to a PR targeting `main`, verify the tests pass **against main's codebase**, not just the current branch:
+
+```bash
+# Check that no test depends on code not yet in main
+git stash          # temporarily remove feature code
+pytest tests/      # should pass or only fail for your new tests
+git stash pop
+```
+
+If a test depends on a feature that lives in another branch (not yet merged to main):
+- **Option A (preferred)**: decorate with `@pytest.mark.skip(reason="depends on feat/branch-name")` until that branch merges
+- **Option B**: note the dependency explicitly in the PR description so CI failure is expected and documented
+
+❌ **Never**: commit tests that fail in CI with `TypeError` or `ImportError` due to missing code from an unmerged branch.
+
+```python
+# Example: test depends on ImportPipelineService.ml_categorizer (not in main yet)
+@pytest.mark.skip(reason="depends on feat/streamlit-global-controls-pr — remove skip after merge")
+def test_ml_fallback_high_confidence(...):
+    ...
+```
+
 1. **Before writing feature code**:
    - Create test file: `tests/test_<module>.py`
    - Write tests for expected behavior (TDD approach)

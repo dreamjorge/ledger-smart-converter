@@ -44,6 +44,7 @@
 - **Always** validate domain models (Transaction class)
 - **Always** use atomic writes for CSV outputs
 - **Check** tests pass before structural changes: `pytest tests/`
+- **Before creating a PR to `main`**: confirm tests pass against `main`'s codebase — if a test depends on code from another unmerged branch, mark it `@pytest.mark.skip(reason="depends on feat/X")` to keep CI green
 
 ### Files I'll Need Most
 

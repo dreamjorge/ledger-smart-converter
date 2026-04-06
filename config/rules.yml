@@ -271,6 +271,8 @@ rules:
   - costco
   - aurrera
   - super\s*q
+  - superce
+  - girasol
   - carniceria\s*fresnillo
   - oxxo
   set:
@@ -284,6 +286,10 @@ rules:
   - com\s*rap\s*buff
   - parador\s*cazadero
   - timhor
+  - th\s+puerta
+  - th\s+bernardo
+  - th\s+distrito
+  - th\s+plaz
   - dimit
   - carls\s*jr
   - burger\s*king
@@ -291,6 +297,12 @@ rules:
   - kfc
   - subway
   - pizza
+  - dominos
+  - domino's
+  - salads
+  - zaragoza
+  - comercializadora\s*samsi
+  - queretaro\s*constitu
   - rappi
   - uber\s*eats
   - didi\s*food
@@ -305,6 +317,18 @@ rules:
   set:
     expense: Expenses:Transport:Maintenance
     tags: [bucket:maintenance]
+
+- name: Phone Bill
+  any_regex:
+  - telcel
+  - at&t
+  - movistar
+  - bait
+  - ordenarisb
+  - conekta.*bait
+  set:
+    expense: Expenses:Bills:Phone
+    tags: [bucket:bills]
 
 - name: Shopping
   any_regex:
@@ -322,6 +346,8 @@ rules:
   - bbw\s*antea
   - conekta
   - mibait
+  - pay\s*pal.*samsung
+  - samsungelec
   set:
     expense: Expenses:Shopping:General
     tags: [bucket:shopping]
@@ -337,11 +363,12 @@ rules:
   - prime\s*video
   - apple\.com
   - google\s*\*svcs
+  - paypal\s*\*google
+  - pay\s*pal.*google
   - openai
   - chatgpt
   - paramount
   - max
-  - hbomax
   - hbomax
   set:
     expense: Expenses:Entertainment:DigitalServices
@@ -360,6 +387,7 @@ rules:
   - f\s*ahorro
   - farm\s*guad
   - san\s*pablo
+  - sn\s*pablo
   - farmacias\s*similares
   set:
     expense: Expenses:Health:Pharmacy

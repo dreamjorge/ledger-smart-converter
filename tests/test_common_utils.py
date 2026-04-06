@@ -387,3 +387,87 @@ class TestSuggestRuleFromMerchant:
 
         # The dot should be escaped in the regex
         assert "store.com" in rule["any_regex"][0] or r"store\.com" in rule["any_regex"][0]
+
+
+# ===========================
+# Rules Coverage Tests (real rules.yml)
+# ===========================
+
+class TestRulesCoverageFromConfig:
+    """Integration tests: verify real rules.yml covers known uncategorized merchants.
+
+    These tests use the actual config/rules.yml. If a test fails here, add/fix
+    the corresponding rule in rules.yml — never weaken the assertion.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _load_config(self):
+        from pathlib import Path
+        from infrastructure.adapters.yaml_rules_repository import YamlRulesRepository
+
+        repo = YamlRulesRepository(Path(__file__).parents[1] / "config" / "rules.yml")
+        app_config = repo.get_app_config()
+        self.rules = app_config.rules
+        self.aliases = app_config.merchant_aliases
+        self.fallback = app_config.defaults.fallback_expense
+
+    def _classify(self, desc: str):
+        expense, tags, _ = cu.classify(desc, self.rules, self.aliases, self.fallback)
+        return expense
+
+    # --- Restaurants ---
+
+    def test_dominos_categorized_as_restaurant(self):
+        assert self._classify("Dominos Csur Qro") == "Expenses:Food:Restaurants"
+
+    def test_salads_categorized_as_restaurant(self):
+        assert self._classify("Salads Constituyentes") == "Expenses:Food:Restaurants"
+
+    def test_tim_hortons_puerta_categorized_as_restaurant(self):
+        assert self._classify("Th Puerta La Victoria") == "Expenses:Food:Restaurants"
+
+    def test_tim_hortons_bernardo_categorized_as_restaurant(self):
+        assert self._classify("Th Bernardo Quintana I") == "Expenses:Food:Restaurants"
+
+    def test_tim_hortons_distrito_categorized_as_restaurant(self):
+        assert self._classify("Th Distrito Piamonte I") == "Expenses:Food:Restaurants"
+
+    # --- Pharmacy ---
+
+    def test_sn_pablo_categorized_as_pharmacy(self):
+        assert self._classify("Sn Pablo Cuautitlan") == "Expenses:Health:Pharmacy"
+
+    # --- Shopping ---
+
+    def test_paypal_samsung_categorized_as_shopping(self):
+        assert self._classify("Pay Pal*Samsungelec") == "Expenses:Shopping:General"
+
+    # --- Digital Services ---
+
+    def test_paypal_google_categorized_as_digital_services(self):
+        assert self._classify("Paypal *Google A Mediu") == "Expenses:Entertainment:DigitalServices"
+
+    # --- Groceries ---
+
+    def test_el_girasol_supercenter_categorized_as_groceries(self):
+        assert self._classify("El Girasol Qro Superce") == "Expenses:Food:Groceries"
+
+    def test_zaragoza_categorized_as_restaurant(self):
+        assert self._classify("Zaragoza") == "Expenses:Food:Restaurants"
+
+    def test_comercializadora_samsi_categorized_as_restaurant(self):
+        assert self._classify("Comercializadora Samsi") == "Expenses:Food:Restaurants"
+
+    def test_paypal_bait_categorized_as_phone_bill(self):
+        assert self._classify("PAYPAL *ORDENARISB2 OPM 150323DI1MX") == "Expenses:Bills:Phone"
+
+    def test_queretaro_constitu_categorized_as_restaurant(self):
+        assert self._classify("138 Queretaro Constitu") == "Expenses:Food:Restaurants"
+
+    def test_conekta_bait_categorized_as_phone_bill_not_shopping(self):
+        """Phone Bill must appear before Shopping — conekta.*bait must not be swallowed by broad conekta pattern."""
+        assert self._classify("Conekta Mibait recarga") == "Expenses:Bills:Phone"
+
+    def test_conekta_generic_categorized_as_shopping(self):
+        """Generic Conekta (without bait) stays in Shopping."""
+        assert self._classify("Conekta Marketplace") == "Expenses:Shopping:General"
