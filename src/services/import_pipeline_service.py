@@ -93,6 +93,7 @@ class ImportPipelineService:
 
             if (
                 expense == self.app_config.defaults.fallback_expense
+                and txn.amount < 0
                 and self.ml_categorizer is not None
                 and self.ml_categorizer.is_trained
             ):
