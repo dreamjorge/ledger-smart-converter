@@ -281,7 +281,7 @@ rules:
 
 - name: Restaurants
   any_regex:
-  - rest\s*
+  - \brest\s
   - buffalo\s*wild
   - com\s*rap\s*buff
   - parador\s*cazadero

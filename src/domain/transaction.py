@@ -24,10 +24,12 @@ class CanonicalTransaction:
 
     @property
     def id(self) -> str:
-        text_for_id = (self.normalized_description or self.description or "").strip().lower()
+        from pathlib import Path
+        source_name = Path(self.source).name if self.source else ""
         amount_str = f"{self.amount:.2f}" if self.amount is not None else ""
+        description_key = (self.description or "").strip().lower()
         raw = (
-            f"{self.bank_id}|{self.account_id}|{self.canonical_account_id}|"
-            f"{self.date}|{amount_str}|{text_for_id}|{self.rfc.strip().lower()}"
+            f"{self.bank_id}|{self.canonical_account_id or ''}|{source_name}|"
+            f"{self.date}|{amount_str}|{description_key}"
         )
         return sha256(raw.encode("utf-8")).hexdigest()

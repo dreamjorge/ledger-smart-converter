@@ -471,3 +471,53 @@ class TestRulesCoverageFromConfig:
     def test_conekta_generic_categorized_as_shopping(self):
         """Generic Conekta (without bait) stays in Shopping."""
         assert self._classify("Conekta Marketplace") == "Expenses:Shopping:General"
+
+    def test_restore_electronics_not_categorized_as_restaurant(self):
+        """F2: 'Restore Electronics' must NOT match Restaurants rule (rest\\s* false positive)."""
+        result = self._classify("Restore Electronics")
+        assert result != "Expenses:Food:Restaurants", (
+            "'Restore Electronics' incorrectly matched Restaurants — regex 'rest\\s*' is too broad"
+        )
+        assert result == "Expenses:Other:Uncategorized"
+
+    def test_restroom_supplies_not_categorized_as_restaurant(self):
+        """F2: 'Restroom Supplies Co' must NOT match Restaurants rule."""
+        result = self._classify("Restroom Supplies Co")
+        assert result != "Expenses:Food:Restaurants", (
+            "'Restroom Supplies Co' incorrectly matched Restaurants — regex 'rest\\s*' is too broad"
+        )
+
+
+# ===========================
+# Statement Period Logging Tests
+# ===========================
+
+class TestStatementPeriodLogging:
+    """F7: get_statement_period must log WARNING when date parsing fails."""
+
+    def test_invalid_date_triggers_warning(self, caplog):
+        """Invalid date string must emit a WARNING log entry."""
+        import logging
+        with caplog.at_level(logging.WARNING, logger="common_utils"):
+            result = cu.get_statement_period("not-a-date", 15)
+
+        assert result == "", f"Expected empty string, got {result!r}"
+        assert len(caplog.records) > 0, (
+            "Expected a WARNING log for invalid date, but no log records were emitted"
+        )
+        warning_msgs = [r.message for r in caplog.records if r.levelno == logging.WARNING]
+        assert any("not-a-date" in m for m in warning_msgs), (
+            f"WARNING must contain the invalid date string. Got: {warning_msgs}"
+        )
+
+    def test_valid_date_does_not_trigger_warning(self, caplog):
+        """Valid date must return correct period and emit NO warning."""
+        import logging
+        with caplog.at_level(logging.WARNING, logger="common_utils"):
+            result = cu.get_statement_period("2026-01-10", 15)
+
+        assert result == "2026-01"
+        warning_records = [r for r in caplog.records if r.levelno == logging.WARNING]
+        assert len(warning_records) == 0, (
+            f"Unexpected WARNING for valid date: {[r.message for r in warning_records]}"
+        )

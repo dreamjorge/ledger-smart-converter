@@ -383,6 +383,71 @@ def test_dashboard_metrics_aggregates_by_period_and_category(tmp_path):
     assert abs(rows[0]["total_amount"] - 150.0) < 0.01
 
 
+def test_canonical_transaction_id_matches_build_source_hash():
+    """F1+F3: CanonicalTransaction.id and build_source_hash must produce the same hash."""
+    from domain.transaction import CanonicalTransaction
+
+    filename = "firefly_santander_likeu.csv"
+    description = "OXXO QRO"
+    date = "2026-01-15"
+    amount = 123.45
+    bank_id = "santander_likeu"
+    canonical_account_id = "cc:santander_likeu"
+
+    txn = CanonicalTransaction(
+        date=date,
+        description=description,
+        amount=amount,
+        bank_id=bank_id,
+        account_id="Liabilities:CC:Santander LikeU",
+        canonical_account_id=canonical_account_id,
+        source=filename,
+        normalized_description=description.strip().lower(),
+    )
+
+    hash_from_domain = txn.id
+    hash_from_service = DatabaseService.build_source_hash(
+        bank_id=bank_id,
+        source_file=filename,
+        date=date,
+        amount=amount,
+        description=description,
+        canonical_account_id=canonical_account_id,
+    )
+
+    assert hash_from_domain == hash_from_service, (
+        f"Hash mismatch!\n"
+        f"  CanonicalTransaction.id: {hash_from_domain}\n"
+        f"  build_source_hash:       {hash_from_service}"
+    )
+
+
+def test_build_source_hash_is_path_independent():
+    """F3: Same file imported from different absolute paths must produce the same hash."""
+    kwargs = dict(
+        bank_id="santander_likeu",
+        date="2026-01-15",
+        amount=123.45,
+        description="OXXO QRO",
+        canonical_account_id="cc:santander_likeu",
+    )
+
+    hash_old = DatabaseService.build_source_hash(
+        source_file="/old/path/to/data/firefly_santander_likeu.csv",
+        **kwargs,
+    )
+    hash_new = DatabaseService.build_source_hash(
+        source_file="/new/path/to/data/firefly_santander_likeu.csv",
+        **kwargs,
+    )
+
+    assert hash_old == hash_new, (
+        "Same filename, different paths must produce the same hash — dedup breaks otherwise.\n"
+        f"  old path hash: {hash_old}\n"
+        f"  new path hash: {hash_new}"
+    )
+
+
 def test_insert_transactions_batch(tmp_path):
     from services.db_service import DatabaseService
 

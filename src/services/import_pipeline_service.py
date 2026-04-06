@@ -91,6 +91,8 @@ class ImportPipelineService:
             period = self.get_statement_period_fn(txn.date, self.closing_day)
             if period:
                 tags.add(f"period:{period}")
+            else:
+                LOGGER.warning("Missing statement_period for txn %s — date: %s", canonical.id[:8], txn.date)
             if txn.rfc:
                 tags.add(f"rfc:{txn.rfc}")
             tags.add(f"txn:{canonical.id[:10]}")
