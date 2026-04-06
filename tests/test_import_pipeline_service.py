@@ -5,9 +5,6 @@ from infrastructure.parsers.models import TxnRaw
 from domain.config_models import AppConfiguration, AppDefaults, BankConfig, RuleAction, CategorizationRule
 from ml_categorizer import TransactionCategorizer
 
-# ImportPipelineService.ml_categorizer was never committed to main — it exists only
-# as a local working-tree change. Remove this skip once that feature is properly committed and merged.
-pytestmark = pytest.mark.skip(reason="depends on ImportPipelineService.ml_categorizer — not yet in main")
 
 @pytest.fixture
 def app_config():
@@ -121,9 +118,21 @@ def test_ml_not_trained(service, mock_ml):
     mock_ml.is_trained = False
     txn = TxnRaw(date="2026-01-10", description="Anything", amount=-10.0)
     service.classify_fn = MagicMock(return_value=("Expenses:Other:Uncategorized", [], "any"))
-    
+
     processed, _, _ = service.process_transactions([txn])
-    
+
     assert len(processed) == 1
     assert processed[0].destination_name == "Expenses:Other:Uncategorized"
     mock_ml.predict.assert_not_called()
+
+def test_ml_skipped_on_positive_amount(service, mock_ml):
+    """ML MUST NOT run on deposits/payments (positive amount) — expense is ignored for transfers."""
+    txn = TxnRaw(date="2026-01-10", description="Pago Tarjeta", amount=500.0)
+    service.classify_fn = MagicMock(return_value=("Expenses:Other:Uncategorized", [], "pago"))
+    mock_ml.predict.return_value = [("Expenses:Food:Groceries", 0.9)]
+
+    processed, _, _ = service.process_transactions([txn])
+
+    mock_ml.predict.assert_not_called()
+    assert len(processed) == 1
+    assert "ml:predicted" not in (processed[0].tags or "").split(",")

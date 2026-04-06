@@ -34,6 +34,9 @@ class ImportPipelineService:
     pay_asset: str
     closing_day: int
     
+    ml_categorizer: Optional[Any] = None
+    ml_confidence_threshold: float = 0.5
+
     use_normalized_text: bool = True
     normalize_description_fn: NormalizeDescriptionFn = normalize_description
     clean_description_fn: CleanDescriptionFn = cu.clean_description
@@ -87,6 +90,17 @@ class ImportPipelineService:
                 self.app_config.defaults.fallback_expense,
             )
             tags = set(tags)
+
+            if (
+                expense == self.app_config.defaults.fallback_expense
+                and txn.amount < 0
+                and self.ml_categorizer is not None
+                and self.ml_categorizer.is_trained
+            ):
+                predictions = self.ml_categorizer.predict(txn.description)
+                if predictions and predictions[0][1] >= self.ml_confidence_threshold:
+                    expense = predictions[0][0]
+                    tags.add("ml:predicted")
             tags.add(self._card_tag())
             period = self.get_statement_period_fn(txn.date, self.closing_day)
             if period:
