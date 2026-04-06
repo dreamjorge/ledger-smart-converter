@@ -3,6 +3,9 @@ import re
 from typing import Any, Dict, List, Tuple, Optional
 from datetime import datetime, date, timedelta
 from pathlib import Path
+from logging_config import get_logger
+
+LOGGER = get_logger("common_utils")
 
 # ----------------------------
 # Description Cleaning
@@ -109,6 +112,7 @@ def get_statement_period(date_str: str, closing_day: int) -> str:
     try:
         dt = datetime.strptime(date_str, "%Y-%m-%d").date()
     except ValueError:
+        LOGGER.warning("Invalid date for period calculation: %s", date_str)
         return ""
     
     if dt.day > closing_day:

@@ -161,8 +161,9 @@ class DatabaseService:
         description: str,
         canonical_account_id: Optional[str] = None,
     ) -> str:
+        source_name = Path(source_file).name if source_file else ""
         raw = (
-            f"{bank_id}|{canonical_account_id or ''}|{source_file}|{date}|"
+            f"{bank_id}|{canonical_account_id or ''}|{source_name}|{date}|"
             f"{float(amount):.2f}|{(description or '').strip().lower()}"
         )
         return hashlib.sha256(raw.encode("utf-8")).hexdigest()
