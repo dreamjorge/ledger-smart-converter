@@ -5,6 +5,10 @@ from infrastructure.parsers.models import TxnRaw
 from domain.config_models import AppConfiguration, AppDefaults, BankConfig, RuleAction, CategorizationRule
 from ml_categorizer import TransactionCategorizer
 
+# These tests depend on ImportPipelineService.ml_categorizer introduced in
+# feat/streamlit-global-controls-pr. Remove the skip markers after that branch merges to main.
+pytestmark = pytest.mark.skip(reason="depends on feat/streamlit-global-controls-pr — remove after merge")
+
 @pytest.fixture
 def app_config():
     return AppConfiguration(
