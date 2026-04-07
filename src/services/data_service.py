@@ -13,6 +13,7 @@ import yaml
 from logging_config import get_logger
 from settings import load_settings
 from services.db_service import DatabaseService
+from services.rules_config_service import load_accounts_config
 
 logger = get_logger("data_service")
 
@@ -33,22 +34,7 @@ def _accounts_config_path() -> Path:
 
 
 def _load_accounts_config(config_path: Path) -> Dict:
-    if not config_path.exists():
-        logger.warning(
-            "Accounts config not found at %s; falling back to legacy CSV map",
-            config_path,
-        )
-        return {}
-    try:
-        return yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
-    except Exception as exc:
-        logger.error(
-            "Failed to load accounts config from %s: %s",
-            config_path,
-            exc,
-            exc_info=True,
-        )
-        return {}
+    return load_accounts_config(config_path)
 
 
 _LEGACY_BANK_IDS = {"santander", "santander_likeu", "hsbc"}
