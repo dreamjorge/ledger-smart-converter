@@ -24,6 +24,7 @@ GetStatementPeriodFn = Callable[[str, int], Optional[str]]
 
 from domain.config_models import AppConfiguration, BankConfig
 
+
 @dataclass
 class ImportPipelineService:
     """Enrich raw importer rows into canonical Firefly-ready records."""
@@ -33,7 +34,7 @@ class ImportPipelineService:
     account_name: str
     pay_asset: str
     closing_day: int
-    
+
     ml_categorizer: Optional[Any] = None
     ml_confidence_threshold: float = 0.5
 
@@ -43,7 +44,9 @@ class ImportPipelineService:
     classify_fn: ClassifyFn = cu.classify
     validate_transaction_fn: ValidateTransactionFn = validate_transaction
     validate_tags_fn: ValidateTagsFn = validate_tags
-    resolve_canonical_account_id_fn: ResolveCanonicalAccountIdFn = resolve_canonical_account_id
+    resolve_canonical_account_id_fn: ResolveCanonicalAccountIdFn = (
+        resolve_canonical_account_id
+    )
     get_statement_period_fn: GetStatementPeriodFn = cu.get_statement_period
 
     def process_transactions(
@@ -55,12 +58,30 @@ class ImportPipelineService:
         unknown_agg = defaultdict(lambda: {"count": 0, "total": 0.0, "examples": set()})
         warning_count = 0
 
+        import_start = __import__("time").time()
+        stage_normalize = 0.0
+        stage_validate = 0.0
+        stage_classify = 0.0
+        stage_tags = 0.0
+        stage_build = 0.0
+        n = len(txns)
+
         for txn in txns:
+            t0 = __import__("time").time()
             raw_desc = (txn.description or "").strip()
-            normalized_desc = self.normalize_description_fn(raw_desc, bank_id=self.bank_config.bank_id)
+            normalized_desc = self.normalize_description_fn(
+                raw_desc, self.bank_config.bank_id
+            )
+            t_normalize = __import__("time").time() - t0
+
+            t1 = __import__("time").time()
             legacy_desc = self.clean_description_fn(raw_desc)
-            text_for_matching = normalized_desc if (self.use_normalized_text and normalized_desc) else legacy_desc
-            
+            text_for_matching = (
+                normalized_desc
+                if (self.use_normalized_text and normalized_desc)
+                else legacy_desc
+            )
+
             # Initial canonical object with core fields
             canonical = CanonicalTransaction(
                 date=txn.date,
@@ -68,7 +89,9 @@ class ImportPipelineService:
                 amount=float(txn.amount),
                 bank_id=self.bank_config.bank_id,
                 account_id=self.account_name,
-                canonical_account_id=self.resolve_canonical_account_id_fn(self.bank_config.bank_id, self.account_name),
+                canonical_account_id=self.resolve_canonical_account_id_fn(
+                    self.bank_config.bank_id, self.account_name
+                ),
                 raw_description=raw_desc,
                 normalized_description=normalized_desc,
                 source=txn.source,
@@ -78,11 +101,18 @@ class ImportPipelineService:
             record_errors = self.validate_transaction_fn(canonical)
             if record_errors:
                 warning_count += 1
-                LOGGER.warning("skipping invalid transaction: %s", {"errors": record_errors, "txn": canonical.id})
+                LOGGER.warning(
+                    "skipping invalid transaction: %s",
+                    {"errors": record_errors, "txn": canonical.id},
+                )
                 if strict:
-                    raise ValidationError(f"Invalid transaction {canonical.id}: {record_errors}")
+                    raise ValidationError(
+                        f"Invalid transaction {canonical.id}: {record_errors}"
+                    )
                 continue
+            t_validate = __import__("time").time() - t1
 
+            t2 = __import__("time").time()
             expense, tags, merchant = self.classify_fn(
                 text_for_matching,
                 self.app_config.rules,
@@ -106,7 +136,11 @@ class ImportPipelineService:
             if period:
                 tags.add(f"period:{period}")
             else:
-                LOGGER.warning("Missing statement_period for txn %s — date: %s", canonical.id[:8], txn.date)
+                LOGGER.warning(
+                    "Missing statement_period for txn %s — date: %s",
+                    canonical.id[:8],
+                    txn.date,
+                )
             if txn.rfc:
                 tags.add(f"rfc:{txn.rfc}")
             tags.add(f"txn:{canonical.id[:10]}")
@@ -114,39 +148,75 @@ class ImportPipelineService:
             tag_errors = self.validate_tags_fn(list(tags))
             if tag_errors:
                 warning_count += 1
-                LOGGER.warning("tag validation warning: %s", {"errors": tag_errors, "txn": canonical.id})
+                LOGGER.warning(
+                    "tag validation warning: %s",
+                    {"errors": tag_errors, "txn": canonical.id},
+                )
                 if strict:
                     raise ValidationError(f"Invalid tags {canonical.id}: {tag_errors}")
+            t_classify = __import__("time").time() - t2
 
+            t3 = __import__("time").time()
             category = expense.split(":")[1] if ":" in expense else ""
             tag_str = ",".join(sorted(tags))
 
             if self.bank_config.bank_id == "hsbc":
                 from import_hsbc_cfdi_firefly import infer_kind
+
                 kind = infer_kind(text_for_matching, txn.amount, txn.rfc)
-                
+
                 if kind == "charge":
-                    final_txn = self._make_withdrawal(canonical, expense, category, tag_str)
+                    final_txn = self._make_withdrawal(
+                        canonical, expense, category, tag_str
+                    )
                 elif kind == "payment":
-                    final_txn = self._make_transfer(canonical, self.pay_asset, self.account_name, tag_str, "pago")
+                    final_txn = self._make_transfer(
+                        canonical, self.pay_asset, self.account_name, tag_str, "pago"
+                    )
                 else:
-                    source_name = "Income:Cashback" if kind == "cashback" else "Income:Other"
-                    final_txn = self._make_transfer(canonical, source_name, self.account_name, tag_str, kind)
+                    source_name = (
+                        "Income:Cashback" if kind == "cashback" else "Income:Other"
+                    )
+                    final_txn = self._make_transfer(
+                        canonical, source_name, self.account_name, tag_str, kind
+                    )
             else:
                 if txn.amount < 0:
-                    final_txn = self._make_withdrawal(canonical, expense, category, tag_str)
+                    final_txn = self._make_withdrawal(
+                        canonical, expense, category, tag_str
+                    )
                 else:
-                    final_txn = self._make_transfer(canonical, self.pay_asset, self.account_name, tag_str, "pago")
+                    final_txn = self._make_transfer(
+                        canonical, self.pay_asset, self.account_name, tag_str, "pago"
+                    )
+            t_build = __import__("time").time() - t3
+
+            stage_normalize += t_normalize
+            stage_validate += t_validate
+            stage_classify += t_classify
+            stage_tags += t_build  # tag_str + construction
 
             if final_txn:
                 out_txns.append(final_txn)
-                if final_txn.transaction_type == "withdrawal" and expense == self.app_config.defaults.fallback_expense:
+                if (
+                    final_txn.transaction_type == "withdrawal"
+                    and expense == self.app_config.defaults.fallback_expense
+                ):
                     bucket = unknown_agg[merchant]
                     bucket["count"] += 1
                     bucket["total"] += abs(txn.amount)
                     if len(bucket["examples"]) < 5:
                         bucket["examples"].add(normalized_desc or legacy_desc)
 
+        total_time = __import__("time").time() - import_start
+        LOGGER.info(
+            "import_pipeline stage timing (%d txns): normalize=%.3fs classify=%.3fs build=%.3fs total=%.3fs",
+            n,
+            stage_normalize,
+            stage_classify,
+            stage_tags,
+            total_time,
+        )
         return out_txns, self._format_unknown(unknown_agg), warning_count
 
     def _card_tag(self) -> str:
@@ -160,13 +230,14 @@ class ImportPipelineService:
         tags: str,
     ) -> CanonicalTransaction:
         from dataclasses import replace
+
         return replace(
             base,
             transaction_type="withdrawal",
             amount=abs(base.amount),
             destination_name=destination,
             category=category,
-            tags=tags
+            tags=tags,
         )
 
     def _make_transfer(
@@ -178,15 +249,16 @@ class ImportPipelineService:
         extra_tag: str,
     ) -> CanonicalTransaction:
         from dataclasses import replace
+
         transfer_tags = sorted(list(set(tags.split(",") + [extra_tag])))
         return replace(
             base,
             transaction_type="transfer",
             amount=abs(base.amount),
-            account_id=source, # Source for transfers
+            account_id=source,  # Source for transfers
             destination_name=dest,
             category="",
-            tags=",".join(transfer_tags)
+            tags=",".join(transfer_tags),
         )
 
     def _format_unknown(self, agg: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:

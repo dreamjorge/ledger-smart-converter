@@ -556,3 +556,180 @@ class TestLoadTransactionsPreferredSource:
                 load_transactions("unknown_bank", prefer_db=True, db_path=db_path)
 
         mock_csv.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Additional coverage tests for uncovered lines
+# ---------------------------------------------------------------------------
+
+
+class TestAccountsConfigLoading:
+    """Test _load_accounts_config error paths."""
+
+    def test_load_accounts_config_returns_empty_on_missing_file(self, tmp_path):
+        """_load_accounts_config returns {} when file does not exist."""
+        result = data_service._load_accounts_config(tmp_path / "missing.yml")
+        assert result == {}
+
+    def test_load_accounts_config_returns_empty_on_parse_error(self, tmp_path):
+        """_load_accounts_config returns {} when YAML is invalid."""
+        bad_file = tmp_path / "bad.yml"
+        bad_file.write_text("  invalid: yaml: content:", encoding="utf-8")
+        result = data_service._load_accounts_config(bad_file)
+        assert result == {}
+
+
+class TestSupportedBankIds:
+    """Test _supported_bank_ids logic."""
+
+    def test_supported_bank_ids_includes_legacy_bank_ids(self, tmp_path):
+        """_supported_bank_ids always includes legacy bank IDs."""
+        cfg_file = tmp_path / "accounts.yml"
+        cfg_file.write_text("canonical_accounts: {}", encoding="utf-8")
+        supported = data_service._supported_bank_ids(cfg_file)
+        assert "santander" in supported
+        assert "santander_likeu" in supported
+        assert "hsbc" in supported
+
+    def test_supported_bank_ids_adds_bank_ids_from_config(self, tmp_path):
+        """_supported_bank_ids includes bank_ids defined in config."""
+        cfg_file = tmp_path / "accounts.yml"
+        cfg_file.write_text(
+            "canonical_accounts:\n"
+            "  cc:banamex:\n"
+            "    bank_ids:\n"
+            "      - banamex\n"
+            "    account_ids:\n"
+            "      - 'Liabilities:CC:Banamex JOY'\n",
+            encoding="utf-8",
+        )
+        supported = data_service._supported_bank_ids(cfg_file)
+        assert "banamex" in supported
+
+
+class TestResolveCsvOutputPath:
+    """Test _resolve_csv_output_path logic."""
+
+    def test_resolve_csv_output_path_with_directory_and_filename(self, tmp_path):
+        """_resolve_csv_output_path uses directory+filename when available."""
+        entry = {
+            "bank_ids": ["testbank"],
+            "csv_output": {"directory": "testdir", "filename": "test.csv"},
+        }
+        result = data_service._resolve_csv_output_path("cc:test", entry)
+        assert result == data_service._data_dir() / "testdir" / "test.csv"
+
+    def test_resolve_csv_output_path_with_dir_and_name(self, tmp_path):
+        """_resolve_csv_output_path uses dir+name as fallback keys."""
+        entry = {
+            "bank_ids": ["testbank"],
+            "csv_output": {"dir": "testdir", "name": "test.csv"},
+        }
+        result = data_service._resolve_csv_output_path("cc:test", entry)
+        assert result == data_service._data_dir() / "testdir" / "test.csv"
+
+    def test_resolve_csv_output_path_falls_back_to_legacy_for_hsbc(self, tmp_path):
+        """_resolve_csv_output_path falls back to legacy HSBC path."""
+        entry = {"bank_ids": ["hsbc"]}
+        result = data_service._resolve_csv_output_path("cc:hsbc", entry)
+        assert result == data_service._data_dir() / "hsbc" / "firefly_hsbc.csv"
+
+    def test_resolve_csv_output_path_falls_back_to_legacy_for_santander(self, tmp_path):
+        """_resolve_csv_output_path falls back to legacy Santander path."""
+        entry = {"bank_ids": ["santander", "santander_likeu"]}
+        result = data_service._resolve_csv_output_path("cc:santander", entry)
+        assert result == data_service._data_dir() / "santander" / "firefly_likeu.csv"
+
+    def test_resolve_csv_output_path_returns_none_when_no_csv_output_no_bank_ids(
+        self, tmp_path
+    ):
+        """_resolve_csv_output_path returns None when no csv_output and no bank_ids."""
+        entry = {}
+        result = data_service._resolve_csv_output_path("cc:unknown", entry)
+        assert result is None
+
+
+class TestLegacyCsvPath:
+    """Test _legacy_csv_path logic."""
+
+    def test_legacy_csv_path_santander(self):
+        """_legacy_csv_path returns correct path for santander."""
+        result = data_service._legacy_csv_path("santander")
+        assert result == data_service._data_dir() / "santander" / "firefly_likeu.csv"
+
+    def test_legacy_csv_path_santander_likeu(self):
+        """_legacy_csv_path returns correct path for santander_likeu."""
+        result = data_service._legacy_csv_path("santander_likeu")
+        assert result == data_service._data_dir() / "santander" / "firefly_likeu.csv"
+
+    def test_legacy_csv_path_hsbc(self):
+        """_legacy_csv_path returns correct path for hsbc."""
+        result = data_service._legacy_csv_path("hsbc")
+        assert result == data_service._data_dir() / "hsbc" / "firefly_hsbc.csv"
+
+    def test_legacy_csv_path_unknown_returns_path_with_bank_id(self):
+        """_legacy_csv_path returns path for unknown bank_id."""
+        result = data_service._legacy_csv_path("mybank")
+        assert result == data_service._data_dir() / "mybank" / "firefly_mybank.csv"
+
+    def test_legacy_csv_path_empty_returns_none(self):
+        """_legacy_csv_path returns None for empty bank_id."""
+        result = data_service._legacy_csv_path("")
+        assert result is None
+
+
+class TestBuildBankFileMap:
+    """Test _build_bank_file_map logic."""
+
+    def test_build_bank_file_map_includes_legacy_mappings(self):
+        """_build_bank_file_map always includes legacy bank mappings."""
+        result = data_service._build_bank_file_map(
+            data_service._accounts_config_path(), data_service._data_dir()
+        )
+        assert "santander" in result
+        assert "santander_likeu" in result
+        assert "hsbc" in result
+
+
+class TestLoadTransactionsFromCsvErrors:
+    """Test load_transactions_from_csv error paths."""
+
+    def test_raises_on_empty_bank_id(self):
+        """load_transactions_from_csv raises ValueError for empty bank_id."""
+        with pytest.raises(ValueError, match="bank_id must be a non-empty string"):
+            data_service.load_transactions_from_csv("")
+
+    def test_raises_on_whitespace_bank_id(self):
+        """load_transactions_from_csv raises ValueError for whitespace bank_id."""
+        with pytest.raises(ValueError, match="Unknown bank ID"):
+            data_service.load_transactions_from_csv("   ")
+
+    def test_raises_on_non_string_bank_id(self):
+        """load_transactions_from_csv raises ValueError for non-string bank_id."""
+        with pytest.raises(ValueError, match="bank_id must be a non-empty string"):
+            data_service.load_transactions_from_csv(None)  # type: ignore
+
+    def test_raises_on_unknown_bank_id(self):
+        """load_transactions_from_csv raises ValueError for unknown bank."""
+        with pytest.raises(ValueError, match="Unknown bank ID"):
+            data_service.load_transactions_from_csv("totally_unknown_bank_xyz")
+
+
+class TestLoadTransactionsFromDb:
+    """Test load_transactions_from_db error paths."""
+
+    def test_raises_on_empty_bank_id(self):
+        """load_transactions_from_db raises ValueError for empty bank_id."""
+        with pytest.raises(ValueError, match="bank_id must be a non-empty string"):
+            data_service.load_transactions_from_db("")
+
+    def test_raises_on_none_bank_id(self):
+        """load_transactions_from_db raises ValueError for None bank_id."""
+        with pytest.raises(ValueError, match="bank_id must be a non-empty string"):
+            data_service.load_transactions_from_db(None)  # type: ignore
+
+    def test_raises_on_unknown_bank_id(self, tmp_path):
+        """load_transactions_from_db raises ValueError for unknown bank."""
+        db_path = tmp_path / "ledger.db"
+        with pytest.raises(ValueError, match="Unknown bank ID"):
+            data_service.load_transactions_from_db("unknown_bank_xyz", db_path=db_path)
