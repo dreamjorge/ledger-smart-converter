@@ -2,12 +2,14 @@
 Tests for BanamexPdfParser.
 
 Unit tests use synthetic text lines (no PDF file needed).
-Integration test uses the real PDF if present at BANAMEX_PDF_PATH.
+Integration tests use a pdfplumber mock to exercise BanamexPdfParser.parse()
+end-to-end without requiring the real PDF.
 """
 
-import os
+import re
 import pytest
 from pathlib import Path
+from unittest.mock import patch
 
 from infrastructure.parsers.banamex_parser import (
     BanamexPdfParser,
@@ -145,47 +147,84 @@ class TestParseTransactions:
         assert google.amount == -95.0
 
     def test_stops_at_cargos_no_reconocidos(self):
-        # The disputed charge after the stop marker should NOT be included
         assert not any("COMISION PENALIZACION" in t.description for t in self.txns)
 
 
 # ---------------------------------------------------------------------------
-# Integration: real PDF (skipped if file not present)
+# Integration: pdfplumber-mocked (no real PDF needed)
 # ---------------------------------------------------------------------------
 
-REAL_PDF = Path("C:/Users/uidn7961/Downloads/Estado de Cuenta.pdf")
+PDF_TEXT_LINES = [
+    "DESGLOSE DE MOVIMIENTOS14",
+    "CARGOS, ABONOS Y COMPRAS REGULARES (NO A MESES)",
+    "Tarjeta titular: 55462590 27896796 JORGE A UGALDE ONTIVEROS",
+    "Fecha de la",
+    "operación",
+    "Fecha",
+    "de cargo",
+    "Descripción del movimiento",
+    "Monto",
+    "21-feb-2026 24-feb-2026 PAYPAL *ORDENARISB2 OPM 150323DI1MX + $300.00",
+    "23-feb-2026 23-feb-2026 PAGO INTERBANCARIO",
+    "PAGO RECIBIDO DE: BBVA MEXICO",
+    "CUENTA ORDENANTE: 012180029693267589",
+    "POR ORDEN DE: JORGE ALBERTO UGALDE ONTIVEROS",
+    "CLAVE DE RASTREO: MBAN01002602240078226691",
+    "CONCEPTO: PAGO TARJETA",
+    "FECHA Y HORA DE LIQUIDACIÓN: 23/02/2026 18:12:35",
+    "REFERENCIA: 2901260 - $576.84",
+    "15-feb-2026 16-feb-2026 GOOGLE MEDIUM MOUNTAIN VIEWCA + $95.00",
+    "Total cargos + $395.00",
+    "Total abonos - $576.84",
+]
 
-
-@pytest.mark.skipif(not REAL_PDF.exists(), reason="Real Banamex PDF not available")
-class TestBanamexPdfParserIntegration:
+class TestBanamexPdfParserMocked:
     def setup_method(self):
-        parser = BanamexPdfParser()
-        self.txns = parser.parse(REAL_PDF)
+        self.parser = BanamexPdfParser()
 
-    def test_extracts_at_least_one_transaction(self):
-        assert len(self.txns) >= 1
+    @patch("infrastructure.parsers.banamex_parser._extract_text_lines")
+    def test_full_pipeline_parses_synthetic_lines(self, mock_extract):
+        mock_extract.return_value = PDF_TEXT_LINES
+        txns = self.parser.parse(Path("/fake/banamex.pdf"))
+        assert len(txns) == 3
 
-    def test_all_dates_are_iso(self):
-        import re
-
+    @patch("infrastructure.parsers.banamex_parser._extract_text_lines")
+    def test_dates_are_iso_format(self, mock_extract):
+        mock_extract.return_value = PDF_TEXT_LINES
+        txns = self.parser.parse(Path("/fake/banamex.pdf"))
         iso_re = re.compile(r"^\d{4}-\d{2}-\d{2}$")
-        for t in self.txns:
+        for t in txns:
             assert iso_re.match(t.date), f"Bad date: {t.date!r}"
 
-    def test_amounts_are_nonzero(self):
-        for t in self.txns:
+    @patch("infrastructure.parsers.banamex_parser._extract_text_lines")
+    def test_amounts_are_nonzero(self, mock_extract):
+        mock_extract.return_value = PDF_TEXT_LINES
+        txns = self.parser.parse(Path("/fake/banamex.pdf"))
+        for t in txns:
             assert t.amount != 0.0, f"Zero amount for: {t.description!r}"
 
-    def test_known_paypal_transaction(self):
-        assert any("PAYPAL" in t.description for t in self.txns)
+    @patch("infrastructure.parsers.banamex_parser._extract_text_lines")
+    def test_paypal_transaction_found(self, mock_extract):
+        mock_extract.return_value = PDF_TEXT_LINES
+        txns = self.parser.parse(Path("/fake/banamex.pdf"))
+        assert any("PAYPAL" in t.description for t in txns)
 
-    def test_known_google_transaction(self):
-        assert any("GOOGLE" in t.description for t in self.txns)
+    @patch("infrastructure.parsers.banamex_parser._extract_text_lines")
+    def test_google_transaction_found(self, mock_extract):
+        mock_extract.return_value = PDF_TEXT_LINES
+        txns = self.parser.parse(Path("/fake/banamex.pdf"))
+        assert any("GOOGLE" in t.description for t in txns)
 
-    def test_pago_is_positive(self):
-        pagos = [t for t in self.txns if "PAGO" in t.description]
+    @patch("infrastructure.parsers.banamex_parser._extract_text_lines")
+    def test_pago_interbancario_is_positive(self, mock_extract):
+        mock_extract.return_value = PDF_TEXT_LINES
+        txns = self.parser.parse(Path("/fake/banamex.pdf"))
+        pagos = [t for t in txns if "PAGO INTERBANCARIO" in t.description]
         assert any(t.amount > 0 for t in pagos)
 
-    def test_source_is_pdf(self):
-        for t in self.txns:
+    @patch("infrastructure.parsers.banamex_parser._extract_text_lines")
+    def test_all_sources_marked_as_pdf(self, mock_extract):
+        mock_extract.return_value = PDF_TEXT_LINES
+        txns = self.parser.parse(Path("/fake/banamex.pdf"))
+        for t in txns:
             assert t.source == "pdf"

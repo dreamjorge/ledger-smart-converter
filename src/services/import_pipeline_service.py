@@ -1,5 +1,5 @@
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import common_utils as cu
@@ -10,6 +10,7 @@ from domain.transaction import CanonicalTransaction
 from errors import ValidationError
 from logging_config import get_logger
 from validation import validate_tags, validate_transaction
+from services.metrics_service import MetricsCollector
 
 LOGGER = get_logger("import_pipeline_service")
 
@@ -48,6 +49,7 @@ class ImportPipelineService:
         resolve_canonical_account_id
     )
     get_statement_period_fn: GetStatementPeriodFn = cu.get_statement_period
+    metrics_collector: Optional[MetricsCollector] = None
 
     def process_transactions(
         self,
@@ -59,12 +61,11 @@ class ImportPipelineService:
         warning_count = 0
 
         import_start = __import__("time").time()
-        stage_normalize = 0.0
-        stage_validate = 0.0
-        stage_classify = 0.0
-        stage_tags = 0.0
-        stage_build = 0.0
         n = len(txns)
+
+        if self.metrics_collector:
+            self.metrics_collector.bank_id = self.bank_config.bank_id
+            self.metrics_collector.account_name = self.account_name
 
         for txn in txns:
             t0 = __import__("time").time()
@@ -82,7 +83,6 @@ class ImportPipelineService:
                 else legacy_desc
             )
 
-            # Initial canonical object with core fields
             canonical = CanonicalTransaction(
                 date=txn.date,
                 description=legacy_desc,
@@ -109,6 +109,8 @@ class ImportPipelineService:
                     raise ValidationError(
                         f"Invalid transaction {canonical.id}: {record_errors}"
                     )
+                if self.metrics_collector:
+                    self.metrics_collector.record_failed()
                 continue
             t_validate = __import__("time").time() - t1
 
@@ -120,6 +122,7 @@ class ImportPipelineService:
                 self.app_config.defaults.fallback_expense,
             )
             tags = set(tags)
+            ml_used = False
 
             if (
                 expense == self.app_config.defaults.fallback_expense
@@ -131,6 +134,7 @@ class ImportPipelineService:
                 if predictions and predictions[0][1] >= self.ml_confidence_threshold:
                     expense = predictions[0][0]
                     tags.add("ml:predicted")
+                    ml_used = True
             tags.add(self._card_tag())
             period = self.get_statement_period_fn(txn.date, self.closing_day)
             if period:
@@ -191,13 +195,19 @@ class ImportPipelineService:
                     )
             t_build = __import__("time").time() - t3
 
-            stage_normalize += t_normalize
-            stage_validate += t_validate
-            stage_classify += t_classify
-            stage_tags += t_build  # tag_str + construction
+            if self.metrics_collector:
+                self.metrics_collector.record_normalize(t_normalize)
+                self.metrics_collector.record_validate(t_validate)
+                self.metrics_collector.record_classify(t_classify)
+                self.metrics_collector.record_build(t_build)
 
             if final_txn:
                 out_txns.append(final_txn)
+                if self.metrics_collector:
+                    self.metrics_collector.record_processed()
+                    self.metrics_collector.record_categorized()
+                    if ml_used:
+                        self.metrics_collector.record_ml_predicted()
                 if (
                     final_txn.transaction_type == "withdrawal"
                     and expense == self.app_config.defaults.fallback_expense
@@ -209,14 +219,16 @@ class ImportPipelineService:
                         bucket["examples"].add(normalized_desc or legacy_desc)
 
         total_time = __import__("time").time() - import_start
-        LOGGER.info(
-            "import_pipeline stage timing (%d txns): normalize=%.3fs classify=%.3fs build=%.3fs total=%.3fs",
-            n,
-            stage_normalize,
-            stage_classify,
-            stage_tags,
-            total_time,
-        )
+        if self.metrics_collector:
+            mc = self.metrics_collector
+            LOGGER.info(
+                "import_pipeline stage timing (%d txns): normalize=%.3fs classify=%.3fs build=%.3fs total=%.3fs",
+                n,
+                mc.stage_normalize.total_seconds,
+                mc.stage_classify.total_seconds,
+                mc.stage_build.total_seconds,
+                total_time,
+            )
         return out_txns, self._format_unknown(unknown_agg), warning_count
 
     def _card_tag(self) -> str:
