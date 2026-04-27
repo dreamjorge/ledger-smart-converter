@@ -95,7 +95,12 @@ class TestPushTransactions:
             with pytest.raises(FireflyAuthError):
                 adapter.push_transactions([txn])
 
-    def test_raises_validation_error_on_422(self):
+    def test_records_422_as_error_without_raising(self):
+        """HTTP 422 is recorded as an error, allowing the batch to continue.
+
+        This preserves partial success: if earlier transactions succeeded,
+        they will be marked as synced by the caller even if later ones fail.
+        """
         adapter = FireflyApiAdapter("http://firefly.local", "token")
         txn = _make_txn()
 
@@ -104,9 +109,11 @@ class TestPushTransactions:
         mock_response.json.return_value = {"message": "The given data was invalid."}
 
         with patch("requests.post", return_value=mock_response):
-            with pytest.raises(FireflyValidationError) as exc_info:
-                adapter.push_transactions([txn])
-            assert "invalid" in str(exc_info.value).lower()
+            result = adapter.push_transactions([txn])
+
+        assert result["synced_hashes"] == []
+        assert len(result["errors"]) == 1
+        assert "422" in result["errors"][0]["error"]
 
     def test_records_error_on_non_401_422_failure(self):
         adapter = FireflyApiAdapter("http://firefly.local", "token")
@@ -142,13 +149,18 @@ class TestPushTransactions:
 
 
 class TestMapToFireflyJson:
-    def test_withdrawal_becomes_negative_amount(self):
+    def test_withdrawal_uses_positive_amount_with_type_encoding_direction(self):
+        """Withdrawal transactions send positive amount; type=withdrawal encodes direction.
+
+        This is consistent with import_statement.py CSV export which uses
+        abs(amount) and lets the type field carry direction information.
+        """
         adapter = FireflyApiAdapter("http://firefly.local", "token")
         txn = _make_txn(amount=100.50, txn_type="withdrawal")
         payload = adapter._map_to_firefly_json(txn)
 
         ff_txn = payload["transactions"][0]
-        assert ff_txn["amount"] == "-100.50"
+        assert ff_txn["amount"] == "100.50"  # always positive, type carries direction
         assert ff_txn["type"] == "withdrawal"
 
     def test_deposit_becomes_positive_amount(self):
