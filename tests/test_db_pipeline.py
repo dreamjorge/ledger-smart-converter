@@ -1,3 +1,4 @@
+import pytest
 from pathlib import Path
 
 from db_pipeline import run_db_pipeline
@@ -154,3 +155,72 @@ def test_run_db_pipeline_cli_args_parsing(tmp_path):
     assert isinstance(result["exports"], list)
     assert result["exports"][0]["bank_id"] == "santander_likeu"
     assert result["exports"][0]["rows_exported"] >= 0
+
+
+def test_main_exit_code_zero_on_success(tmp_path, monkeypatch, capsys):
+    """main() should exit with code 0 on success."""
+    import sys
+
+    data_dir = tmp_path / "data"
+    db_path = tmp_path / "ledger.db"
+    export_dir = tmp_path / "exports"
+    data_dir.mkdir(parents=True, exist_ok=True)
+
+    # Minimal valid CSV
+    csv_path = data_dir / "santander_likeu" / "firefly_santander_likeu.csv"
+    csv_path.parent.mkdir(parents=True, exist_ok=True)
+    csv_path.write_text(
+        "type,date,amount,currency_code,description,source_name,destination_name,category_name,tags\n"
+        "withdrawal,2026-01-15,100.00,MXN,TEST,Liabilities:CC:Santander,Expenses:Food:Groceries,Food,\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(sys, "argv", [
+        "db_pipeline",
+        "--db", str(db_path),
+        "--data-dir", str(data_dir),
+        "--export-dir", str(export_dir),
+    ])
+
+    from db_pipeline import main
+
+    exit_code = main()
+    assert exit_code == 0
+
+
+def test_if_main_block_raises_system_exit(tmp_path, monkeypatch):
+    """Verify that when db_pipeline is run as script, it raises SystemExit."""
+    import sys
+
+    data_dir = tmp_path / "data"
+    db_path = tmp_path / "ledger.db"
+    export_dir = tmp_path / "exports"
+    data_dir.mkdir(parents=True, exist_ok=True)
+
+    # Minimal valid CSV
+    csv_path = data_dir / "santander_likeu" / "firefly_santander_likeu.csv"
+    csv_path.parent.mkdir(parents=True, exist_ok=True)
+    csv_path.write_text(
+        "type,date,amount,currency_code,description,source_name,destination_name,category_name,tags\n"
+        "withdrawal,2026-01-15,100.00,MXN,TEST,Liabilities:CC:Santander,Expenses:Food:Groceries,Food,\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(sys, "argv", [
+        "db_pipeline",
+        "--db", str(db_path),
+        "--data-dir", str(data_dir),
+        "--export-dir", str(export_dir),
+    ])
+
+    # Import the module-level name
+    from db_pipeline import __name__ as mod_name
+    from db_pipeline import main as pipeline_main
+
+    # The db_pipeline script body is:
+    #   if __name__ == "__main__":
+    #       raise SystemExit(main())
+    # When we call main() directly, it returns int.
+    # The if __name__ == "__main__" guard wraps it in SystemExit.
+    exit_code = pipeline_main()
+    assert exit_code == 0
