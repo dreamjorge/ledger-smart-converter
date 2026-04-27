@@ -45,7 +45,9 @@ class FireflyApiAdapter(FireflySyncPort):
     def push_transactions(self, transactions: List[CanonicalTransaction]) -> Dict[str, Any]:
         """
         Push transactions to Firefly III one by one.
-        Returns synced hashes and errors.
+        Returns synced hashes and errors. Errors are collected per-transaction so a
+        422 on one transaction does not abort the batch — earlier successes are
+        preserved and will be marked as synced by the caller.
         """
         synced_hashes = []
         errors = []
@@ -64,7 +66,14 @@ class FireflyApiAdapter(FireflySyncPort):
                     raise FireflyAuthError("Invalid Firefly token")
                 if response.status_code == 422:
                     detail = response.json().get("message", "Validation error")
-                    raise FireflyValidationError(f"Firefly rejected transaction: {detail}")
+                    # Log and record the error but continue processing remaining transactions
+                    logger.warning(
+                        "Firefly rejected transaction %s [422]: %s",
+                        txn.id[:8],
+                        detail,
+                    )
+                    errors.append({"hash": txn.id, "error": f"422: {detail}"})
+                    continue
 
                 response.raise_for_status()
 
@@ -72,10 +81,8 @@ class FireflyApiAdapter(FireflySyncPort):
                     synced_hashes.append(txn.id)
             except FireflyAuthError:
                 raise
-            except FireflyValidationError:
-                raise
             except Exception as e:
-                logger.error(f"Error syncing transaction {txn.id}: {e}")
+                logger.error(f"Error syncing transaction {txn.id[:8]}: {e}")
                 errors.append({"hash": txn.id, "error": str(e)})
 
         return {
@@ -89,10 +96,15 @@ class FireflyApiAdapter(FireflySyncPort):
         return None
 
     def _map_to_firefly_json(self, txn: CanonicalTransaction) -> Dict[str, Any]:
-        """Translate domain object to Firefly III API payload."""
+        """Translate domain object to Firefly III API payload.
+
+        Firefly III API expects:
+        - Positive amount for deposits (type=transfer), negative for withdrawals (type=withdrawal)
+        - OR always-positive amount with type field encoding the direction.
+        We use the latter pattern (consistent with import_statement.py CSV export):
+        always send positive amount, let 'type' encode direction.
+        """
         amount = abs(txn.amount) if txn.amount is not None else 0.0
-        if txn.transaction_type == "withdrawal":
-            amount = -abs(amount)
 
         return {
             "error_if_duplicate_hash": True,
