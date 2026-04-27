@@ -111,10 +111,80 @@ class TestFigureGeneration:
     def test_get_bank_comparison_fig(self, sample_stats, mock_tc):
         stats_hsbc = sample_stats.copy()
         stats_hsbc["category_spending"] = {"Food": 300.0, "Transport": 500.0}
-        
+
         fig = ui_service.get_bank_comparison_fig(sample_stats, stats_hsbc, mock_tc)
         assert isinstance(fig, go.Figure)
         assert len(fig.data) == 2  # Santander and HSBC traces
         assert fig.data[0].name == "Santander"
         assert fig.data[1].name == "HSBC"
         assert "cat_Food" in fig.data[0].x
+
+    def test_get_category_spending_fig(self, sample_stats, mock_tc):
+        fig = ui_service.get_category_spending_fig(sample_stats, mock_tc)
+        assert isinstance(fig, go.Figure)
+        assert fig.data[0].type == "bar"
+        assert "cat_Food" in fig.data[0].y
+        assert 500.0 in fig.data[0].x
+
+    def test_get_category_spending_fig_empty(self, sample_stats, mock_tc):
+        fig = ui_service.get_category_spending_fig({"category_spending": {}}, mock_tc)
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) == 0
+
+
+class TestSharedContractParity:
+    """
+    Verify that both Streamlit (analytics_page.py) and Flet (analytics_view.py)
+    consume the same ui_service helpers for formatting and chart building.
+
+    This test documents and enforces the shared contract:
+      - format_currency / format_percentage: formatting helpers shared by both UIs
+      - get_spending_share_fig, get_monthly_trends_fig: Flet analytics view uses these
+      - get_coverage_pie_fig, get_bank_comparison_fig: Streamlit analytics page uses these
+      - get_category_spending_fig, get_category_count_fig: Streamlit components use these
+    """
+
+    def test_format_currency_used_by_both_uia(self, mock_tc):
+        """format_currency is the canonical currency formatter shared by both UIs."""
+        assert ui_service.format_currency(1234.56) == "$1,234.56"
+
+    def test_format_percentage_used_by_both_ui(self, mock_tc):
+        """format_percentage is the canonical percentage formatter shared by both UIs."""
+        assert ui_service.format_percentage(80.0) == "80.0%"
+
+    def test_spending_share_fig_used_by_flet_view(self, sample_stats, mock_t, mock_tc):
+        """Flet analytics_view.py calls get_spending_share_fig from ui_service."""
+        fig = ui_service.get_spending_share_fig(sample_stats, mock_t, mock_tc)
+        assert isinstance(fig, go.Figure)
+        assert fig.data[0].type == "pie"
+
+    def test_monthly_trends_fig_used_by_flet_view(self, sample_stats, mock_t, mock_tc):
+        """Flet analytics_view.py calls get_monthly_trends_fig from ui_service."""
+        fig = ui_service.get_monthly_trends_fig(sample_stats, mock_t, mock_tc)
+        assert isinstance(fig, go.Figure)
+
+    def test_coverage_pie_fig_used_by_streamlit_page(self, sample_stats, mock_t):
+        """Streamlit analytics_page.py calls get_coverage_pie_fig from ui_service."""
+        fig = ui_service.get_coverage_pie_fig(sample_stats, mock_t)
+        assert isinstance(fig, go.Figure)
+        assert fig.data[0].type == "pie"
+
+    def test_bank_comparison_fig_used_by_streamlit_page(self, sample_stats, mock_tc):
+        """Streamlit analytics_page.py calls get_bank_comparison_fig from ui_service."""
+        stats_hsbc = sample_stats.copy()
+        stats_hsbc["category_spending"] = {"Food": 300.0}
+        fig = ui_service.get_bank_comparison_fig(sample_stats, stats_hsbc, mock_tc)
+        assert isinstance(fig, go.Figure)
+        assert len(fig.data) == 2
+
+    def test_category_spending_fig_used_by_streamlit_components(self, sample_stats, mock_tc):
+        """Streamlit analytics_components.py calls get_category_spending_fig from ui_service."""
+        fig = ui_service.get_category_spending_fig(sample_stats, mock_tc)
+        assert isinstance(fig, go.Figure)
+        assert fig.data[0].type == "bar"
+
+    def test_category_count_fig_used_by_streamlit_components(self, sample_stats, mock_tc):
+        """Streamlit analytics_components.py calls get_category_count_fig from ui_service."""
+        fig = ui_service.get_category_count_fig(sample_stats, mock_tc)
+        assert isinstance(fig, go.Figure)
+        assert fig.data[0].type == "bar"

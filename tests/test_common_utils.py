@@ -24,6 +24,16 @@ def test_parse_money_handles_edge_cases():
     assert cu.parse_money("$-500.00") == -500.0
 
 
+def test_parse_money_value_error():
+    """Test that ValueError from float() is caught and returns None.
+
+    This covers lines 104-105: the except ValueError block.
+    A string that cleans to just '+' or '-' causes float() to raise ValueError.
+    """
+    assert cu.parse_money("+") is None
+    assert cu.parse_money("-") is None
+
+
 # ===========================
 # Statement Period Tests
 # ===========================
@@ -360,6 +370,37 @@ class TestCleanDescription:
     def test_multiple_glossary_terms(self):
         """Test descriptions with multiple glossary terms."""
         assert cu.clean_description("COMISION TRANSF AUTOMATICO") == "Comisión Transferencia Automático"
+
+
+class TestAddRuleToYaml:
+    """Test add_rule_to_yaml function."""
+
+    def test_creates_rules_section_when_missing(self, tmp_path):
+        """Test that new rules section is created when config has none."""
+        rules_file = tmp_path / "rules.yml"
+        rules_file.write_text("defaults:\n  fallback_expense: Expenses:Other\n")
+
+        cu.add_rule_to_yaml(rules_file, "TestMerchant", "test.*pattern", "Expenses:Test", "test_bucket")
+
+        import yaml
+        config = yaml.safe_load(rules_file.read_text())
+        assert "rules" in config
+        assert len(config["rules"]) == 1
+        assert config["rules"][0]["name"] == "UserCorrection:TestMerchant"
+        assert "test.*pattern" in config["rules"][0]["any_regex"]
+
+    def test_inserts_rule_at_beginning(self, tmp_path):
+        """Test that new rule is inserted at the beginning of existing rules."""
+        rules_file = tmp_path / "rules.yml"
+        rules_file.write_text("rules:\n  - name: Existing Rule\n    any_regex: ['existing']\n    set: {}\n")
+
+        cu.add_rule_to_yaml(rules_file, "NewMerchant", "new.*pattern", "Expenses:New", "new_bucket")
+
+        import yaml
+        config = yaml.safe_load(rules_file.read_text())
+        assert len(config["rules"]) == 2
+        assert config["rules"][0]["name"] == "UserCorrection:NewMerchant"
+        assert config["rules"][1]["name"] == "Existing Rule"
 
 
 # ===========================
