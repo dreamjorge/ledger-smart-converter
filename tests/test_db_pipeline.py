@@ -118,3 +118,39 @@ def test_pipeline_is_idempotent(tmp_path):
     assert import_count == 2, f"Expected 2 import rows (one per run), got {import_count}"
     assert summary1["migration"]["rows_inserted"] == 1
     assert summary2["migration"]["rows_inserted"] == 0
+
+
+def test_run_db_pipeline_cli_args_parsing(tmp_path):
+    """Verify run_db_pipeline handles CLI-style argument dict correctly."""
+    from db_pipeline import run_db_pipeline
+
+    data_dir = tmp_path / "data"
+    db_path = tmp_path / "ledger.db"
+    export_dir = tmp_path / "exports"
+    accounts_path = tmp_path / "accounts.yml"
+
+    # Write minimal CSV so migration finds data
+    data_dir.mkdir(parents=True, exist_ok=True)
+    csv_path = data_dir / "santander_likeu" / "firefly_santander_likeu.csv"
+    csv_path.parent.mkdir(parents=True, exist_ok=True)
+    csv_path.write_text(
+        "type,date,amount,currency_code,description,source_name,destination_name,category_name,tags\n"
+        "withdrawal,2026-01-15,100.00,MXN,TEST,Liabilities:CC:Santander,Expenses:Food:Groceries,Food,\n",
+        encoding="utf-8",
+    )
+
+    result = run_db_pipeline(
+        db_path=db_path,
+        data_dir=data_dir,
+        accounts_path=accounts_path,
+        export_dir=export_dir,
+        banks=["santander_likeu"],
+    )
+
+    # Verify structure
+    assert isinstance(result, dict)
+    assert "migration" in result
+    assert "exports" in result
+    assert isinstance(result["exports"], list)
+    assert result["exports"][0]["bank_id"] == "santander_likeu"
+    assert result["exports"][0]["rows_exported"] >= 0
